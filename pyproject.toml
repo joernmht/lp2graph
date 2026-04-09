@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "lp2graph"
+version = "0.1.0"
+description = "Convert LP/MILP formulations to graph representations and compute structural metrics"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = [
+    "networkx",
+    "pandas",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+viz = ["plotly", "graphviz"]
