@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>lp2graph viewer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #fafafa;
+    --panel: #ffffff;
+    --ink: #1a1a1a;
+    --muted: #6b6b6b;
+    --rule: #e5e1d8;
+    --accent: #1f4fbb;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Fraunces", "Iowan Old Style", Georgia, serif;
+    background: var(--bg);
+    color: var(--ink);
+  }
+  header {
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--rule);
+    background: var(--panel);
+    display: flex;
+    align-items: baseline;
+    gap: 24px;
+  }
+  header h1 {
+    margin: 0;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  header .tag {
+    color: var(--muted);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+  }
+  main {
+    display: grid;
+    grid-template-columns: 320px 1fr 320px;
+    height: calc(100vh - 60px);
+  }
+  aside {
+    background: var(--panel);
+    border-right: 1px solid var(--rule);
+    overflow: auto;
+    padding: 16px;
+  }
+  aside.right {
+    border-right: 0;
+    border-left: 1px solid var(--rule);
+  }
+  aside h2 {
+    font-size: 13px;
+    text-transform: uppercase;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    margin: 8px 0;
+  }
+  ul.list { list-style: none; margin: 0; padding: 0; }
+  ul.list li {
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+  }
+  ul.list li:hover { background: #f3eedd; }
+  ul.list li.active { background: #ffe9b8; color: var(--ink); }
+  .panel {
+    background: var(--panel);
+    overflow: auto;
+    padding: 16px;
+  }
+  .controls {
+    display: flex;
+    gap: 8px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--rule);
+    background: var(--panel);
+    align-items: center;
+  }
+  .controls button, .controls select, .controls input {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    padding: 4px 8px;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: var(--panel);
+    color: var(--ink);
+  }
+  .controls button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  table.metrics { width: 100%; font-family: "JetBrains Mono", monospace; font-size: 12px; }
+  table.metrics td { padding: 4px 6px; border-bottom: 1px dashed var(--rule); }
+  table.metrics td.k { color: var(--muted); }
+  .stage { background: #fff; border: 1px solid var(--rule); border-radius: 6px; padding: 8px; min-height: 200px; }
+  .empty { color: var(--muted); font-size: 14px; padding: 16px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>lp2graph</h1>
+  <span class="tag">interactive viewer · v0.1.0</span>
+</header>
+<main>
+  <aside>
+    <h2>Formulations</h2>
+    <ul class="list" id="formulation-list">
+      <li class="empty">Loading…</li>
+    </ul>
+  </aside>
+  <section style="display:flex; flex-direction:column;">
+    <div class="controls">
+      <strong style="font-family:'JetBrains Mono', monospace;font-size:12px;">view:</strong>
+      <button data-view="schema" class="active">schema</button>
+      <button data-view="hybrid">hybrid</button>
+      <button data-view="ground">ground</button>
+      <span style="margin-left:12px;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted);">cardinality:</span>
+      <input id="card" type="number" min="1" max="32" value="3" style="width:60px;">
+    </div>
+    <div class="panel" style="flex:1;">
+      <div class="stage" id="stage">
+        <div class="empty">Select a formulation on the left.</div>
+      </div>
+    </div>
+  </section>
+  <aside class="right">
+    <h2>Metrics</h2>
+    <table class="metrics" id="metrics-table"></table>
+    <h2 style="margin-top:24px;">Description</h2>
+    <div id="description" style="font-size:14px;line-height:1.5;"></div>
+  </aside>
+</main>
+
+<script>
+// Formulation registry. The viewer is intentionally simple: it reads
+// pre-baked JSON files via fetch(). For local browsing without a web
+// server, the list below is hard-coded; users open this file with a
+// quick "python -m http.server" and the registry is overridden by an
+// optional manifest.json placed next to this file.
+const FORMULATIONS = [
+  "constraints/lp_1_1_fixed_sequence.json",
+  "constraints/lp_1_5_soft_regularity.json",
+  "constraints/mip_2_1_big_m.json",
+  "constraints/mip_2_4_time_indexed.json",
+  "constraints/mip_2_8_pesp.json",
+  "objectives/multi_obj_lateness_energy.json",
+  "objectives/objective_lex_priority.json",
+  "objectives/objective_abs_deviation.json",
+];
+
+const FORMULATIONS_BASE = "../formulations/";
+
+let state = {
+  current: null,
+  view: "schema",
+  cardinality: 3,
+  data: null,
+};
+
+function $(id) { return document.getElementById(id); }
+
+async function loadFormulation(rel) {
+  const r = await fetch(FORMULATIONS_BASE + rel);
+  if (!r.ok) throw new Error("Failed to load " + rel);
+  return r.json();
+}
+
+function setListActive(rel) {
+  document.querySelectorAll("#formulation-list li").forEach(li => {
+    li.classList.toggle("active", li.dataset.rel === rel);
+  });
+}
+
+function renderMetrics(f) {
+  const tbody = $("metrics-table");
+  const counts = {
+    indices: f.indices?.length ?? 0,
+    parameters: f.parameters?.length ?? 0,
+    variables: f.variables?.length ?? 0,
+    constraints: f.constraints?.length ?? 0,
+    objective: f.objective ? 1 : 0,
+  };
+  const flags = {
+    "has integer vars": !!f.variables?.some(v => v.domain === "integer" || v.domain === "binary"),
+    "has big-M":        !!f.parameters?.some(p => p.kind === "big_m") || !!f.constraints?.some(c => c.kind === "big_m"),
+    "has soft slack":   !!f.variables?.some(v => v.role === "slack"),
+    "has aggregation":  hasAgg(f),
+    "has modulo":       hasModulo(f),
+  };
+  let html = "";
+  for (const [k, v] of Object.entries(counts)) html += `<tr><td class="k">${k}</td><td>${v}</td></tr>`;
+  html += `<tr><td class="k" style="padding-top:12px;">family</td><td>${f.family}</td></tr>`;
+  html += `<tr><td class="k">tags</td><td>${(f.tags || []).join(" · ") || "-"}</td></tr>`;
+  for (const [k, v] of Object.entries(flags)) html += `<tr><td class="k">${k}</td><td>${v ? "yes" : "no"}</td></tr>`;
+  tbody.innerHTML = html;
+}
+
+function hasAgg(f) {
+  const visit = (terms) => terms?.some(t => t.operator && t.operator !== "none");
+  if (f.constraints?.some(c => visit(c.lhs) || visit(c.rhs))) return true;
+  if (f.objective && visit(f.objective.terms)) return true;
+  return false;
+}
+
+function hasModulo(f) {
+  const visit = (terms) => terms?.some(t => t.bindings?.some(b => b.modulo));
+  if (f.constraints?.some(c => visit(c.lhs) || visit(c.rhs))) return true;
+  if (f.objective && visit(f.objective.terms)) return true;
+  return false;
+}
+
+// ---------- view derivations (schema, hybrid, ground) in the browser
+
+function deriveSchema(f, withOffsets=false) {
+  const nodes = [];
+  const edges = [];
+  const nodeId = (...parts) => parts.join(":");
+  const add = (id, cls, label, subtype="") => { nodes.push({ id, cls, label, subtype }); };
+
+  for (const idx of f.indices || []) add(`index:${idx.name}`, "index", idx.name, idx.cyclic ? "cyclic" : idx.ordered ? "ordered" : "set");
+  for (const p of f.parameters || []) {
+    add(`param:${p.name}`, "parameter", p.name, p.kind || "scalar");
+    for (const s of p.shape || []) edges.push({ src: `param:${p.name}`, dst: `index:${s}`, role: "shape" });
+  }
+  for (const v of f.variables || []) {
+    add(`var:${v.name}`, "variable", v.name, v.domain);
+    for (const s of v.shape || []) edges.push({ src: `var:${v.name}`, dst: `index:${s}`, role: "shape" });
+  }
+  for (const c of f.constraints || []) {
+    add(`constraint:${c.name}`, "constraint", c.name, c.kind || "linear");
+    const emit = (terms) => terms?.forEach((t, i) => {
+      if (t.ref_kind === "literal") return;
+      const tgt = (t.ref_kind === "variable" ? "var:" : "param:") + t.ref;
+      const offsets = withOffsets ? t.bindings?.map(b => `${b.index}=${b.expr}${b.modulo ? ` mod ${b.modulo}` : ""}`).join(",") : "";
+      edges.push({ src: `constraint:${c.name}`, dst: tgt, role: t.role, label: offsets });
+    });
+    emit(c.lhs); emit(c.rhs);
+  }
+  if (f.objective) {
+    add("objective:0", "objective", f.objective.name || "obj", f.objective.sense);
+    f.objective.terms?.forEach((t) => {
+      if (t.ref_kind === "literal") return;
+      const tgt = (t.ref_kind === "variable" ? "var:" : "param:") + t.ref;
+      const offsets = withOffsets ? t.bindings?.map(b => `${b.index}=${b.expr}`).join(",") : "";
+      edges.push({ src: "objective:0", dst: tgt, role: "objective", label: offsets });
+    });
+  }
+  return { nodes, edges };
+}
+
+function deriveGround(f, n) {
+  // Light JS port of the Python ground view: enumerates instances at
+  // cardinality n for every declared index; not a full reimplementation.
+  const nodes = [];
+  const edges = [];
+  const cards = {};
+  for (const idx of f.indices || []) cards[idx.name] = n;
+  const enumerate = (shape) => {
+    if (!shape || shape.length === 0) return [[]];
+    const results = [];
+    const r0 = Array.from({length: cards[shape[0]] || n}, (_, i) => i);
+    for (const v of r0) {
+      for (const tail of enumerate(shape.slice(1))) {
+        results.push([v, ...tail]);
+      }
+    }
+    return results;
+  };
+  for (const v of f.variables || []) {
+    for (const tup of enumerate(v.shape || [])) {
+      const id = `varinst:${v.name}_${tup.join("_")}`;
+      nodes.push({ id, cls: "instance_variable", label: `${v.name}[${tup.join(",")}]`, subtype: v.domain });
+    }
+  }
+  for (const c of f.constraints || []) {
+    const qShape = (c.quantifiers || []).map(q => q.over);
+    for (const tup of enumerate(qShape)) {
+      const cId = `cinst:${c.name}_${tup.join("_")}`;
+      nodes.push({ id: cId, cls: "instance_constraint", label: `${c.name}[${tup.join(",")}]`, subtype: c.kind || "linear" });
+    }
+  }
+  return { nodes, edges };
+}
+
+function deriveCurrent() {
+  if (!state.data) return { nodes: [], edges: [] };
+  if (state.view === "schema") return deriveSchema(state.data, false);
+  if (state.view === "hybrid") return deriveSchema(state.data, true);
+  return deriveGround(state.data, parseInt(state.cardinality) || 3);
+}
+
+// ---------- SVG rendering: mirrors src/optgraph/render/svg.py
+
+const FILL = {
+  variable: "#e9f1ff", instance_variable: "#dceaff",
+  constraint: "#fde8e1", instance_constraint: "#f9d8cf",
+  objective: "#e7f5e1",
+  index: "#f4eedb", parameter: "#ede0f2",
+};
+const STROKE = {
+  variable: "#1f4fbb", instance_variable: "#1f4fbb",
+  constraint: "#a8341d", instance_constraint: "#a8341d",
+  objective: "#2f7a1f",
+  index: "#856404", parameter: "#5b2772",
+};
+const LAYER_Y = {
+  objective: 60, constraint: 220, instance_constraint: 220,
+  parameter: 360, variable: 460, instance_variable: 460, index: 580,
+};
+
+function renderSvg(g) {
+  const layers = {};
+  for (const n of g.nodes) (layers[n.cls] ||= []).push(n);
+  const positions = {};
+  let maxX = 800;
+  for (const cls of Object.keys(layers)) {
+    const y = LAYER_Y[cls] ?? 320;
+    layers[cls].forEach((n, i) => { positions[n.id] = [40 + 110*i + 50, y]; });
+    maxX = Math.max(maxX, 40 + 110*layers[cls].length);
+  }
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${maxX} 700" width="100%" font-family="JetBrains Mono, monospace">`;
+  svg += `<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#4a4a4a"/></marker></defs>`;
+  for (const e of g.edges) {
+    if (!positions[e.src] || !positions[e.dst]) continue;
+    const [x1, y1] = positions[e.src];
+    const [x2, y2] = positions[e.dst];
+    const stroke = e.role === "slack" ? "#a8341d" : e.role === "objective" ? "#2f7a1f" : "#4a4a4a";
+    const dash = e.role === "slack" ? "4 3" : e.role === "shape" ? "3 2" : "0";
+    svg += `<line x1="${x1}" y1="${y1+20}" x2="${x2}" y2="${y2-20}" stroke="${stroke}" stroke-width="1.4" stroke-dasharray="${dash}" opacity="0.78" marker-end="url(#a)"/>`;
+    if (e.label) svg += `<text x="${(x1+x2)/2+4}" y="${(y1+y2)/2-2}" font-size="9" fill="#444">${e.label}</text>`;
+  }
+  for (const n of g.nodes) {
+    const [x, y] = positions[n.id];
+    svg += `<g><rect x="${x-50}" y="${y-20}" width="100" height="40" rx="6" fill="${FILL[n.cls] || "#eee"}" stroke="${STROKE[n.cls] || "#333"}" stroke-width="1.4"/>`;
+    svg += `<text x="${x}" y="${y-2}" text-anchor="middle" font-size="12">${n.label}</text>`;
+    svg += `<text x="${x}" y="${y+12}" text-anchor="middle" font-size="9" fill="#666">${n.subtype || ""}</text></g>`;
+  }
+  svg += `</svg>`;
+  return svg;
+}
+
+function rerender() {
+  const g = deriveCurrent();
+  $("stage").innerHTML = renderSvg(g);
+}
+
+document.querySelectorAll(".controls button[data-view]").forEach(b => {
+  b.addEventListener("click", () => {
+    document.querySelectorAll(".controls button[data-view]").forEach(x => x.classList.remove("active"));
+    b.classList.add("active");
+    state.view = b.dataset.view;
+    rerender();
+  });
+});
+$("card").addEventListener("input", () => { state.cardinality = $("card").value; rerender(); });
+
+async function init() {
+  const list = $("formulation-list");
+  list.innerHTML = "";
+  for (const rel of FORMULATIONS) {
+    const li = document.createElement("li");
+    li.textContent = rel.split("/").pop().replace(/\.json$/, "");
+    li.dataset.rel = rel;
+    li.addEventListener("click", async () => {
+      try {
+        state.current = rel;
+        state.data = await loadFormulation(rel);
+        setListActive(rel);
+        renderMetrics(state.data);
+        $("description").textContent = state.data.description || "";
+        rerender();
+      } catch (err) {
+        $("stage").innerHTML = `<div class="empty">Could not load ${rel}: ${err.message}</div>`;
+      }
+    });
+    list.appendChild(li);
+  }
+}
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+site_name: lp2graph
+site_description: Typed-graph representation of LP, MIP, and MILP formulations.
+site_url: https://joernmht.github.io/lp2graph/
+repo_url: https://github.com/joernmht/lp2graph
+repo_name: joernmht/lp2graph
+
+theme:
+  name: material
+  font:
+    text: Fraunces
+    code: JetBrains Mono
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - content.code.copy
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: amber
+
+nav:
+  - Home: index.md
+  - Data model: data-model.md
+  - Views: views.md
+  - Metrics: metrics.md
+  - Add a formulation: add-a-formulation.md
+  - Design context: design-context.md
+  - Extraction report: extraction-report.md
+  - v1 acceptance: v1-acceptance.md
+  - ADRs:
+      - "ADR-0001 build tool": adr/0001-build-tool.md
+      - "ADR-0002 internal graph": adr/0002-internal-graph.md
+      - "ADR-0003 license": adr/0003-license.md
+      - "ADR-0004 schema versioning": adr/0004-schema-versioning.md
+      - "ADR-0005 viewer hosting": adr/0005-viewer-hosting.md
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.details
+
+plugins:
+  - search
