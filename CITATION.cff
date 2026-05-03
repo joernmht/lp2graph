@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+title: lp2graph
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - name: "lp2graph contributors"
+url: "https://github.com/joernmht/lp2graph"
+repository-code: "https://github.com/joernmht/lp2graph"
+license: Apache-2.0
+version: 0.1.0
+date-released: "2026-05-03"
+abstract: >-
+  Typed-graph representation of LP, MIP, and MILP formulations. Provides
+  schema-validated canonical models, three view derivations (schema /
+  hybrid / ground), structural metrics, SVG rendering, and export
+  adapters to PyG, DGL, NetworkX, LaTeX, and Pyomo.
+keywords:
+  - optimization
+  - linear programming
+  - mixed-integer programming
+  - graph neural networks
+  - typed graphs
+references:
+  - type: software
+    title: raiLPminerExperimentation
+    authors:
+      - name: "Joern Methner"
+    url: "https://github.com/joernmht/raiLPminerExperimentation"
+    license: MIT
+    notes: >-
+      Source repository for the structural metric algorithms and
+      constraint-classification keyword tables; see
+      docs/extraction-report.md for the attribution manifest.

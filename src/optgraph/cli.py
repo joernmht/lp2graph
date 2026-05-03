@@ -1,0 +1,156 @@
+"""Command-line entry point: ``optgraph``.
+
+Subcommands:
+
+- ``optgraph validate <file>`` — load and validate a formulation file.
+- ``optgraph view <file> --view {schema,hybrid,ground} [--card I=5 ...]``
+  — derive a view and print a summary.
+- ``optgraph render <file> --view ... --output graph.svg`` — render to
+  SVG.
+- ``optgraph metrics <file>`` — compute and print all metrics.
+- ``optgraph export <file> --format {networkx,pyg,dgl,latex,pyomo}`` —
+  export.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from optgraph import load
+from optgraph import validate as _validate
+from optgraph import views as _views
+from optgraph.metrics.flags import presence_flags
+from optgraph.metrics.structural import structural_summary
+from optgraph.render.svg import render_svg
+
+if TYPE_CHECKING:
+    from optgraph.core.graph import Graph
+    from optgraph.core.model import Formulation
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="optgraph")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_validate = sub.add_parser("validate", help="Validate a formulation file.")
+    p_validate.add_argument("path", type=Path)
+
+    p_view = sub.add_parser("view", help="Derive a view and print a summary.")
+    p_view.add_argument("path", type=Path)
+    p_view.add_argument(
+        "--view", choices=("schema", "hybrid", "ground"), default="schema"
+    )
+    p_view.add_argument(
+        "--card",
+        action="append",
+        default=[],
+        help="Cardinality, e.g. --card I=5 --card T=8 (only for --view ground).",
+    )
+
+    p_render = sub.add_parser("render", help="Render a view to SVG.")
+    p_render.add_argument("path", type=Path)
+    p_render.add_argument("--view", choices=("schema", "hybrid", "ground"), default="hybrid")
+    p_render.add_argument("--card", action="append", default=[])
+    p_render.add_argument("--output", type=Path, required=True)
+
+    p_metrics = sub.add_parser("metrics", help="Compute all metrics.")
+    p_metrics.add_argument("path", type=Path)
+    p_metrics.add_argument(
+        "--view", choices=("schema", "hybrid"), default="schema"
+    )
+
+    p_export = sub.add_parser("export", help="Export to a downstream format.")
+    p_export.add_argument("path", type=Path)
+    p_export.add_argument(
+        "--format",
+        choices=("networkx", "pyg", "dgl", "latex", "pyomo"),
+        required=True,
+    )
+    p_export.add_argument(
+        "--view", choices=("schema", "hybrid", "ground"), default="hybrid"
+    )
+    p_export.add_argument("--card", action="append", default=[])
+    p_export.add_argument("--output", type=Path, default=None)
+
+    args = parser.parse_args(argv)
+
+    if args.cmd == "validate":
+        f = load(args.path)
+        _validate(f)
+        print(f"OK: {f.id} ({f.family})")
+        return 0
+
+    if args.cmd == "view":
+        f = load(args.path)
+        g = _derive(f, args.view, args.card)
+        print(json.dumps({"nodes": len(g.nodes), "edges": len(g.edges), "view": g.view}, indent=2))
+        return 0
+
+    if args.cmd == "render":
+        f = load(args.path)
+        g = _derive(f, args.view, args.card)
+        svg = render_svg(g, title=f.name)
+        args.output.write_text(svg, encoding="utf-8")
+        print(f"wrote {args.output}")
+        return 0
+
+    if args.cmd == "metrics":
+        f = load(args.path)
+        g = _derive(f, args.view, [])
+        result: dict[str, object] = {}
+        for name, m in structural_summary(g).items():
+            result[name] = m.value
+        for name, m in presence_flags(f).items():
+            result[name] = m.value
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    if args.cmd == "export":
+        f = load(args.path)
+        if args.format == "latex":
+            from optgraph.export.latex import to_latex
+            out = to_latex(f)
+        elif args.format == "pyomo":
+            from optgraph.export.pyomo_stub import to_pyomo_stub
+            out = to_pyomo_stub(f)
+        else:
+            g = _derive(f, args.view, args.card)
+            if args.format == "networkx":
+                from optgraph.export.networkx_adapter import to_networkx
+                nxg = to_networkx(g)
+                out = f"<NetworkX MultiDiGraph: {len(nxg)} nodes, {nxg.number_of_edges()} edges>"
+            elif args.format == "pyg":
+                from optgraph.export.pyg import to_pyg
+                pyg = to_pyg(g)
+                out = repr(pyg)
+            else:  # dgl
+                from optgraph.export.dgl import to_dgl
+                dglg = to_dgl(g)
+                out = repr(dglg)
+        if args.output:
+            args.output.write_text(out, encoding="utf-8")
+            print(f"wrote {args.output}")
+        else:
+            print(out)
+        return 0
+
+    return 0
+
+
+def _derive(
+    f: Formulation, view: str, card_args: list[str]
+) -> Graph:
+    if view == "schema":
+        return _views.schema(f)
+    if view == "hybrid":
+        return _views.hybrid(f)
+    cards = {k: int(v) for arg in card_args for k, v in [arg.split("=", 1)]}
+    return _views.ground(f, cards)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

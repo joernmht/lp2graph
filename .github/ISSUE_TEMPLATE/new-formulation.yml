@@ -1,0 +1,33 @@
+name: New formulation
+description: Propose a new formulation for the catalog.
+labels: ["catalog", "formulation"]
+body:
+  - type: input
+    id: name
+    attributes:
+      label: Formulation name
+      placeholder: "1.7 reduced-cyclic"
+    validations: { required: true }
+  - type: dropdown
+    id: family
+    attributes:
+      label: Family
+      options: [lp, mip, milp]
+    validations: { required: true }
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why this formulation? What does it test that the catalog does not already cover?
+    validations: { required: true }
+  - type: textarea
+    id: math
+    attributes:
+      label: Algebraic form
+      description: LaTeX or plain-text formulation.
+    validations: { required: true }
+  - type: textarea
+    id: notes
+    attributes:
+      label: Implementation notes
+      description: Anything tricky about the schema encoding.

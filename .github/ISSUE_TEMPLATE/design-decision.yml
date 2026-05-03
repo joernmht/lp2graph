@@ -1,0 +1,24 @@
+name: Design decision
+description: A significant design choice that needs discussion before implementation.
+labels: ["design-decision"]
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What is the situation that requires a decision?
+    validations: { required: true }
+  - type: textarea
+    id: options
+    attributes:
+      label: Options
+      description: List the alternatives, with trade-offs.
+    validations: { required: true }
+  - type: textarea
+    id: recommendation
+    attributes:
+      label: Recommendation (optional)
+  - type: textarea
+    id: stakes
+    attributes:
+      label: What is at stake if we get this wrong?
