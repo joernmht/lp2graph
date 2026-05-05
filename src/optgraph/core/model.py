@@ -107,6 +107,23 @@ QuantifierRestriction = Literal[
 ]
 
 
+class QuantifierWhere(_Frozen):
+    """Attribute-based selection predicate on a quantifier.
+
+    Restricts the tuples admitted by the quantifier to those for which a
+    parameter (shaped over the quantifier's ``over`` index family)
+    equals a given value. For example, with a binary parameter
+    ``is_local`` of shape ``[T]``, ``QuantifierWhere(parameter="is_local",
+    equals=True)`` keeps only the values of the index where
+    ``is_local`` is true. Schema and hybrid views surface this as a
+    label on the quantifier; the ground view applies it as a filter at
+    materialization time.
+    """
+
+    parameter: Identifier
+    equals: bool | int | float | str
+
+
 class Quantifier(_Frozen):
     """A constraint-template quantifier: ``index ∈ over``.
 
@@ -114,12 +131,16 @@ class Quantifier(_Frozen):
     ``restriction_other``). For example, ``j ∈ I, j != i`` is encoded as
     ``Quantifier(index="j", over="I", restriction="ne_other",
     restriction_other="i")``.
+
+    Optional ``where`` adds an attribute-based selection predicate
+    (e.g. ``is_local[t] == True``).
     """
 
     index: Identifier
     over: Identifier
     restriction: QuantifierRestriction = "none"
     restriction_other: Identifier | None = None
+    where: QuantifierWhere | None = None
 
     @model_validator(mode="after")
     def _check_restriction_pair(self) -> Quantifier:
@@ -173,9 +194,13 @@ class Term(_Frozen):
     - ``role`` drives edge coloring in rendered graphs.
     - ``operator`` and ``operator_over`` capture aggregations like
       ``sum_{t in T}`` so they are visible in the schema view.
+
+    For constant terms, prefer the ``constant`` shorthand
+    (``{"constant": 3599, "role": "rhs"}``); it is normalized at parse
+    time to a literal term whose ``coefficient`` carries the value.
     """
 
-    ref: Identifier
+    ref: Identifier = "_const"
     ref_kind: TermRefKind = "variable"
     bindings: tuple[Binding, ...] = ()
     coefficient: float | str | None = 1
@@ -183,6 +208,31 @@ class Term(_Frozen):
     role: TermRole
     operator: TermOperator = "none"
     operator_over: tuple[Identifier, ...] = ()
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_constant(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        if "constant" not in data:
+            return data
+        if data.get("ref") is not None or data.get("ref_kind") not in (None, "literal"):
+            raise ValueError(
+                "term: 'constant' is mutually exclusive with 'ref'/'ref_kind' "
+                "(other than ref_kind='literal')"
+            )
+        if "coefficient" in data and data["coefficient"] not in (None, 1):
+            raise ValueError(
+                "term: 'constant' is mutually exclusive with 'coefficient'; "
+                "the constant's value is its own coefficient"
+            )
+        if data.get("bindings"):
+            raise ValueError("term: constant term must not carry bindings")
+        out = {k: v for k, v in data.items() if k != "constant"}
+        out["ref"] = "_const"
+        out["ref_kind"] = "literal"
+        out["coefficient"] = data["constant"]
+        return out
 
 
 # ---------------------------------------------------------------------------
@@ -320,6 +370,7 @@ __all__ = [
     "Provenance",
     "Quantifier",
     "QuantifierRestriction",
+    "QuantifierWhere",
     "Term",
     "TermOperator",
     "TermRefKind",

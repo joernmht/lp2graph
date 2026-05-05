@@ -101,10 +101,20 @@ def _render_quantifiers(quantifiers: tuple[Quantifier, ...]) -> str:
             restr.append(rf"{q.index} \ge {q.restriction_other}")
         elif q.restriction == "ordered_pair":
             restr.append(rf"{q.index} < {q.restriction_other}")
+        if q.where is not None:
+            restr.append(
+                rf"{q.where.parameter}_{{{q.index}}} = {_render_value(q.where.equals)}"
+            )
     out = ", ".join(parts)
     if restr:
         out += ", " + ", ".join(restr)
     return out
+
+
+def _render_value(v: bool | int | float | str) -> str:
+    if isinstance(v, bool):
+        return r"\mathrm{true}" if v else r"\mathrm{false}"
+    return str(v)
 
 
 def _render_shape(shape: tuple[str, ...]) -> str:

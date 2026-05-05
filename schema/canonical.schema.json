@@ -152,6 +152,23 @@
           "type": ["string", "null"],
           "default": null,
           "description": "Name of the other quantifier the restriction refers to."
+        },
+        "where": {
+          "type": ["object", "null"],
+          "default": null,
+          "additionalProperties": false,
+          "required": ["parameter", "equals"],
+          "properties": {
+            "parameter": {
+              "$ref": "#/$defs/identifier",
+              "description": "Parameter shaped over the quantifier's index family used as a selection predicate."
+            },
+            "equals": {
+              "type": ["boolean", "number", "string"],
+              "description": "Value the parameter must equal for the tuple to be admitted."
+            }
+          },
+          "description": "Attribute-based selection: keep only index values where the named parameter equals the given value."
         }
       }
     },
@@ -182,16 +199,20 @@
     },
     "term": {
       "type": "object",
-      "required": ["ref", "role"],
+      "required": ["role"],
       "additionalProperties": false,
       "properties": {
         "ref": {
           "$ref": "#/$defs/identifier",
-          "description": "Name of a variable_template, parameter, or the literal 'one' for constant terms."
+          "description": "Name of a variable_template or parameter. May be omitted for constant terms (use 'constant' instead). The legacy spelling 'one' with ref_kind='literal' is still accepted."
         },
         "ref_kind": {
           "enum": ["variable", "parameter", "literal"],
           "default": "variable"
+        },
+        "constant": {
+          "type": "number",
+          "description": "Numeric constant value for the term. When set, the term is treated as a literal whose value is this number; 'ref' and 'coefficient' must be omitted."
         },
         "bindings": {
           "type": "array",

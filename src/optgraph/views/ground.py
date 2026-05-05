@@ -41,17 +41,27 @@ from optgraph.core.model import (
 )
 
 
-def ground(f: Formulation, cardinalities: Mapping[str, int]) -> Graph:
+def ground(
+    f: Formulation,
+    cardinalities: Mapping[str, int],
+    parameter_values: Mapping[str, Any] | None = None,
+) -> Graph:
     """Derive the ground view of ``f`` at the given index cardinalities.
 
     Args:
         f: the formulation.
         cardinalities: positive integer cardinality for every index
             family. All declared indices must be present.
+        parameter_values: optional concrete values for parameters. Each
+            entry maps a parameter name to either a flat sequence (for
+            1-D parameters) or a mapping from index tuples to values
+            (for any rank). Required for any parameter referenced by a
+            quantifier ``where``-clause.
 
     Raises:
         ValueError: if a required index cardinality is missing or not
-            positive.
+            positive, or a parameter value required by a ``where``-
+            clause is not supplied.
     """
     cards = dict(cardinalities)
     for idx in f.indices:
@@ -61,6 +71,9 @@ def ground(f: Formulation, cardinalities: Mapping[str, int]) -> Graph:
             raise ValueError(
                 f"cardinality for index {idx.name!r} must be positive (got {cards[idx.name]})"
             )
+
+    pvals = dict(parameter_values) if parameter_values is not None else {}
+    _check_where_parameters(f, pvals)
 
     g = Graph(view="ground")
     index_map = f.index_map()
@@ -86,7 +99,7 @@ def ground(f: Formulation, cardinalities: Mapping[str, int]) -> Graph:
 
     # 2. Materialize every constraint instance, applying degeneracy filters.
     for c in f.constraints:
-        _ground_constraint(g, c, cards, index_map, var_map)
+        _ground_constraint(g, c, cards, index_map, var_map, pvals)
 
     # 3. Materialize the objective as a single node connected to every
     #    instance variable that appears in any objective term.
@@ -94,6 +107,38 @@ def ground(f: Formulation, cardinalities: Mapping[str, int]) -> Graph:
         _ground_objective(g, f.objective, cards, index_map, var_map)
 
     return g
+
+
+def _check_where_parameters(
+    f: Formulation, pvals: Mapping[str, Any]
+) -> None:
+    """Every ``where``-clause parameter must have a concrete value supplied."""
+    for c in f.constraints:
+        for q in c.quantifiers:
+            if q.where is None:
+                continue
+            if q.where.parameter not in pvals:
+                raise ValueError(
+                    f"constraint {c.name!r}: quantifier {q.index!r} where-clause "
+                    f"requires parameter_values for {q.where.parameter!r}"
+                )
+
+
+def _lookup_parameter_value(
+    values: Any, key: tuple[int, ...]
+) -> Any:
+    """Read a value out of either a flat sequence (1-D) or a mapping."""
+    if isinstance(values, Mapping):
+        if key in values:
+            return values[key]
+        if len(key) == 1 and key[0] in values:
+            return values[key[0]]
+        raise KeyError(key)
+    if len(key) == 1:
+        return values[key[0]]
+    raise TypeError(
+        "multi-index parameter values must be supplied as a Mapping"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -141,7 +186,9 @@ def _constraint_instance_label(name: str, tup: tuple[tuple[str, int], ...]) -> s
 
 
 def _enumerate_quantifiers(
-    quantifiers: tuple[Quantifier, ...], cards: Mapping[str, int]
+    quantifiers: tuple[Quantifier, ...],
+    cards: Mapping[str, int],
+    pvals: Mapping[str, Any],
 ) -> list[dict[str, int]]:
     """Enumerate every binding of the constraint's quantifiers, applying restrictions."""
     if not quantifiers:
@@ -152,8 +199,25 @@ def _enumerate_quantifiers(
         binding = {q.index: v for q, v in zip(quantifiers, combo, strict=True)}
         if not _restrictions_pass(quantifiers, binding):
             continue
+        if not _where_clauses_pass(quantifiers, binding, pvals):
+            continue
         out.append(binding)
     return out
+
+
+def _where_clauses_pass(
+    quantifiers: tuple[Quantifier, ...],
+    binding: dict[str, int],
+    pvals: Mapping[str, Any],
+) -> bool:
+    for q in quantifiers:
+        if q.where is None:
+            continue
+        idx_value = binding[q.index]
+        actual = _lookup_parameter_value(pvals[q.where.parameter], (idx_value,))
+        if actual != q.where.equals:
+            return False
+    return True
 
 
 def _restrictions_pass(quantifiers: tuple[Quantifier, ...], binding: dict[str, int]) -> bool:
@@ -244,8 +308,9 @@ def _ground_constraint(
     cards: Mapping[str, int],
     index_map: dict[str, Index],
     var_map: dict[str, VariableTemplate],
+    pvals: Mapping[str, Any],
 ) -> None:
-    for quant_binding in _enumerate_quantifiers(c.quantifiers, cards):
+    for quant_binding in _enumerate_quantifiers(c.quantifiers, cards, pvals):
         cinst_id = _constraint_instance_id(
             c.name, tuple(sorted(quant_binding.items()))
         )
