@@ -80,6 +80,11 @@ def hybrid(f: Formulation) -> Graph:
                         "over": q.over,
                         "restriction": q.restriction,
                         "restriction_other": q.restriction_other,
+                        "where": (
+                            None
+                            if q.where is None
+                            else {"parameter": q.where.parameter, "equals": q.where.equals}
+                        ),
                     }
                     for q in c.quantifiers
                 ],

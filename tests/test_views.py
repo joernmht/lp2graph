@@ -93,3 +93,123 @@ def test_ground_view_drops_out_of_range_offsets_for_non_cyclic() -> None:
         n for n in g.nodes_by_class("instance_constraint") if n.data["template"] == "headway"
     ]
     assert any(n.data.get("degenerate") for n in headway_insts)
+
+
+def _where_doc(parameter_shape: list[str]) -> dict:
+    return {
+        "schema_version": "0.1.0",
+        "id": "where_demo",
+        "name": "where demo",
+        "family": "lp",
+        "indices": [{"name": "T"}],
+        "parameters": [
+            {"name": "is_local", "shape": parameter_shape, "kind": "vector"}
+        ],
+        "variables": [{"name": "x", "shape": ["T"], "domain": "non_negative"}],
+        "constraints": [
+            {
+                "name": "c_local",
+                "comparator": "le",
+                "quantifiers": [
+                    {
+                        "index": "t",
+                        "over": "T",
+                        "where": {"parameter": "is_local", "equals": True},
+                    }
+                ],
+                "lhs": [
+                    {
+                        "ref": "x",
+                        "ref_kind": "variable",
+                        "bindings": [{"index": "T", "expr": "t"}],
+                        "role": "lhs",
+                    }
+                ],
+                "rhs": [
+                    {"ref": "one", "ref_kind": "literal", "coefficient": 1, "role": "rhs"}
+                ],
+            }
+        ],
+    }
+
+
+def test_quantifier_where_filters_ground_view(tmp_path) -> None:
+    import json
+
+    p = tmp_path / "where.json"
+    p.write_text(json.dumps(_where_doc(["T"])), encoding="utf-8")
+    f = load(p)
+    g = ground(f, {"T": 4}, parameter_values={"is_local": [True, False, True, False]})
+    cinst = [
+        n for n in g.nodes_by_class("instance_constraint") if n.data["template"] == "c_local"
+    ]
+    assert len(cinst) == 2
+    quant_t = sorted(n.data["quantifiers"]["t"] for n in cinst)
+    assert quant_t == [0, 2]
+
+
+def test_quantifier_where_requires_parameter_values(tmp_path) -> None:
+    import json
+
+    p = tmp_path / "where_missing.json"
+    p.write_text(json.dumps(_where_doc(["T"])), encoding="utf-8")
+    f = load(p)
+    with pytest.raises(ValueError, match="requires parameter_values"):
+        ground(f, {"T": 4})
+
+
+def test_quantifier_where_appears_in_schema_view(tmp_path) -> None:
+    import json
+
+    p = tmp_path / "where_label.json"
+    p.write_text(json.dumps(_where_doc(["T"])), encoding="utf-8")
+    f = load(p)
+    g = schema(f)
+    c_node = next(n for n in g.nodes_by_class("constraint") if n.label == "c_local")
+    where = c_node.data["quantifiers"][0]["where"]
+    assert where == {"parameter": "is_local", "equals": True}
+
+
+def test_validation_rejects_where_with_wrong_shape(tmp_path) -> None:
+    import json
+
+    bad = {
+        "schema_version": "0.1.0",
+        "id": "bad_where_shape",
+        "name": "bad where shape",
+        "family": "lp",
+        "indices": [{"name": "T"}, {"name": "S"}],
+        "parameters": [{"name": "p", "shape": ["S"], "kind": "vector"}],
+        "variables": [{"name": "x", "shape": ["T"], "domain": "non_negative"}],
+        "constraints": [
+            {
+                "name": "c1",
+                "comparator": "le",
+                "quantifiers": [
+                    {
+                        "index": "t",
+                        "over": "T",
+                        "where": {"parameter": "p", "equals": True},
+                    }
+                ],
+                "lhs": [
+                    {
+                        "ref": "x",
+                        "ref_kind": "variable",
+                        "bindings": [{"index": "T", "expr": "t"}],
+                        "role": "lhs",
+                    }
+                ],
+                "rhs": [
+                    {"ref": "one", "ref_kind": "literal", "coefficient": 1, "role": "rhs"}
+                ],
+            }
+        ],
+    }
+    p = tmp_path / "bad_where.json"
+    p.write_text(json.dumps(bad), encoding="utf-8")
+    from optgraph.core.validate import ValidationError
+
+    with pytest.raises(ValidationError) as e:
+        load(p)
+    assert any("where-clause" in m and "shape" in m for m in e.value.errors)

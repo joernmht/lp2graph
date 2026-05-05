@@ -139,6 +139,20 @@ def _validate_constraint(
                     f"constraint {c.name!r}: quantifier {q.index!r} restriction "
                     f"references unknown quantifier {q.restriction_other!r}"
                 )
+        if q.where is not None:
+            if q.where.parameter not in parameter_names:
+                errors.append(
+                    f"constraint {c.name!r}: quantifier {q.index!r} where-clause "
+                    f"references undeclared parameter {q.where.parameter!r}"
+                )
+            else:
+                p_shape = parameter_shapes[q.where.parameter]
+                if p_shape != (q.over,):
+                    errors.append(
+                        f"constraint {c.name!r}: quantifier {q.index!r} where-clause "
+                        f"parameter {q.where.parameter!r} has shape {list(p_shape)} "
+                        f"but must be shaped [{q.over!r}]"
+                    )
 
     # Each side's terms validate against the available scope.
     scope = quantifier_indices | index_names  # bindings may use any of these

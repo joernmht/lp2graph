@@ -88,6 +88,105 @@ def test_validation_catches_lp_with_integer_var(tmp_path: Path) -> None:
         load(p)
 
 
+def test_constant_term_shorthand_normalizes_to_literal(tmp_path: Path) -> None:
+    doc = {
+        "schema_version": "0.1.0",
+        "id": "constant_demo",
+        "name": "constant shorthand",
+        "family": "lp",
+        "indices": [{"name": "I"}],
+        "variables": [{"name": "x", "shape": ["I"], "domain": "non_negative"}],
+        "constraints": [
+            {
+                "name": "c1",
+                "comparator": "le",
+                "quantifiers": [{"index": "i", "over": "I"}],
+                "lhs": [
+                    {
+                        "ref": "x",
+                        "ref_kind": "variable",
+                        "bindings": [{"index": "I", "expr": "i"}],
+                        "role": "lhs",
+                    }
+                ],
+                "rhs": [{"constant": 3599, "role": "rhs"}],
+            }
+        ],
+    }
+    p = tmp_path / "constant.json"
+    p.write_text(json.dumps(doc), encoding="utf-8")
+    f = load(p)
+    rhs = f.constraints[0].rhs[0]
+    assert rhs.ref_kind == "literal"
+    assert rhs.coefficient == 3599
+
+
+def test_constant_and_ref_together_is_an_error(tmp_path: Path) -> None:
+    doc = {
+        "schema_version": "0.1.0",
+        "id": "bad_constant",
+        "name": "bad constant",
+        "family": "lp",
+        "indices": [{"name": "I"}],
+        "variables": [{"name": "x", "shape": ["I"], "domain": "non_negative"}],
+        "constraints": [
+            {
+                "name": "c1",
+                "comparator": "le",
+                "quantifiers": [{"index": "i", "over": "I"}],
+                "lhs": [
+                    {
+                        "ref": "x",
+                        "ref_kind": "variable",
+                        "bindings": [{"index": "I", "expr": "i"}],
+                        "role": "lhs",
+                    }
+                ],
+                "rhs": [{"constant": 3599, "ref": "one", "role": "rhs"}],
+            }
+        ],
+    }
+    p = tmp_path / "bad.json"
+    p.write_text(json.dumps(doc), encoding="utf-8")
+    with pytest.raises(Exception):
+        load(p)
+
+
+def test_legacy_one_literal_still_works(tmp_path: Path) -> None:
+    doc = {
+        "schema_version": "0.1.0",
+        "id": "legacy_one",
+        "name": "legacy one",
+        "family": "lp",
+        "indices": [{"name": "I"}],
+        "variables": [{"name": "x", "shape": ["I"], "domain": "non_negative"}],
+        "constraints": [
+            {
+                "name": "c1",
+                "comparator": "le",
+                "quantifiers": [{"index": "i", "over": "I"}],
+                "lhs": [
+                    {
+                        "ref": "x",
+                        "ref_kind": "variable",
+                        "bindings": [{"index": "I", "expr": "i"}],
+                        "role": "lhs",
+                    }
+                ],
+                "rhs": [
+                    {"ref": "one", "ref_kind": "literal", "coefficient": 3599, "role": "rhs"}
+                ],
+            }
+        ],
+    }
+    p = tmp_path / "legacy.json"
+    p.write_text(json.dumps(doc), encoding="utf-8")
+    f = load(p)
+    rhs = f.constraints[0].rhs[0]
+    assert rhs.ref == "one"
+    assert rhs.coefficient == 3599
+
+
 def test_milp_must_have_an_integer_variable(tmp_path: Path) -> None:
     bad = {
         "schema_version": "0.1.0",

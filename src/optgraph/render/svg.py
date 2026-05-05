@@ -105,6 +105,11 @@ def render_svg(g: Graph, *, title: str = "", width: int = 1200, height: int = 76
                 f'font-family={FONT_MONO!r}>{html.escape(str(e.label))}</text>'
             )
 
+    # Operator-group brackets (drawn after edges, before nodes, so they
+    # sit behind the operator rectangles but in front of the lines).
+    for bracket in _operator_group_brackets(g, positions):
+        parts.append(bracket)
+
     # Nodes.
     for n in g.nodes:
         x, y = positions[n.id]
@@ -123,6 +128,54 @@ def render_html(g: Graph, *, title: str = "") -> str:
         "<body style=\"margin:0;background:#fafafa;\">"
         f"{svg}</body>"
     )
+
+
+def _operator_group_brackets(
+    g: Graph, positions: dict[str, tuple[int, int]]
+) -> list[str]:
+    """Render a faint shared background behind operators feeding one objective.
+
+    Makes it visually obvious that several sum/aggregation operators
+    (e.g. the five slack groups in a weighted-sum objective) feed the
+    same objective above. One bracket per objective with at least one
+    incoming aggregation operator.
+    """
+    out: list[str] = []
+    objectives = [n for n in g.nodes if n.cls == "objective"]
+    for obj in objectives:
+        op_ids: list[str] = []
+        for e in g.edges:
+            if e.src != obj.id or e.type != "operator_input":
+                continue
+            dst = g.node(e.dst) if g.has_node(e.dst) else None
+            if dst is not None and dst.cls == "operator":
+                op_ids.append(e.dst)
+        if not op_ids:
+            continue
+        coords = [positions[i] for i in op_ids if i in positions]
+        if not coords:
+            continue
+        xs = [c[0] for c in coords]
+        ys = [c[1] for c in coords]
+        op_y = ys[0]
+        pad_x = 16
+        pad_y = 12
+        x = min(xs) - _NODE_W // 2 - pad_x
+        y = op_y - _NODE_H // 2 - pad_y
+        w = (max(xs) - min(xs)) + _NODE_W + 2 * pad_x
+        h = _NODE_H + 2 * pad_y
+        out.append(
+            f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="14" '
+            f'fill="#e7f5e1" fill-opacity="0.35" stroke="#2f7a1f" '
+            f'stroke-opacity="0.5" stroke-width="0.8" stroke-dasharray="3 2"/>'
+        )
+        label = html.escape(obj.label or obj.id)
+        out.append(
+            f'<text x="{x + 8}" y="{y - 4}" font-size="9" '
+            f'fill="#2f7a1f" font-family={FONT_MONO!r}>'
+            f'↑ {label}</text>'
+        )
+    return out
 
 
 def _defs() -> str:

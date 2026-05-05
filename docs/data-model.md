@@ -81,6 +81,18 @@ that `restriction_other` references another quantifier in the same
 constraint, and that every term's `bindings` cover exactly the
 referenced template's shape.
 
+A quantifier may carry an attribute-based selection predicate:
+
+```json
+{ "index": "t", "over": "T", "where": { "parameter": "is_local", "equals": true } }
+```
+
+The named parameter must be shaped exactly over the quantifier's `over`
+index. Schema and hybrid views surface the predicate as a label on the
+quantifier; the ground view applies it as a filter at materialization
+time, requiring the parameter's concrete values via the
+`parameter_values` argument to `ground()`.
+
 ## Terms
 
 The four-tuple `(ref, bindings, role, sign)` plus optional `operator`
@@ -107,6 +119,7 @@ derivable from a single source of truth.
 |---|---|
 | `ref` | Name of a variable template, parameter, or `"one"` for literals. |
 | `ref_kind` | `variable` / `parameter` / `literal`. |
+| `constant` | Shorthand for a numeric constant term: `{ "constant": 3599, "role": "rhs" }`. Mutually exclusive with `ref`/`coefficient`; normalized at parse time to a literal term. |
 | `bindings` | One per index slot of the referenced template. `expr` is in the constraint's quantifier scope; `offset` is the numeric offset extracted; `modulo` overrides the per-index cyclic flag. |
 | `coefficient` | Number or parameter name. |
 | `sign` | `+1` or `-1`; multiplied with the coefficient at evaluation time but kept separate so renderers show it explicitly. |
