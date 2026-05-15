@@ -24,6 +24,9 @@ Identifier = Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")]
 """A Python-like identifier. Used for index, parameter, variable, and
 constraint names."""
 
+LowercaseIdentifier = Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9_.-]*$")]
+"""A stable lowercase identifier. Used for formulation ids and file names."""
+
 
 class _Frozen(BaseModel):
     """Base model — strict, frozen, forbid-extra. Determinism by default."""
@@ -327,7 +330,7 @@ class Formulation(_Frozen):
     """
 
     schema_version: Literal["0.1.0"] = "0.1.0"
-    id: Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9_.-]*$")]
+    id: LowercaseIdentifier
     name: str
     family: Family
     description: str = ""

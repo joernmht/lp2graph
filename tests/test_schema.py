@@ -35,6 +35,61 @@ def test_jsonschema_validates_every_catalog_file(
         assert not errors, f"{p}: {[e.message for e in errors]}"
 
 
+def test_formulation_id_rejects_uppercase(schema_path: Path) -> None:
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    validator = jsonschema.Draft202012Validator(schema)
+    data = {
+        "schema_version": "0.1.0",
+        "id": "Bad_Id",
+        "name": "Bad id",
+        "family": "lp",
+        "indices": [],
+        "variables": [{"name": "x", "domain": "non_negative"}],
+        "constraints": [],
+    }
+
+    errors = sorted(validator.iter_errors(data), key=lambda e: e.path)
+
+    assert any(list(e.path) == ["id"] for e in errors)
+
+
+def test_formulation_id_rejects_leading_separator(schema_path: Path) -> None:
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    validator = jsonschema.Draft202012Validator(schema)
+    data = {
+        "schema_version": "0.1.0",
+        "id": "_bad_id",
+        "name": "Bad id",
+        "family": "lp",
+        "indices": [],
+        "variables": [{"name": "x", "domain": "non_negative"}],
+        "constraints": [],
+    }
+
+    errors = sorted(validator.iter_errors(data), key=lambda e: e.path)
+
+    assert any(list(e.path) == ["id"] for e in errors)
+
+
+def test_symbol_names_accept_python_identifier_style(schema_path: Path) -> None:
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    validator = jsonschema.Draft202012Validator(schema)
+    data = {
+        "schema_version": "0.1.0",
+        "id": "mixed_symbol_names",
+        "name": "Mixed symbol names",
+        "family": "lp",
+        "indices": [{"name": "I"}],
+        "parameters": [{"name": "Big_M", "shape": ["I"]}],
+        "variables": [{"name": "x_1", "shape": ["I"], "domain": "non_negative"}],
+        "constraints": [],
+    }
+
+    errors = sorted(validator.iter_errors(data), key=lambda e: e.path)
+
+    assert not errors, [e.message for e in errors]
+
+
 def test_validation_catches_undeclared_variable_reference(tmp_path: Path) -> None:
     bad = {
         "schema_version": "0.1.0",

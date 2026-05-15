@@ -22,10 +22,14 @@ mirrored by the pydantic types in
 }
 ```
 
-`id` is a stable lowercase identifier. `family` is one of `lp`, `mip`,
-`milp`. The semantic validator enforces family invariants — an `lp`
-must not have integer or binary variables; a `milp` must have at least
-one.
+`id` is a stable lowercase identifier used for catalog file names. It
+accepts lowercase letters, digits, `_`, `.`, and `-`, and must start
+with a lowercase letter or digit. Internal symbol names, such as index,
+parameter, variable, and constraint names, intentionally use a
+Python-like identifier policy so names like `I`, `T`, and `x_1` remain
+valid in formulas. `family` is one of `lp`, `mip`, `milp`. The semantic
+validator enforces family invariants — an `lp` must not have integer or
+binary variables; a `milp` must have at least one.
 
 ## Indices
 

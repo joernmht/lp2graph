@@ -13,8 +13,7 @@
       "description": "The version of the canonical schema this file conforms to."
     },
     "id": {
-      "type": "string",
-      "pattern": "^[a-z0-9][a-z0-9_.-]*$",
+      "$ref": "#/$defs/lowercase_identifier",
       "description": "Stable, lowercase identifier of the formulation."
     },
     "name": {
@@ -70,6 +69,11 @@
     }
   },
   "$defs": {
+    "lowercase_identifier": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_.-]*$",
+      "description": "Lowercase file/model identifier used for formulation ids."
+    },
     "identifier": {
       "type": "string",
       "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
