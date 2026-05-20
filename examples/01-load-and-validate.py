@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from optgraph import load
+from lp2graph import load
 
 ROOT = Path(__file__).resolve().parents[1]
 FORMULATIONS = ROOT / "formulations"

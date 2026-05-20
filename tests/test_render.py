@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from optgraph import load
-from optgraph.render.svg import render_html, render_svg
-from optgraph.views import hybrid, schema
+from lp2graph import load
+from lp2graph.render.svg import render_html, render_svg
+from lp2graph.views import hybrid, schema
 
 
 def test_render_svg_produces_well_formed_svg() -> None:

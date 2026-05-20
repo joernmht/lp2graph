@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from optgraph.core.graph import Graph
+from lp2graph.core.graph import Graph
 
 if TYPE_CHECKING:
     pass

@@ -46,7 +46,7 @@ the current one (so contributors know to upgrade).
   MAJOR.
 - Adding a new enum value is MINOR if and only if existing files do
   not need to change.
-- A migration tool (`optgraph migrate <file>`) lands when the first
+- A migration tool (`lp2graph migrate <file>`) lands when the first
   MAJOR change is needed.
 
 ## Open question

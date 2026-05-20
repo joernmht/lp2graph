@@ -6,6 +6,6 @@ constraints in the middle, variables and parameters at the bottom),
 visual identity established in ``docs/design-context.md``.
 """
 
-from optgraph.render.svg import render_html, render_svg
+from lp2graph.render.svg import render_html, render_svg
 
 __all__ = ["render_html", "render_svg"]

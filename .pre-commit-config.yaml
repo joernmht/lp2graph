@@ -21,4 +21,4 @@ repos:
     hooks:
       - id: mypy
         additional_dependencies: ["pydantic>=2.0"]
-        args: ["--strict", "src/optgraph"]
+        args: ["--strict", "src/lp2graph"]

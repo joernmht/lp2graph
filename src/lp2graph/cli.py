@@ -1,14 +1,14 @@
-"""Command-line entry point: ``optgraph``.
+"""Command-line entry point: ``lp2graph``.
 
 Subcommands:
 
-- ``optgraph validate <file>`` — load and validate a formulation file.
-- ``optgraph view <file> --view {schema,hybrid,ground} [--card I=5 ...]``
+- ``lp2graph validate <file>`` — load and validate a formulation file.
+- ``lp2graph view <file> --view {schema,hybrid,ground} [--card I=5 ...]``
   — derive a view and print a summary.
-- ``optgraph render <file> --view ... --output graph.svg`` — render to
+- ``lp2graph render <file> --view ... --output graph.svg`` — render to
   SVG.
-- ``optgraph metrics <file>`` — compute and print all metrics.
-- ``optgraph export <file> --format {networkx,pyg,dgl,latex,pyomo}`` —
+- ``lp2graph metrics <file>`` — compute and print all metrics.
+- ``lp2graph export <file> --format {networkx,pyg,dgl,latex,pyomo}`` —
   export.
 """
 
@@ -20,20 +20,20 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from optgraph import load
-from optgraph import validate as _validate
-from optgraph import views as _views
-from optgraph.metrics.flags import presence_flags
-from optgraph.metrics.structural import structural_summary
-from optgraph.render.svg import render_svg
+from lp2graph import load
+from lp2graph import validate as _validate
+from lp2graph import views as _views
+from lp2graph.metrics.flags import presence_flags
+from lp2graph.metrics.structural import structural_summary
+from lp2graph.render.svg import render_svg
 
 if TYPE_CHECKING:
-    from optgraph.core.graph import Graph
-    from optgraph.core.model import Formulation
+    from lp2graph.core.graph import Graph
+    from lp2graph.core.model import Formulation
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="optgraph")
+    parser = argparse.ArgumentParser(prog="lp2graph")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_validate = sub.add_parser("validate", help="Validate a formulation file.")
@@ -112,23 +112,23 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "export":
         f = load(args.path)
         if args.format == "latex":
-            from optgraph.export.latex import to_latex
+            from lp2graph.export.latex import to_latex
             out = to_latex(f)
         elif args.format == "pyomo":
-            from optgraph.export.pyomo_stub import to_pyomo_stub
+            from lp2graph.export.pyomo_stub import to_pyomo_stub
             out = to_pyomo_stub(f)
         else:
             g = _derive(f, args.view, args.card)
             if args.format == "networkx":
-                from optgraph.export.networkx_adapter import to_networkx
+                from lp2graph.export.networkx_adapter import to_networkx
                 nxg = to_networkx(g)
                 out = f"<NetworkX MultiDiGraph: {len(nxg)} nodes, {nxg.number_of_edges()} edges>"
             elif args.format == "pyg":
-                from optgraph.export.pyg import to_pyg
+                from lp2graph.export.pyg import to_pyg
                 pyg = to_pyg(g)
                 out = repr(pyg)
             else:  # dgl
-                from optgraph.export.dgl import to_dgl
+                from lp2graph.export.dgl import to_dgl
                 dglg = to_dgl(g)
                 out = repr(dglg)
         if args.output:

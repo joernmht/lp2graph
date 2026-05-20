@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import html
 
-from optgraph.core.graph import Graph, Node
-from optgraph.render.palette import (
+from lp2graph.core.graph import Graph, Node
+from lp2graph.render.palette import (
     CONSTRAINT_DASHED_KINDS,
     EDGE_STYLE,
     FONT_DISPLAY,

@@ -32,11 +32,11 @@ pip install "lp2graph[all]"                # everything
 ## 60-second tour
 
 ```python
-from optgraph import load
-from optgraph.views import schema, hybrid, ground
-from optgraph.metrics.structural import structural_summary
-from optgraph.metrics.flags import presence_flags
-from optgraph.render.svg import render_svg
+from lp2graph import load
+from lp2graph.views import schema, hybrid, ground
+from lp2graph.metrics.structural import structural_summary
+from lp2graph.metrics.flags import presence_flags
+from lp2graph.render.svg import render_svg
 
 f = load("formulations/constraints/mip_2_1_big_m.json")
 
@@ -56,10 +56,10 @@ open("graph.svg", "w").write(render_svg(g_hybrid, title=f.name))
 Or from the command line:
 
 ```bash
-optgraph validate formulations/constraints/lp_1_1_fixed_sequence.json
-optgraph render   formulations/constraints/mip_2_1_big_m.json --view hybrid --output mip_2_1.svg
-optgraph metrics  formulations/constraints/mip_2_4_time_indexed.json
-optgraph export   formulations/constraints/mip_2_8_pesp.json --format latex
+lp2graph validate formulations/constraints/lp_1_1_fixed_sequence.json
+lp2graph render   formulations/constraints/mip_2_1_big_m.json --view hybrid --output mip_2_1.svg
+lp2graph metrics  formulations/constraints/mip_2_4_time_indexed.json
+lp2graph export   formulations/constraints/mip_2_8_pesp.json --format latex
 ```
 
 ## What goes in, what comes out

@@ -7,7 +7,7 @@ stroke style (e.g. binary variables get a doubled stroke).
 These choices implement the visual identity in
 ``docs/design-context.md`` and are not configurable in v0.1. Downstream
 consumers who want different styling consume the typed
-:class:`~optgraph.core.graph.Graph` and render it themselves.
+:class:`~lp2graph.core.graph.Graph` and render it themselves.
 """
 
 from __future__ import annotations

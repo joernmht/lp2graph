@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-20
+
+### Changed
+
+- **BREAKING:** the import package is renamed `optgraph` → `lp2graph`, so it
+  now matches the distribution name. Update imports
+  (`from optgraph import …` → `from lp2graph import …`) and the console
+  script (`optgraph …` → `lp2graph …`). No behaviour changed; this is a
+  pure rename. The canonical `schema_version` is unaffected (still `0.1.0`).
+
 ## [0.1.0] - 2026-05-03
 
 ### Added
@@ -14,10 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   families, parameters, variable templates, constraint templates,
   first-class objectives, and term-level refs/bindings/role/sign
   semantics.
-- Pydantic v2 model (`optgraph.core.model`) mirroring the schema.
+- Pydantic v2 model (`lp2graph.core.model`) mirroring the schema.
 - Two-phase validator (JSON Schema + semantic invariants).
-- Three view derivations: `optgraph.views.schema`, `.hybrid`, `.ground`.
-- Internal typed graph (`optgraph.core.graph`) — library-agnostic.
+- Three view derivations: `lp2graph.views.schema`, `.hybrid`, `.ground`.
+- Internal typed graph (`lp2graph.core.graph`) — library-agnostic.
 - Structural metrics: `node_counts_by_class`, `edge_density`,
   `constraint_variable_ratio`, `minimal_size`, `model_coherence`,
   `graph_diameter`.
@@ -30,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Static interactive viewer (`viewer/index.html`).
 - Export adapters: NetworkX (full), PyG (HeteroData), DGL, LaTeX,
   Pyomo (skeleton; bodies are stubs in v0.1).
-- CLI: `optgraph validate | view | render | metrics | export`.
+- CLI: `lp2graph validate | view | render | metrics | export`.
 - Initial catalog: 5 constraint-focused and 3 objective-focused
   formulations across LP and MILP families.
 - 36 tests covering schema validation, view derivations, metrics,

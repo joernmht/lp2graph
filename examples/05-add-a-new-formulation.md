@@ -72,7 +72,7 @@ variable and add `modulo` bindings on `t`:
 ## 4. Validate
 
 ```bash
-optgraph validate formulations/constraints/lp_1_7_reduced_cyclic.json
+lp2graph validate formulations/constraints/lp_1_7_reduced_cyclic.json
 ```
 
 If validation fails, the error report lists every issue. Common
@@ -85,7 +85,7 @@ problems:
 ## 5. Eyeball the rendering
 
 ```bash
-optgraph render formulations/constraints/lp_1_7_reduced_cyclic.json --view hybrid --output preview.svg
+lp2graph render formulations/constraints/lp_1_7_reduced_cyclic.json --view hybrid --output preview.svg
 ```
 
 Open `preview.svg`. The hybrid view should clearly show the modulo

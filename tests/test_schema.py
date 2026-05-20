@@ -8,7 +8,7 @@ from pathlib import Path
 import jsonschema
 import pytest
 
-from optgraph import load
+from lp2graph import load
 
 
 def test_schema_is_valid_jsonschema(schema_path: Path) -> None:
@@ -64,7 +64,7 @@ def test_validation_catches_undeclared_variable_reference(tmp_path: Path) -> Non
     }
     p = tmp_path / "bad.json"
     p.write_text(json.dumps(bad), encoding="utf-8")
-    from optgraph.core.validate import ValidationError
+    from lp2graph.core.validate import ValidationError
 
     with pytest.raises(ValidationError) as e:
         load(p)
@@ -82,7 +82,7 @@ def test_validation_catches_lp_with_integer_var(tmp_path: Path) -> None:
     }
     p = tmp_path / "bad.json"
     p.write_text(json.dumps(bad), encoding="utf-8")
-    from optgraph.core.validate import ValidationError
+    from lp2graph.core.validate import ValidationError
 
     with pytest.raises(ValidationError):
         load(p)
@@ -198,7 +198,7 @@ def test_milp_must_have_an_integer_variable(tmp_path: Path) -> None:
     }
     p = tmp_path / "bad.json"
     p.write_text(json.dumps(bad), encoding="utf-8")
-    from optgraph.core.validate import ValidationError
+    from lp2graph.core.validate import ValidationError
 
     with pytest.raises(ValidationError):
         load(p)

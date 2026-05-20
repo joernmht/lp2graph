@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lp2graph"
-version = "0.1.0"
+version = "0.2.0"
 description = "Typed-graph representation of LP, MIP, and MILP formulations."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -54,7 +54,7 @@ docs = [
 ]
 
 [project.scripts]
-optgraph = "optgraph.cli:main"
+lp2graph = "lp2graph.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/joernmht/lp2graph"
@@ -63,11 +63,11 @@ Issues = "https://github.com/joernmht/lp2graph/issues"
 Source = "https://github.com/joernmht/lp2graph"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/optgraph"]
+packages = ["src/lp2graph"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "src/optgraph",
+    "src/lp2graph",
     "schema",
     "formulations",
     "docs",
@@ -105,12 +105,12 @@ ignore = [
 "tests/**" = ["B011"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["optgraph"]
+known-first-party = ["lp2graph"]
 
 [tool.mypy]
 python_version = "3.11"
 strict = true
-files = ["src/optgraph"]
+files = ["src/lp2graph"]
 plugins = ["pydantic.mypy"]
 exclude = ["legacy/"]
 
@@ -123,7 +123,7 @@ addopts = "-ra -q --strict-markers"
 testpaths = ["tests"]
 
 [tool.coverage.run]
-source = ["src/optgraph"]
+source = ["src/lp2graph"]
 branch = true
 
 [tool.coverage.report]

@@ -10,12 +10,12 @@ consume them. The candidates for the internal graph type:
 
 1. NetworkX `MultiDiGraph` (the source repo's choice).
 2. PyG `HeteroData`.
-3. A dedicated typed structure inside `optgraph`.
+3. A dedicated typed structure inside `lp2graph`.
 
 ## Decision
 
 **Use a small, dedicated typed structure** in
-`optgraph.core.graph` (`Graph`, `Node`, `Edge` dataclasses). NetworkX,
+`lp2graph.core.graph` (`Graph`, `Node`, `Edge` dataclasses). NetworkX,
 PyG, and DGL are *export targets*, not internal representations.
 
 ## Rationale
@@ -32,7 +32,7 @@ PyG, and DGL are *export targets*, not internal representations.
 
 ## Consequences
 
-- Adapters in `optgraph.export.*` perform the conversion. Each adapter
+- Adapters in `lp2graph.export.*` perform the conversion. Each adapter
   has a dedicated round-trip test.
 - The internal type's API is small by design. If we need shortest-path
   utilities for a metric, we either implement them in the metric

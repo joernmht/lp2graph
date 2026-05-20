@@ -17,8 +17,8 @@ is what makes time-shifted couplings visually distinguishable.
 
 from __future__ import annotations
 
-from optgraph.core.graph import Graph
-from optgraph.core.model import (
+from lp2graph.core.graph import Graph
+from lp2graph.core.model import (
     Formulation,
     Term,
 )

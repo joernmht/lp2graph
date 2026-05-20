@@ -27,8 +27,8 @@ jobs:
       - name: Lint
         run: ruff check src tests
       - name: Type check
-        run: mypy src/optgraph
+        run: mypy src/lp2graph
       - name: Test
-        run: pytest --cov=optgraph --cov-report=term-missing
+        run: pytest --cov=lp2graph --cov-report=term-missing
       - name: Schema validation
-        run: python -m optgraph.cli validate formulations/constraints/lp_1_1_fixed_sequence.json
+        run: python -m lp2graph.cli validate formulations/constraints/lp_1_1_fixed_sequence.json

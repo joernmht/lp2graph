@@ -10,8 +10,8 @@ declaration order. Two calls with identical inputs produce identical
 graphs (compared as ordered node and edge sequences).
 """
 
-from optgraph.views.ground import ground
-from optgraph.views.hybrid import hybrid
-from optgraph.views.schema import schema
+from lp2graph.views.ground import ground
+from lp2graph.views.hybrid import hybrid
+from lp2graph.views.schema import schema
 
 __all__ = ["ground", "hybrid", "schema"]

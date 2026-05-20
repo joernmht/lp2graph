@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from optgraph import load
-from optgraph.metrics.flags import presence_flags
-from optgraph.metrics.structural import structural_summary
-from optgraph.views import schema
+from lp2graph import load
+from lp2graph.metrics.flags import presence_flags
+from lp2graph.metrics.structural import structural_summary
+from lp2graph.views import schema
 
 ROOT = Path(__file__).resolve().parents[1]
 FORMULATIONS = ROOT / "formulations"

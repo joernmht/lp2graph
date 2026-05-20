@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from optgraph import load
-from optgraph.views import ground, hybrid, schema
+from lp2graph import load
+from lp2graph.views import ground, hybrid, schema
 
 
 def test_schema_view_basic_structure(formulation_files: list[Path]) -> None:
@@ -208,7 +208,7 @@ def test_validation_rejects_where_with_wrong_shape(tmp_path) -> None:
     }
     p = tmp_path / "bad_where.json"
     p.write_text(json.dumps(bad), encoding="utf-8")
-    from optgraph.core.validate import ValidationError
+    from lp2graph.core.validate import ValidationError
 
     with pytest.raises(ValidationError) as e:
         load(p)
