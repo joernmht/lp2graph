@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import jsonschema
+import pydantic
 import pytest
 
 from lp2graph import load
@@ -148,7 +149,8 @@ def test_constant_and_ref_together_is_an_error(tmp_path: Path) -> None:
     }
     p = tmp_path / "bad.json"
     p.write_text(json.dumps(doc), encoding="utf-8")
-    with pytest.raises(Exception):
+    # The constant/ref conflict is rejected during pydantic validation.
+    with pytest.raises(pydantic.ValidationError):
         load(p)
 
 
