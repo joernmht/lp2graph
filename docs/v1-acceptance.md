@@ -15,7 +15,7 @@ can see how far the project has to go.
 
 ## Tests
 
-- [ ] 100 % branch coverage on `optgraph.core/`.
+- [ ] 100 % branch coverage on `lp2graph.core/`.
 - [ ] Snapshot (golden) tests for every render output and every
       structural metric on every catalog formulation.
 - [ ] Fuzz tests on the schema validator: random documents that

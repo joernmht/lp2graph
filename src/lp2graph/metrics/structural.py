@@ -3,7 +3,7 @@
 Adapted from joernmht/raiLPminerExperimentation
 (railpminer/analysis/metrics.py and railpminer/visualization/diameter.py),
 MIT License. The algorithms are the same; the surface targets the new
-internal :class:`~optgraph.core.graph.Graph` rather than NetworkX
+internal :class:`~lp2graph.core.graph.Graph` rather than NetworkX
 directly.
 """
 
@@ -11,8 +11,8 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 
-from optgraph.core.graph import Graph
-from optgraph.metrics.result import MetricResult
+from lp2graph.core.graph import Graph
+from lp2graph.metrics.result import MetricResult
 
 
 def node_counts_by_class(g: Graph) -> MetricResult:

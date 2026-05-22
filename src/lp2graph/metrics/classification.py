@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import re
 
-from optgraph.core.model import Formulation
-from optgraph.metrics.result import MetricResult
+from lp2graph.core.model import Formulation
+from lp2graph.metrics.result import MetricResult
 
 CONSTRAINT_TYPE_KEYWORDS: dict[str, list[str]] = {
     "ordering": [

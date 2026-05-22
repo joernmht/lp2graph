@@ -28,8 +28,8 @@ import itertools
 from collections.abc import Mapping
 from typing import Any
 
-from optgraph.core.graph import Graph
-from optgraph.core.model import (
+from lp2graph.core.graph import Graph
+from lp2graph.core.model import (
     Binding,
     ConstraintTemplate,
     Formulation,

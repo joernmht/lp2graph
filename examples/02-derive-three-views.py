@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from optgraph import load
-from optgraph.views import ground, hybrid, schema
+from lp2graph import load
+from lp2graph.views import ground, hybrid, schema
 
 
 def main() -> None:

@@ -2,7 +2,7 @@
 
 Validation runs in two phases:
 
-1. **Schema validation** (handled by :mod:`optgraph.core.loader` via
+1. **Schema validation** (handled by :mod:`lp2graph.core.loader` via
    pydantic). Catches malformed JSON, wrong types, missing fields,
    invalid enum values.
 2. **Semantic validation** (this module). Catches references to
@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from optgraph.core.model import (
+    from lp2graph.core.model import (
         ConstraintTemplate,
         Formulation,
         Objective,

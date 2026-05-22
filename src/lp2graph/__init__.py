@@ -2,8 +2,8 @@
 
 The public API is intentionally small. The canonical entry points are:
 
-    from optgraph import load, validate
-    from optgraph import views, metrics, render, export
+    from lp2graph import load, validate
+    from lp2graph import views, metrics, render, export
 
 See ``docs/data-model.md`` for the schema and ``docs/views.md`` for the
 view derivations.
@@ -11,8 +11,8 @@ view derivations.
 
 from __future__ import annotations
 
-from optgraph.core.loader import load, loads
-from optgraph.core.model import (
+from lp2graph.core.loader import load, loads
+from lp2graph.core.model import (
     Binding,
     ConstraintTemplate,
     Formulation,
@@ -23,7 +23,7 @@ from optgraph.core.model import (
     Term,
     VariableTemplate,
 )
-from optgraph.core.validate import ValidationError, validate
+from lp2graph.core.validate import ValidationError, validate
 
 __all__ = [
     "Binding",
@@ -41,4 +41,4 @@ __all__ = [
     "validate",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

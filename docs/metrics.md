@@ -15,7 +15,7 @@ All return a `MetricResult(name, value, explanation, data)`.
 | `has_aggregation_operator` | model | Any term has `operator != "none"`. | True for `mip_2_4_time_indexed` (sum) and `objective_abs_deviation` (abs). |
 
 Complexity: O(|terms|). All five computed in one pass via
-`optgraph.metrics.flags.presence_flags(f)`.
+`lp2graph.metrics.flags.presence_flags(f)`.
 
 ## Structural metrics
 
@@ -29,11 +29,11 @@ Complexity: O(|terms|). All five computed in one pass via
 | `graph_diameter` | graph | Longest shortest path in the largest connected component. Returns the path in `data["path"]`. | O(\|V\| · (\|V\| + \|E\|)) |
 
 All six computed in one pass via
-`optgraph.metrics.structural.structural_summary(g)`.
+`lp2graph.metrics.structural.structural_summary(g)`.
 
 ## Constraint classification (heuristic)
 
-`optgraph.metrics.classify_constraints(f)` runs the source-repo's
+`lp2graph.metrics.classify_constraints(f)` runs the source-repo's
 keyword tables (preserved verbatim) over each constraint's `name` and
 `description`, returning a per-constraint list of inferred type tags
 plus a global histogram. Use this to audit catalog tags or to

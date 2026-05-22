@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from optgraph import load
-from optgraph.metrics.flags import (
+from lp2graph import load
+from lp2graph.metrics.flags import (
     has_aggregation_operator,
     has_big_m,
     has_integer_vars,
     has_soft_slack,
     presence_flags,
 )
-from optgraph.metrics.structural import (
+from lp2graph.metrics.structural import (
     constraint_variable_ratio,
     edge_density,
     graph_diameter,
@@ -19,7 +19,7 @@ from optgraph.metrics.structural import (
     node_counts_by_class,
     structural_summary,
 )
-from optgraph.views import schema
+from lp2graph.views import schema
 
 
 def test_has_big_m_for_mip_2_1() -> None:

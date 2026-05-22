@@ -1,7 +1,7 @@
 """Load and parse formulation files.
 
 The loader is intentionally thin: it reads JSON, validates against the
-canonical pydantic model, and returns a :class:`~optgraph.core.model.Formulation`.
+canonical pydantic model, and returns a :class:`~lp2graph.core.model.Formulation`.
 Schema validation against the JSON Schema runs first to give clear,
 spec-grounded error messages; pydantic then enforces the typed model.
 """
@@ -12,8 +12,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from optgraph.core.model import Formulation
-from optgraph.core.validate import validate as _validate
+from lp2graph.core.model import Formulation
+from lp2graph.core.validate import validate as _validate
 
 
 def load(path: str | Path) -> Formulation:
@@ -52,7 +52,7 @@ def loads(text: str, *, source: str = "<string>") -> Formulation:
     try:
         data: Any = json.loads(text)
     except json.JSONDecodeError as e:
-        from optgraph.core.validate import ValidationError
+        from lp2graph.core.validate import ValidationError
 
         raise ValidationError(f"{source}: invalid JSON: {e}") from e
     formulation = Formulation.model_validate(data)

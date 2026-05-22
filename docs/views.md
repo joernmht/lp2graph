@@ -5,7 +5,7 @@ pure function: same input, same output, every time.
 
 ## Schema view
 
-`optgraph.views.schema(f) -> Graph`
+`lp2graph.views.schema(f) -> Graph`
 
 The topology of the formulation. Nodes:
 
@@ -33,7 +33,7 @@ template skeleton produces the same schema graph.
 
 ## Hybrid view
 
-`optgraph.views.hybrid(f) -> Graph`
+`lp2graph.views.hybrid(f) -> Graph`
 
 Schema view enriched with per-binding offset, sign, and modulo labels.
 Each constraint-to-variable edge carries an `offsets` data field:
@@ -48,7 +48,7 @@ informative at template scale.
 
 ## Ground view
 
-`optgraph.views.ground(f, cardinalities) -> Graph`
+`lp2graph.views.ground(f, cardinalities) -> Graph`
 
 Materializes every variable instance and constraint instance for the
 supplied cardinalities (one positive integer per declared index).
@@ -66,7 +66,7 @@ Applies degeneracy filters:
 Ground views are *expensive* at large cardinalities. Use sparingly and
 at small sizes (typically 3 ≤ cardinality ≤ 8) for visual purposes;
 for GNN training, ground at the cardinalities your downstream pipeline
-needs and feed into PyG via `optgraph.export.to_pyg`.
+needs and feed into PyG via `lp2graph.export.to_pyg`.
 
 ## When to use which
 

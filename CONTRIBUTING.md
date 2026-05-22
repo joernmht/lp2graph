@@ -19,9 +19,9 @@ pre-commit install
 ```bash
 ruff check src tests           # lint
 ruff format src tests          # format
-mypy src/optgraph              # strict type-check
+mypy src/lp2graph              # strict type-check
 pytest                         # full suite
-pytest --cov=optgraph          # with coverage
+pytest --cov=lp2graph          # with coverage
 ```
 
 CI runs all four on every PR across Linux + macOS for Python 3.11,
@@ -31,10 +31,10 @@ CI runs all four on every PR across Linux + macOS for Python 3.11,
 
 - **A new formulation.** See [`docs/add-a-formulation.md`](docs/add-a-formulation.md).
   Use the `new-formulation` issue template to coordinate first.
-- **A new metric.** Add to `optgraph.metrics`. Pure function,
+- **A new metric.** Add to `lp2graph.metrics`. Pure function,
   deterministic, returns `MetricResult`. Add a test asserting the
   expected value on at least one catalog formulation.
-- **An export adapter.** Add to `optgraph.export`. Lazy framework
+- **An export adapter.** Add to `lp2graph.export`. Lazy framework
   imports. Round-trip test required.
 - **A documentation improvement.** Especially welcome for the
   data-model and views docs.

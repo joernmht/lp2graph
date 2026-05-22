@@ -7,13 +7,13 @@ from __future__ import annotations
 
 import sys
 
-from optgraph import load
-from optgraph.views import ground
+from lp2graph import load
+from lp2graph.views import ground
 
 
 def main() -> None:
     try:
-        from optgraph.export.pyg import to_pyg
+        from lp2graph.export.pyg import to_pyg
     except ImportError as exc:
         print(f"PyG export unavailable: {exc}")
         sys.exit(1)

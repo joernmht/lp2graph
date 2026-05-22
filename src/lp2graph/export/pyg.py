@@ -1,6 +1,6 @@
 """PyG export.
 
-Converts an internal :class:`~optgraph.core.graph.Graph` to a
+Converts an internal :class:`~lp2graph.core.graph.Graph` to a
 ``torch_geometric.data.HeteroData`` instance. Node classes become node
 types; edge types become PyG edge types ``(src_cls, edge_type, dst_cls)``.
 
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from optgraph.core.graph import Graph
+from lp2graph.core.graph import Graph
 
 if TYPE_CHECKING:
     from torch_geometric.data import HeteroData

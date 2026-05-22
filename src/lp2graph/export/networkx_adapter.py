@@ -1,6 +1,6 @@
 """NetworkX export.
 
-Converts an internal :class:`~optgraph.core.graph.Graph` to a
+Converts an internal :class:`~lp2graph.core.graph.Graph` to a
 ``networkx.MultiDiGraph``. Node attributes preserve ``cls``, ``subtype``,
 ``label``, ``shape``, and ``data``. Edge attributes preserve ``type``,
 ``role``, ``label``, ``data``.
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from optgraph.core.graph import Graph
+from lp2graph.core.graph import Graph
 
 if TYPE_CHECKING:
     import networkx as nx

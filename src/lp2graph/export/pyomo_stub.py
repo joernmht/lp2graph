@@ -12,7 +12,7 @@ criteria.
 
 from __future__ import annotations
 
-from optgraph.core.model import Formulation
+from lp2graph.core.model import Formulation
 
 
 def to_pyomo_stub(f: Formulation) -> str:

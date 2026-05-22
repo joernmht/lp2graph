@@ -20,9 +20,9 @@ formulation is the single most useful contribution.
     - aggregations use `operator` and `operator_over`.
 6. If the formulation has an objective, set `sense`, `name`, optionally
    `combination`, and a list of terms.
-7. Run `optgraph validate formulations/.../<id>.json` — both the JSON
+7. Run `lp2graph validate formulations/.../<id>.json` — both the JSON
    Schema and semantic validators must pass.
-8. Run `optgraph render formulations/.../<id>.json --view hybrid
+8. Run `lp2graph render formulations/.../<id>.json --view hybrid
    --output preview.svg` and look at the result. The structure should
    match what you intended.
 9. Add the file to the catalog table in [`docs/index.md`](index.md).

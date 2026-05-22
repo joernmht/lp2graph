@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import pytest
 
-from optgraph import load
-from optgraph.export.latex import to_latex
-from optgraph.export.pyomo_stub import to_pyomo_stub
-from optgraph.views import schema
+from lp2graph import load
+from lp2graph.export.latex import to_latex
+from lp2graph.export.pyomo_stub import to_pyomo_stub
+from lp2graph.views import schema
 
 
 def test_to_networkx_round_trip() -> None:
     nx = pytest.importorskip("networkx")
-    from optgraph.export.networkx_adapter import to_networkx
+    from lp2graph.export.networkx_adapter import to_networkx
 
     f = load("formulations/constraints/lp_1_1_fixed_sequence.json")
     g = schema(f)

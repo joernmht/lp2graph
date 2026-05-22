@@ -1,8 +1,8 @@
 """Core canonical model, loader, validator, and internal graph type."""
 
-from optgraph.core.graph import Edge, Graph, Node
-from optgraph.core.loader import load, loads
-from optgraph.core.model import (
+from lp2graph.core.graph import Edge, Graph, Node
+from lp2graph.core.loader import load, loads
+from lp2graph.core.model import (
     Binding,
     ConstraintTemplate,
     Formulation,
@@ -13,7 +13,7 @@ from optgraph.core.model import (
     Term,
     VariableTemplate,
 )
-from optgraph.core.validate import ValidationError, validate
+from lp2graph.core.validate import ValidationError, validate
 
 __all__ = [
     "Binding",

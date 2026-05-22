@@ -4,7 +4,7 @@
 document validated against
 [`schema/canonical.schema.json`](../schema/canonical.schema.json) and
 mirrored by the pydantic types in
-[`optgraph.core.model`](../src/optgraph/core/model.py).
+[`lp2graph.core.model`](../src/lp2graph/core/model.py).
 
 ## Top-level structure
 
@@ -147,7 +147,7 @@ in the schema view.
 
 Two-phase: **JSON Schema** for the document shape (handled by
 `jsonschema`), then **semantic validation** (handled by
-`optgraph.core.validate`) for cross-cutting invariants:
+`lp2graph.core.validate`) for cross-cutting invariants:
 
 - Every index, parameter, and variable name referenced is declared.
 - Every binding covers exactly the referenced template's shape.

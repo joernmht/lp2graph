@@ -12,7 +12,7 @@
 
 - [ ] `pytest` passes
 - [ ] `ruff check src tests` passes
-- [ ] `mypy src/optgraph` passes
+- [ ] `mypy src/lp2graph` passes
 - [ ] If schema changed: existing formulations still validate
 - [ ] If view derivation changed: snapshot tests updated and reviewed
 - [ ] Docs updated where relevant

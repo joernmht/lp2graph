@@ -3,12 +3,12 @@
 Produces a LaTeX ``align*`` block for the objective and constraints.
 Useful for embedding in papers and for visual inspection of the parsed
 model. Does *not* render the graph — that is what
-:mod:`optgraph.render` is for.
+:mod:`lp2graph.render` is for.
 """
 
 from __future__ import annotations
 
-from optgraph.core.model import (
+from lp2graph.core.model import (
     Formulation,
     Quantifier,
     Term,

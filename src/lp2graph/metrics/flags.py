@@ -9,8 +9,8 @@ Adapted from joernmht/raiLPminerExperimentation
 
 from __future__ import annotations
 
-from optgraph.core.model import Formulation
-from optgraph.metrics.result import MetricResult
+from lp2graph.core.model import Formulation
+from lp2graph.metrics.result import MetricResult
 
 
 def has_big_m(f: Formulation) -> MetricResult:

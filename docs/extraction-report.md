@@ -56,21 +56,21 @@ fully established and the legacy code has no more diagnostic value.
 These provide useful functionality but the new repo's data model differs
 substantially. The behavior is preserved; the surface is rebuilt.
 
-- `analysis/metrics.py` → `src/optgraph/metrics/structural.py`
+- `analysis/metrics.py` → `src/lp2graph/metrics/structural.py`
   (graph diameter, model coherence, constraint/variable ratio, minimal
   size). Operates on the new internal `Graph` type rather than NetworkX
   directly. Determinism is now a tested property.
-- `analysis/constraints.py` → `src/optgraph/metrics/classification.py`
+- `analysis/constraints.py` → `src/lp2graph/metrics/classification.py`
   (regex-based constraint typing). The keyword tables are preserved
   verbatim; the integration is rewritten to consume the canonical model.
-- `analysis/milp_detection.py` → `src/optgraph/metrics/operators.py`
+- `analysis/milp_detection.py` → `src/lp2graph/metrics/operators.py`
   (operator presence detection, repurposed as structural metrics:
   `has_aggregation_operator`, `has_universal_quantifier`, etc.).
-- `visualization/circular.py`, `tree.py` → `src/optgraph/render/svg.py`
+- `visualization/circular.py`, `tree.py` → `src/lp2graph/render/svg.py`
   (SVG-first rendering with the design-context palette and typography).
   The matplotlib originals are not preserved; SVG is the new default
   because it composes with the static viewer.
-- `visualization/diameter.py` → `src/optgraph/metrics/structural.py`
+- `visualization/diameter.py` → `src/lp2graph/metrics/structural.py`
   (`graph_diameter` and `diameter_path` are returned together; rendering
   consumes them via the metric API).
 
@@ -80,7 +80,7 @@ These exist in spirit but the source's flat representation is
 incompatible with the canonical model.
 
 - The data model itself (`models/schema.py` →
-  `src/optgraph/core/model.py`). The source has flat `Variable`,
+  `src/lp2graph/core/model.py`). The source has flat `Variable`,
   `ObjectiveFunction`, `Constraint` with a `VariablesIncluded: List[int]`
   edge list. The new model has index families, parameters, variable
   templates, constraint templates with quantifiers, and term-level
@@ -110,7 +110,7 @@ incompatible with the canonical model.
 
 ```
 core/model.py
-  └─ (no deps on other optgraph modules)
+  └─ (no deps on other lp2graph modules)
 
 core/loader.py
   └─ core/model.py
