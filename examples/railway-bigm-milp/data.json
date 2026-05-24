@@ -1,0 +1,14 @@
+{
+  "problem": "railway single-track segment sequencing (big-M MILP)",
+  "trains": ["A", "B", "C", "D"],
+  "release": { "A": 0, "B": 2, "C": 1, "D": 4 },
+  "running": { "A": 5, "B": 3, "C": 4, "D": 2 },
+  "weight":  { "A": 1, "B": 2, "C": 1, "D": 3 },
+  "headway": 1,
+  "big_m": 21,
+  "big_m_rule": "max_i r_i + sum_i p_i + (n-1)*h = 4 + 14 + 3 = 21",
+  "optimal_objective": 66,
+  "optimal_order": ["B", "D", "C", "A"],
+  "optimal_entry": { "A": 14, "B": 2, "C": 9, "D": 6 },
+  "optimal_clearance": { "A": 19, "B": 5, "C": 13, "D": 8 }
+}
