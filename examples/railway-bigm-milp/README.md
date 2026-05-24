@@ -6,9 +6,10 @@ so the optimum can be checked by hand, yet it contains the one ingredient
 that every practitioner eventually meets: a **big-M disjunction**.
 
 The same model is written out in this folder in ~20 modelling dialects —
-from algebraic modelling languages (AMPL, GAMS, GMPL, ZIMPL, MiniZinc),
-through solver-portable file formats (CPLEX LP, MPS), to general-purpose
-programming languages (Python ×6, Julia, R, MATLAB/Octave, C++, Java). A
+from algebraic modelling languages (AMPL, GAMS, GMPL, ZIMPL, MiniZinc,
+CPLEX OPL), through solver-portable file formats (CPLEX LP, MPS), to
+general-purpose programming languages (Python ×7 — incl. gurobipy and
+DOcplex/CPLEX, Julia, R, MATLAB/Octave, C++, Java). A
 [`build_pdf.py`](build_pdf.py) script renders the whole thing into
 [`railway_bigm_milp.pdf`](railway_bigm_milp.pdf), **one representation per
 page**.
@@ -155,6 +156,7 @@ with OR-Tools CP-SAT.)
 | [`problem.tex`](problem.tex)            | LaTeX (standalone)            | document |
 | [`model_pulp.py`](model_pulp.py)        | PuLP (Python)                 | library  |
 | [`model_gurobi.py`](model_gurobi.py)    | gurobipy (Python)             | library  |
+| [`model_docplex.py`](model_docplex.py)  | DOcplex / CPLEX (Python)      | library  |
 | [`model_pyomo.py`](model_pyomo.py)      | Pyomo (Python)                | library  |
 | [`model_ortools.py`](model_ortools.py)  | OR-Tools MPSolver (Python)    | library  |
 | [`model_python_mip.py`](model_python_mip.py) | Python-MIP               | library  |
@@ -169,6 +171,7 @@ with OR-Tools CP-SAT.)
 | [`model_glpk.mod`](model_glpk.mod)      | GNU MathProg / GMPL (glpsol)  | AML      |
 | [`model_zimpl.zpl`](model_zimpl.zpl)    | ZIMPL                         | AML      |
 | [`model_minizinc.mzn`](model_minizinc.mzn) | MiniZinc                   | CP/AML   |
+| [`model_opl.mod`](model_opl.mod)        | CPLEX OPL (oplrun)            | AML      |
 | [`model.lp`](model.lp)                  | CPLEX LP format               | exchange |
 | [`model.mps`](model.mps)                | MPS format                    | exchange |
 | [`data.json`](data.json)                | the instance (single source)  | data     |
@@ -187,6 +190,7 @@ pip install ortools     && python model_ortools.py
 pip install mip         && python model_python_mip.py
 pip install cvxpy       && python model_cvxpy.py
 pip install gurobipy    && python model_gurobi.py        # needs a Gurobi licence
+pip install docplex cplex && python model_docplex.py     # CPLEX (pip Community Edition)
 
 # Algebraic modelling languages
 glpsol --model model_glpk.mod                            # GLPK, fully self-contained
@@ -194,6 +198,7 @@ ampl model_ampl.mod                                      # AMPL (data is inline)
 gams model_gams.gms                                       # GAMS
 zimpl model_zimpl.zpl && glpsol --lp model_zimpl.lp      # ZIMPL -> LP -> solve
 minizinc --solver coin-bc model_minizinc.mzn             # MiniZinc
+oplrun model_opl.mod                                      # CPLEX OPL (CPLEX Studio)
 
 # Portable formats: feed straight to any solver
 glpsol --lp  model.lp  --output sol.txt

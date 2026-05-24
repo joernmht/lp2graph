@@ -74,7 +74,7 @@ cover = [
     ),
     Spacer(1, 10),
     Paragraph("The same model appears on the following pages as a complete problem "
-              "statement, the mathematical model, LaTeX, markdown/mathcal, and ~20 "
+              "statement, the mathematical model, LaTeX, markdown/mathcal, and ~22 "
               "executable encodings &mdash; one representation per page.", st_body),
     Spacer(1, 16),
     Paragraph("Optimal objective: &nbsp; <b>&#931;<sub>i</sub> w<sub>i</sub>&middot;C<sub>i</sub> = 66</b> "
@@ -161,22 +161,24 @@ story += page(header("4 &middot; Markdown / mathcal", "README.md model section (
 encodings = [
     ("5 &middot; PuLP", "model_pulp.py &mdash; Python", "model_pulp.py"),
     ("6 &middot; Gurobi (gurobipy)", "model_gurobi.py &mdash; Python", "model_gurobi.py"),
-    ("7 &middot; Pyomo", "model_pyomo.py &mdash; Python", "model_pyomo.py"),
-    ("8 &middot; Google OR-Tools", "model_ortools.py &mdash; Python (MPSolver)", "model_ortools.py"),
-    ("9 &middot; Python-MIP", "model_python_mip.py &mdash; Python", "model_python_mip.py"),
-    ("10 &middot; CVXPY", "model_cvxpy.py &mdash; Python", "model_cvxpy.py"),
-    ("11 &middot; JuMP", "model_jump.jl &mdash; Julia", "model_jump.jl"),
-    ("12 &middot; ompr / ROI", "model_ompr.R &mdash; R", "model_ompr.R"),
-    ("13 &middot; intlinprog", "model_matlab.m &mdash; MATLAB / Octave", "model_matlab.m"),
-    ("14 &middot; OR-Tools (C++)", "model_ortools.cpp &mdash; C++", "model_ortools.cpp"),
-    ("15 &middot; OR-Tools (Java)", "ModelOrTools.java &mdash; Java", "ModelOrTools.java"),
-    ("16 &middot; AMPL", "model_ampl.mod &mdash; algebraic modelling language", "model_ampl.mod"),
-    ("17 &middot; GAMS", "model_gams.gms &mdash; algebraic modelling language", "model_gams.gms"),
-    ("18 &middot; GNU MathProg (GMPL)", "model_glpk.mod &mdash; glpsol", "model_glpk.mod"),
-    ("19 &middot; ZIMPL", "model_zimpl.zpl &mdash; algebraic modelling language", "model_zimpl.zpl"),
-    ("20 &middot; MiniZinc", "model_minizinc.mzn &mdash; constraint/MIP modelling", "model_minizinc.mzn"),
-    ("21 &middot; CPLEX LP format", "model.lp &mdash; portable exchange format", "model.lp"),
-    ("22 &middot; MPS format", "model.mps &mdash; portable exchange format", "model.mps"),
+    ("7 &middot; CPLEX (DOcplex)", "model_docplex.py &mdash; Python", "model_docplex.py"),
+    ("8 &middot; Pyomo", "model_pyomo.py &mdash; Python", "model_pyomo.py"),
+    ("9 &middot; Google OR-Tools", "model_ortools.py &mdash; Python (MPSolver)", "model_ortools.py"),
+    ("10 &middot; Python-MIP", "model_python_mip.py &mdash; Python", "model_python_mip.py"),
+    ("11 &middot; CVXPY", "model_cvxpy.py &mdash; Python", "model_cvxpy.py"),
+    ("12 &middot; JuMP", "model_jump.jl &mdash; Julia", "model_jump.jl"),
+    ("13 &middot; ompr / ROI", "model_ompr.R &mdash; R", "model_ompr.R"),
+    ("14 &middot; intlinprog", "model_matlab.m &mdash; MATLAB / Octave", "model_matlab.m"),
+    ("15 &middot; OR-Tools (C++)", "model_ortools.cpp &mdash; C++", "model_ortools.cpp"),
+    ("16 &middot; OR-Tools (Java)", "ModelOrTools.java &mdash; Java", "ModelOrTools.java"),
+    ("17 &middot; AMPL", "model_ampl.mod &mdash; algebraic modelling language", "model_ampl.mod"),
+    ("18 &middot; GAMS", "model_gams.gms &mdash; algebraic modelling language", "model_gams.gms"),
+    ("19 &middot; GNU MathProg (GMPL)", "model_glpk.mod &mdash; glpsol", "model_glpk.mod"),
+    ("20 &middot; ZIMPL", "model_zimpl.zpl &mdash; algebraic modelling language", "model_zimpl.zpl"),
+    ("21 &middot; CPLEX OPL", "model_opl.mod &mdash; IBM modelling language (oplrun)", "model_opl.mod"),
+    ("22 &middot; MiniZinc", "model_minizinc.mzn &mdash; constraint/MIP modelling", "model_minizinc.mzn"),
+    ("23 &middot; CPLEX LP format", "model.lp &mdash; portable exchange format", "model.lp"),
+    ("24 &middot; MPS format", "model.mps &mdash; portable exchange format", "model.mps"),
 ]
 for title, sub, fname in encodings:
     story += code_page(title, sub, fname)
