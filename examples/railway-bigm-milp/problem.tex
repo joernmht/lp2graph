@@ -1,0 +1,102 @@
+% Railway single-track sequencing -- a big-M MILP.
+% Standalone document: compile with  pdflatex problem.tex
+\documentclass[11pt]{article}
+\usepackage[a4paper,margin=2.4cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+
+\title{Railway Single-Track Sequencing\\[2pt]\large A big-M MILP}
+\author{lp2graph example catalogue}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section*{Problem}
+
+A set of trains must each traverse one shared \emph{single-track segment}
+(a tunnel, bridge, or passing-loop bottleneck). At most one train may
+occupy the segment at a time, and a minimum \emph{headway} $h$ must elapse
+between one train clearing the segment and the next entering it. Each train
+$i$ has an earliest entry (release) time $r_i$, a running time $p_i$, and a
+priority weight $w_i$. The dispatcher chooses each entry time $t_i$ (and
+hence the order) to minimise the total weighted clearance time, where the
+clearance time is $C_i = t_i + p_i$.
+
+The mutual exclusion of any two trains $i,j$ -- \emph{either $i$ before $j$
+or $j$ before $i$} -- is a disjunction, linearised with a binary ordering
+variable and the \textbf{big-M} technique.
+
+\section*{Sets, parameters, variables}
+
+\begin{align*}
+\mathcal{N} &= \{A,B,C,D\} && \text{trains}\\
+\mathcal{P} &= \{(i,j)\in\mathcal{N}\times\mathcal{N} : i \prec j\} && \text{ordered index pairs}\\[4pt]
+r_i,\ p_i,\ w_i && & \text{release, running time, weight of train }i\\
+h && & \text{minimum headway}\\
+M &= \max_{i} r_i + \textstyle\sum_{i\in\mathcal{N}} p_i + (|\mathcal{N}|-1)\,h && \text{big-M constant}\\[4pt]
+t_i &\ge 0 && \text{entry time of train }i\\
+C_i &\ge 0 && \text{clearance (completion) time of train }i\\
+y_{ij} &\in\{0,1\} && y_{ij}=1 \iff \text{train }i\text{ enters before train }j,\ (i,j)\in\mathcal{P}
+\end{align*}
+
+\section*{Model}
+
+\begin{align}
+\min_{t,C,y}\quad & \sum_{i\in\mathcal{N}} w_i\,C_i \\
+\text{s.t.}\quad
+& t_i \ge r_i && \forall i\in\mathcal{N} \\
+& C_i = t_i + p_i && \forall i\in\mathcal{N} \\
+& t_j \ge t_i + p_i + h - M\,(1 - y_{ij}) && \forall (i,j)\in\mathcal{P} \\
+& t_i \ge t_j + p_j + h - M\,y_{ij} && \forall (i,j)\in\mathcal{P} \\
+& t_i \ge 0,\quad C_i \ge 0,\quad y_{ij}\in\{0,1\}.
+\end{align}
+
+\paragraph{Why big-M works.} For a pair $(i,j)$ the binary $y_{ij}$ selects
+which of the two mutually exclusive sequencing constraints is active. If
+$y_{ij}=1$, constraint (4) becomes the tight $t_j \ge t_i + p_i + h$ while
+constraint (5) reads $t_i \ge t_j + p_j + h - M$, which for large $M$ is
+vacuous. If $y_{ij}=0$ the roles swap. $M$ must be large enough never to cut
+a feasible schedule, yet as small as possible so the LP relaxation stays
+tight.
+
+\section*{Data instance}
+
+\begin{center}
+\begin{tabular}{c r r r}
+\toprule
+train & $r_i$ & $p_i$ & $w_i$ \\
+\midrule
+A & 0 & 5 & 1 \\
+B & 2 & 3 & 2 \\
+C & 1 & 4 & 1 \\
+D & 4 & 2 & 3 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent Headway $h = 1$, and
+$M = \max_i r_i + \sum_i p_i + (|\mathcal{N}|-1)h = 4 + 14 + 3 = 21$.
+
+\section*{Optimal solution}
+
+The optimal weighted clearance is $\sum_i w_i C_i = 66$, attained by the
+order $B \to D \to C \to A$:
+
+\begin{center}
+\begin{tabular}{c r r r}
+\toprule
+train & $t_i$ & $C_i$ & $w_i C_i$ \\
+\midrule
+B & 2  & 5  & 10 \\
+D & 6  & 8  & 24 \\
+C & 9  & 13 & 13 \\
+A & 14 & 19 & 19 \\
+\midrule
+\multicolumn{3}{r}{total} & \textbf{66} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\end{document}
