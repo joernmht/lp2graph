@@ -1,0 +1,96 @@
+{
+  "repo": "iitis/quantum-stochastic-optimization-railways",
+  "url": "https://github.com/iitis/quantum-stochastic-optimization-railways",
+  "license": "CC0-1.0",
+  "language": "Python (docplex / scipy.optimize.linprog)",
+  "solver": "CPLEX (docplex; classical baseline), with scipy HiGHS cross-check",
+  "area": "railway-rescheduling",
+  "paper_reference": null,
+  "models": [
+    {
+      "model_id": "light-rail-rescheduling-ilp",
+      "source_files": [
+        "QTrains/LP_problem.py:137-287",
+        "QTrains/LP_problem.py:28-133",
+        "QTrains/parameters.py:19-39",
+        "QTrains/parameters.py:41-141",
+        "QTrains/solve_sched_problems.py:65-148"
+      ],
+      "description": "Classical (mixed-)integer linear program for rescheduling a light-rail / tramway line (Baltimore Light Rail) under initial train delays. Decision variables are integer arrival/departure times t_{s,j} of train j at station s and binary order variables y_{s,j,jp} resolving conflicts between same-direction trains. Minimizes total (weighted, normalized) secondary delay at objective stations subject to minimum headways, minimum passing/stay times and rolling-stock circulation. Built as an LP matrix in the LinearPrograming class and emitted either to CPLEX via docplex (make_ilp_docplex, used as the classical benchmark in classical_benchmark) or to scipy.optimize.linprog (HiGHS, integrality). This is the classical baseline against which the QUBO / quantum-annealing and QAOA formulations (in QTrains/make_qubo.py) are compared; only the linear model is transcribed here.",
+      "sets_indices": [
+        {"name": "S", "meaning": "set of stations (e.g. PS, MR, CS); keys of the timetable dict", "source_symbol": "Railway_input.timetable / trains_paths[j]"},
+        {"name": "J", "meaning": "set of trains; odd-numbered trains run one direction, even-numbered the other", "source_symbol": "Railway_input.trains_paths"},
+        {"name": "path_j", "meaning": "ordered sequence of stations visited by train j", "source_symbol": "Railway_input.trains_paths[j]"},
+        {"name": "P_same", "meaning": "triples (j, jp, s) of two trains travelling the same direction sharing station s (jp>j, common consecutive-station match), used for headway/order constraints", "source_symbol": "pairs_same_direction(trains_paths)"},
+        {"name": "SP", "meaning": "triples (j, s, sp) of a train and two consecutive stations on its path, used for passing-time constraints", "source_symbol": "station_pairs(trains_paths)"},
+        {"name": "Circ", "meaning": "rolling-stock circulation pairs: dict {(j,jp): s} meaning train j terminates at s and departs as train jp (turnaround)", "source_symbol": "Railway_input.circulation"},
+        {"name": "S_obj", "meaning": "subset of stations at which delay penalty is accumulated in the objective", "source_symbol": "Railway_input.objective_stations"}
+      ],
+      "parameters": [
+        {"name": "a_{s,j}", "meaning": "nominal (timetabled) arrival time of train j at station s", "domain": "Z_>=0", "source_symbol": "Railway_input.timetable[s][j]"},
+        {"name": "p", "meaning": "minimum headway between two trains in the same direction at a station", "domain": "Z_>=0", "source_symbol": "Railway_input.headways (default 2)"},
+        {"name": "stay", "meaning": "minimum dwell (stay) time at a station", "domain": "Z_>=0", "source_symbol": "Railway_input.stay (default 1)"},
+        {"name": "tau_{s,sp}", "meaning": "minimum running/passing time between consecutive stations s and sp", "domain": "Z_>=0", "source_symbol": "Railway_input.pass_time[\"{s}_{sp}\"]"},
+        {"name": "prep", "meaning": "minimum preparation (turnaround) time before a circulating train departs in the opposite direction", "domain": "Z_>=0", "source_symbol": "Railway_input.preparation_t (default 3)"},
+        {"name": "dmax", "meaning": "maximum allowed secondary delay; also the normalization factor of the objective and the width of each t-variable feasible range", "domain": "Z_>=1", "source_symbol": "Railway_input.dmax / q_pars.dmax"},
+        {"name": "d_j", "meaning": "initial (primary) delay added to the lower bound of train j's variables; defines the rescheduling scenario", "domain": "Z_>=0", "source_symbol": "delays[j] (Railway_input.add_tvar_ranges)"},
+        {"name": "delta", "meaning": "extra passing-time increment added to running-time constraints for the stochastic / robust variant (0 in the deterministic baseline)", "domain": "Z_>=0", "source_symbol": "delta (LinearPrograming.add_passing_times arg / Comp_parameters.delta=0)"},
+        {"name": "M", "meaning": "big-M used to linearize the disjunctive headway/ordering constraints via the binary y", "domain": "Z_>=1", "source_symbol": "self.M (LinearPrograming, default 10; q_pars.M=50)"}
+      ],
+      "decision_variables": [
+        {"name": "t_{s,j}", "type": "integer", "domain": "[a_{s,j}(+d_j), a_{s,j}+dmax]", "meaning": "(re)scheduled arrival/event time of train j at station s; bounded by its nominal time plus initial delay and dmax", "source_symbol": "Variable 't_{s}_{j}' / tvar_range[s][j]"},
+        {"name": "y_{s,j,jp}", "type": "binary", "domain": "{0,1}", "meaning": "order/precedence variable for same-direction trains j,jp at station s; selects which of the two big-M headway disjuncts is active (created only when the two trains' time windows can conflict)", "source_symbol": "Variable 'y_{s}_{j}_{jp}'"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min \\; \\frac{1}{d_{max}} \\sum_{s \\in S_{obj}} \\sum_{j} \\left( t_{s,j} - a_{s,j} \\right)",
+        "expression_plain": "minimize total secondary delay summed over objective stations and trains, normalized by dmax. Implemented as a linear objective with coefficient 1/dmax on each t-variable whose station is an objective station, plus a constant offset (-sum a_{s,j}/dmax) handled separately as obj_ofset.",
+        "source_files": ["QTrains/LP_problem.py:168-186", "QTrains/LP_problem.py:250-260"]
+      },
+      "constraints": [
+        {
+          "name": "headway_order_disjunct_1",
+          "indexed_over": "(j, jp, s) in P_same with overlapping time windows",
+          "expression_latex": "t_{s,j} - t_{s,jp} + M\\, y_{s,j,jp} \\leq M - p",
+          "expression_plain": "if y=0, train j must arrive at least p (headway) before train jp at station s; if y=1 the constraint is relaxed by big-M (eq. paired with disjunct 2)",
+          "source_files": ["QTrains/LP_problem.py:189-209"]
+        },
+        {
+          "name": "headway_order_disjunct_2",
+          "indexed_over": "(j, jp, s) in P_same with overlapping time windows",
+          "expression_latex": "-t_{s,j} + t_{s,jp} - M\\, y_{s,j,jp} \\leq -p",
+          "expression_plain": "complementary disjunct: if y=1, train jp must arrive at least p before train j; together with disjunct 1 the binary y selects the train order while enforcing the headway",
+          "source_files": ["QTrains/LP_problem.py:211-216"]
+        },
+        {
+          "name": "minimum_passing_time",
+          "indexed_over": "(j, s, sp) in SP",
+          "expression_latex": "t_{s,j} - t_{sp,j} \\leq -\\left( stay + \\tau_{s,sp} + \\delta \\right)",
+          "expression_plain": "consecutive event times of a train must respect the minimum dwell (stay) plus running time tau between the two stations (direction-dependent: pass_time key is s_sp for odd trains, sp_s for even); delta adds slack for the stochastic variant",
+          "source_files": ["QTrains/LP_problem.py:219-235"]
+        },
+        {
+          "name": "rolling_stock_circulation",
+          "indexed_over": "((j,jp), s) in Circ",
+          "expression_latex": "t_{s,j} - t_{s,jp} \\leq -\\left( stay + prep \\right)",
+          "expression_plain": "when train j terminates at station s and departs as train jp, the departure (jp) must be at least stay+preparation_t after the arrival (j) — turnaround constraint",
+          "source_files": ["QTrains/LP_problem.py:237-246"]
+        },
+        {
+          "name": "variable_bounds_and_integrality",
+          "indexed_over": "all t_{s,j} and y_{s,j,jp}",
+          "expression_latex": "a_{s,j}(+d_j) \\leq t_{s,j} \\leq a_{s,j}+d_{max}, \\quad y_{s,j,jp} \\in \\{0,1\\}, \\quad t_{s,j} \\in \\mathbb{Z}",
+          "expression_plain": "box bounds on each variable (t in its nominal-plus-delay to nominal-plus-dmax window; y in [0,1]) and integrality; passed to docplex as integer_var_dict and to linprog via bounds/integrality. The lower bound shift by the initial delay d_j is what encodes the rescheduling scenario.",
+          "source_files": ["QTrains/LP_problem.py:101-109", "QTrains/LP_problem.py:264-275", "QTrains/parameters.py:127-141"]
+        }
+      ],
+      "instances": [
+        {"name": "Input_timetable.qubo_real_{1,2,4,6,8,10,11,12}t", "path": "trains_timetable.py:28-184", "format": "python (inline dict literals)", "size": "8 hard-coded Baltimore Light Rail timetable instances of 1, 2, 4, 6, 8, 10, 11 and 12 trains over stations PS/MR/CS (and intermediate); each solved across delay scenarios delays in [{}, {1:5,2:2,4:5}]", "license": "CC0-1.0"},
+        {"name": "test timetables", "path": "tests/test_LP_encoding.py:9-215", "format": "python (inline dict literals)", "size": "small worked examples (1-5 trains) with expected optimal arrival times and objective values", "license": "CC0-1.0"}
+      ],
+      "notes": "Classical baseline only. The same line program is built once (LinearPrograming) and solved two ways: make_ilp_docplex -> CPLEX (classical_benchmark, solve_sched_problems.py:96-132, reports CPLEX engine name/version and wall time) and scipy.optimize.linprog(method='highs', integrality=...) (solve_on_LP, :65-93). The two are cross-checked for equal objective (:126,:148). Variables are declared as docplex integer_var_dict, so the CPLEX model is an ILP/MILP (integer t, binary y). The objective is split into a linear part (coeffs 1/dmax) plus a constant obj_ofset added back in compute_objective. Headway constraints use a classic two-disjunct big-M linearization with binary y; redundant y are skipped when train windows cannot overlap (LP_problem.py:60-64,199). Stochastic structure is represented by (a) the per-train initial-delay scenario d_j that shifts variable lower bounds, and (b) the delta passing-time increment for a robust/stochastic passing-time variant (delta=0 in the deterministic baseline). No explicit multi-scenario / two-stage recourse linear program is present in the classical code; scenarios are enumerated externally (delays_list in process_q_annealing.py). The QUBO/quadratic formulation (QTrains/make_qubo.py) is a separate quadratic encoding for quantum annealing/QAOA and is NOT transcribed here; its quadratic penalty terms are not linear and are intentionally excluded."
+    }
+  ],
+  "extraction_confidence": "high",
+  "extraction_notes": "Model taken directly from gurobipy-free docplex/scipy code in QTrains/LP_problem.py and parameters.py; constraint semantics confirmed against the assertions in tests/test_LP_encoding.py (e.g. headway rows [..,1,..,-1,..,M..] with rhs M-p and -p at :73; passing-time rows at :81-82; circulation row at :99-100). Math symbols (t, y, headway p, big-M) are inferred from code identifiers and docstrings; the repo README does not state a formal mathematical formulation and no equation numbers exist, so symbol names are reconstructed (recorded in source_symbol) rather than quoted. paper_reference is null: no DOI/citation for the formulation is given in README or code (README only cites a funding grant NdS-II/SP/0336/2024/01 and an MTA Maryland schedule URL, neither a paper). The objective offset (obj_ofset) is a documented constant term, not a separate constraint. Big-M default differs by call site (LinearPrograming default M=10; production q_pars.M=50). License file is named 'LICENCE' (British spelling) and is CC0-1.0."
+}

@@ -1,0 +1,398 @@
+{
+  "repo": "cda-tum/mtct",
+  "url": "https://github.com/cda-tum/mtct",
+  "license": "MIT",
+  "language": "C++ (gurobi_c++ API)",
+  "solver": "Gurobi",
+  "area": "railway-timetabling",
+  "paper_reference": null,
+  "models": [
+    {
+      "model_id": "vss-generation-timetable-milp",
+      "source_files": [
+        "src/solver/mip-based/VSSGenTimetableSolver_general.cpp:162-467",
+        "src/solver/mip-based/VSSGenTimetableSolver_general.cpp:469-1107",
+        "src/solver/mip-based/VSSGenTimetableSolver_general.cpp:1253-1483",
+        "src/solver/mip-based/VSSGenTimetableSolver_fixedRoutes.cpp:14-489",
+        "src/solver/mip-based/VSSGenTimetableSolver_freeRoutes.cpp:14-751",
+        "include/solver/mip-based/VSSGenTimetableSolver.hpp:58-239"
+      ],
+      "description": "Minimal Virtual Subsection (VSS) layout generation for ETCS Hybrid Level 3. Given a timetable, the model determines the minimum number of VSS borders that must be installed so that all trains can run conflict-free on a time-discretized railway network. It is a flexible formulation with several toggles: routes can be fixed (fixedRoutes) or part of the optimization (freeRoutes); VSS positions can be discretized into vertices (Discrete model) or kept as continuous positions on edges (Continuous / Inferred / InferredAlt models); train dynamics (acceleration/deceleration) and quadratic/PWL braking curves can optionally be included. Based on reference [3] (Engels, Peham, Wille, ATMOS 2023), with the iterative variant from [4] and precomputed-routing variant from [6]. Time is discretized into steps of length delta_t (default 15s).",
+      "sets_indices": [
+        {"name": "TR", "meaning": "set of trains", "source_symbol": "num_tr / instance.get_train_list()"},
+        {"name": "T", "meaning": "discrete time steps t = 0..num_t (each step is delta_t seconds)", "source_symbol": "num_t / train_interval[tr]"},
+        {"name": "E", "meaning": "set of network edges (track segments)", "source_symbol": "num_edges / instance.n()"},
+        {"name": "V", "meaning": "set of network vertices", "source_symbol": "num_vertices"},
+        {"name": "E_b", "meaning": "breakable edges (edges that may receive VSS borders)", "source_symbol": "breakable_edges"},
+        {"name": "E_rel", "meaning": "relevant edges (representative breakable edges, reverse edges combined) used for the VSS-count objective", "source_symbol": "relevant_edges"},
+        {"name": "S_ub", "meaning": "unbreakable sections (groups of edges that cannot be split by VSS)", "source_symbol": "unbreakable_sections"},
+        {"name": "S_nb", "meaning": "no-border-VSS sections (discretized model)", "source_symbol": "no_border_vss_sections"},
+        {"name": "V_nb", "meaning": "candidate VSS-border vertices in discretized model", "source_symbol": "no_border_vss_vertices"},
+        {"name": "FB", "meaning": "forward/backward edge section pairs (for reverse-occupation)", "source_symbol": "fwd_bwd_sections"},
+        {"name": "VSS_e", "meaning": "index of potential VSS border on edge e, 0..max_vss_on_edge(e)-1", "source_symbol": "max_vss_on_edge(e)"},
+        {"name": "Stops_tr", "meaning": "scheduled stops of train tr", "source_symbol": "instance.get_schedule(tr_name).get_stops()"},
+        {"name": "SepFun", "meaning": "VSS separation functions (Inferred/InferredAlt models)", "source_symbol": "vss_model.get_separation_functions()"}
+      ],
+      "parameters": [
+        {"name": "delta_t", "meaning": "length of a discretized time step in seconds", "domain": "Z_>=1", "source_symbol": "dt / ModelDetail.delta_t", "value": "default 15 (include/solver/mip-based/VSSGenTimetableSolver.hpp:34)"},
+        {"name": "len_tr", "meaning": "physical length of train tr", "domain": "R_>=0", "source_symbol": "train.length"},
+        {"name": "vmax_tr", "meaning": "maximum speed of train tr", "domain": "R_>=0", "source_symbol": "train.max_speed"},
+        {"name": "a_tr", "meaning": "maximum acceleration of train tr", "domain": "R_>=0", "source_symbol": "train.acceleration"},
+        {"name": "d_tr", "meaning": "maximum deceleration of train tr", "domain": "R_>=0", "source_symbol": "train.deceleration"},
+        {"name": "len_e", "meaning": "length of edge e", "domain": "R_>=0", "source_symbol": "instance.n().get_edge(e).length"},
+        {"name": "vmax_e", "meaning": "maximum speed on edge e", "domain": "R_>=0", "source_symbol": "edge.max_speed"},
+        {"name": "minblk_e", "meaning": "minimum block length on edge e", "domain": "R_>=0", "source_symbol": "edge.min_block_length"},
+        {"name": "r_len_tr", "meaning": "total route length of train tr (fixed-routes variant)", "domain": "R_>=0", "source_symbol": "instance.route_length(tr_name)"},
+        {"name": "v0_tr", "meaning": "initial speed of train tr", "domain": "R_>=0", "source_symbol": "get_schedule(tr).get_v_0()"},
+        {"name": "vn_tr", "meaning": "final speed of train tr", "domain": "R_>=0", "source_symbol": "get_schedule(tr).get_v_n()"},
+        {"name": "V_MIN", "meaning": "minimum non-zero speed constant", "domain": "R_>0", "source_symbol": "V_MIN", "value": "0.3 (include/Definitions.hpp:26)"},
+        {"name": "STOP_TOLERANCE", "meaning": "tolerance for stop-position constraints", "domain": "R_>=0", "source_symbol": "STOP_TOLERANCE", "value": "10 (include/Definitions.hpp:28)"},
+        {"name": "ABS_PWL_ERROR", "meaning": "maximal error for piecewise-linear braking approximation", "domain": "R_>=0", "source_symbol": "ABS_PWL_ERROR", "value": "10 (include/Definitions.hpp:29)"}
+      ],
+      "decision_variables": [
+        {"name": "v_{tr,t}", "type": "continuous", "domain": "[0, vmax_tr]", "meaning": "speed of train tr at time step t", "source_symbol": "vars[\"v\"](tr,t)"},
+        {"name": "x_{tr,t,e}", "type": "binary", "meaning": "1 if train tr occupies edge e at time t", "source_symbol": "vars[\"x\"](tr,t,e)"},
+        {"name": "x_sec_{tr,t,s}", "type": "binary", "meaning": "1 if train tr occupies unbreakable section s at time t", "source_symbol": "vars[\"x_sec\"](tr,t,sec)"},
+        {"name": "y_sec_fwd_{t,i}", "type": "binary", "meaning": "1 if fwd/bwd section i is occupied in forward direction at time t", "source_symbol": "vars[\"y_sec_fwd\"](t,i)"},
+        {"name": "y_sec_bwd_{t,i}", "type": "binary", "meaning": "1 if fwd/bwd section i is occupied in backward direction at time t", "source_symbol": "vars[\"y_sec_bwd\"](t,i)"},
+        {"name": "b_{i}", "type": "binary", "meaning": "DISCRETE model: 1 if candidate vertex i is used as a VSS border (objective term)", "source_symbol": "vars[\"b\"](i)"},
+        {"name": "b_used_{e,vss}", "type": "binary", "meaning": "CONTINUOUS model: 1 if the vss-th potential border on edge e is used (objective term)", "source_symbol": "vars[\"b_used\"](i,vss)"},
+        {"name": "b_pos_{e,vss}", "type": "continuous", "domain": "[0, len_e]", "meaning": "CONTINUOUS/Inferred model: position of the vss-th VSS border on edge e", "source_symbol": "vars[\"b_pos\"](i,vss)"},
+        {"name": "b_front_{tr,t,e,vss}", "type": "binary", "meaning": "1 if the front of train tr is in front of border vss on edge e at time t", "source_symbol": "vars[\"b_front\"](tr,t,e,vss)"},
+        {"name": "b_rear_{tr,t,e,vss}", "type": "binary", "meaning": "1 if the rear of train tr is in front of border vss on edge e at time t (only for trains with train-integrity monitoring)", "source_symbol": "vars[\"b_rear\"](tr,t,e,vss)"},
+        {"name": "num_vss_segments_{e}", "type": "integer", "domain": "[1, max_vss_on_edge(e)+1]", "meaning": "INFERRED model: number of VSS segments on edge e (objective uses num_vss_segments - 1)", "source_symbol": "vars[\"num_vss_segments\"](i)"},
+        {"name": "edge_type_{e,k}", "type": "binary", "meaning": "INFERRED model: 1 if separation function k is used on edge e", "source_symbol": "vars[\"edge_type\"](i,sep_type)"},
+        {"name": "type_num_vss_segments_{e,k,vss}", "type": "binary", "meaning": "INFERRED_ALT model: 1 if edge e uses separation function k with vss+1 segments", "source_symbol": "vars[\"type_num_vss_segments\"](i,sep_type,vss)"},
+        {"name": "frac_vss_segments / frac_type", "type": "continuous", "domain": "[0,1]", "meaning": "INFERRED model: fractional positions of borders given the separation function (auxiliary)", "source_symbol": "vars[\"frac_vss_segments\"], vars[\"frac_type\"]"},
+        {"name": "brakelen_{tr,t}", "type": "continuous", "domain": "[0, get_max_brakelen(tr)]", "meaning": "braking distance of train tr at time t (only if include_braking_curves)", "source_symbol": "vars[\"brakelen\"](tr,t)"},
+        {"name": "mu_{tr,t}", "type": "continuous", "domain": "[0, r_len_tr + len_tr (+ max_brakelen)]", "meaning": "FIXED-ROUTES: position of train front along its route at time t", "source_symbol": "vars[\"mu\"](tr,t)"},
+        {"name": "lda_{tr,t}", "type": "continuous", "domain": "[-len_tr, r_len_tr]", "meaning": "FIXED-ROUTES: position of train rear (lambda) along its route at time t", "source_symbol": "vars[\"lda\"](tr,t)"},
+        {"name": "x_mu_{tr,t,e}, x_lda_{tr,t,e}", "type": "binary", "meaning": "FIXED-ROUTES: 1 if front/rear is past the start of edge e (used to derive x = x_mu AND x_lda)", "source_symbol": "vars[\"x_mu\"], vars[\"x_lda\"]"},
+        {"name": "e_mu_{tr,t,e}, e_lda_{tr,t,e}, overlap_{tr,t,e}, x_v_{tr,t,v}, len_in/len_out/x_in/x_out_{tr,t}", "type": "mixed (continuous/binary)", "meaning": "FREE-ROUTES auxiliary position/overlap/vertex-occupation variables (routing is part of optimization)", "source_symbol": "VSSGenTimetableSolver_freeRoutes.cpp:23-76"},
+        {"name": "stopped_{tr,t}, b_tight_{tr,t,e,vss}, e_tight_{tr,t,e}", "type": "binary", "meaning": "only-stop-at-VSS option: train-stopped indicator and tight-border indicators", "source_symbol": "vars[\"stopped\"], vars[\"b_tight\"], vars[\"e_tight\"]"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min \\; \\begin{cases} \\sum_{i \\in V_{nb}} b_i & \\text{(Discrete)} \\\\ \\sum_{e \\in E_{rel}} \\sum_{vss} b^{used}_{e,vss} & \\text{(Continuous)} \\\\ \\sum_{e \\in E_{rel}} (\\text{num\\_vss\\_segments}_e - 1) & \\text{(Inferred)} \\\\ \\sum_{e \\in E_{rel}} \\sum_{vss} (vss+1)\\, \\text{type\\_num\\_vss\\_segments}_{e,*,vss} & \\text{(InferredAlt)} \\end{cases}",
+        "expression_plain": "minimize the total number of installed VSS borders/segments; the exact form depends on the chosen VSS model type (discrete vertex count, continuous border count, or inferred segment count)",
+        "source_files": ["src/solver/mip-based/VSSGenTimetableSolver_general.cpp:425-467"]
+      },
+      "constraints": [
+        {
+          "name": "vss_separation_discretized",
+          "indexed_over": "no-border section, train pairs (tr1,tr2), time t, edge positions e1!=e2",
+          "expression_latex": "2 - x_{tr1,t,e1} - x_{tr2,t,e2} + \\sum_{v \\in overlap(e1,e2)} b_v \\;\\geq\\; 1",
+          "expression_plain": "DISCRETE model: two trains simultaneously on the same no-border section must be separated by at least one chosen VSS border vertex between them",
+          "source_files": ["src/solver/mip-based/VSSGenTimetableSolver_general.cpp:469-603"]
+        },
+        {
+          "name": "unbreakable_section_occupation",
+          "indexed_over": "unbreakable section s, train tr, time t",
+          "expression_latex": "\\sum_{e \\in s} x_{tr,t,e} \\geq x^{sec}_{tr,t,s}, \\quad \\sum_{e \\in s} x_{tr,t,e} \\leq |s|\\, x^{sec}_{tr,t,s}, \\quad \\sum_{tr} x^{sec}_{tr,t,s} \\leq 1",
+          "expression_plain": "links section-occupation variable to edge occupation, and allows at most one train per unbreakable section at any time",
+          "source_files": ["src/solver/mip-based/VSSGenTimetableSolver_general.cpp:605-653"]
+        },
+        {
+          "name": "schedule_station_constraints",
+          "indexed_over": "train tr, stop, time t in [arrival,departure]",
+          "expression_latex": "v_{tr,t} = 0;\\quad x_{tr,t,e}=0 \\;\\forall e \\notin \\text{stop edges};\\quad \\sum_{e \\in \\text{stop edges}} x_{tr,t,e} \\geq 1",
+          "expression_plain": "while a train dwells at a scheduled stop its speed is zero, it occupies only station edges, and it occupies at least one station edge",
+          "source_files": ["src/solver/mip-based/VSSGenTimetableSolver_general.cpp:655-704"]
+        },
+        {
+          "name": "speed_acceleration_limits",
+          "indexed_over": "train tr, time t",
+          "expression_latex": "v_{tr,t+1} - v_{tr,t} \\leq a_{tr}\\,\\Delta t, \\qquad v_{tr,t} - v_{tr,t+1} \\leq d_{tr}\\,\\Delta t",
+          "expression_plain": "limit acceleration and deceleration between consecutive time steps (only if include_train_dynamics)",
+          "source_files": ["src/solver/mip-based/VSSGenTimetableSolver_general.cpp:706-731"]
+        },
+        {
+          "name": "edge_max_speed",
+          "indexed_over": "train tr, edge e with vmax_e < vmax_tr, time t",
+          "expression_latex": "v_{tr,t+1} \\leq vmax_e + (vmax_{tr} - vmax_e)(1 - x_{tr,t,e})",
+          "expression_plain": "speed must not exceed the edge speed limit while the train occupies that edge (big-M relaxed by x)",
+          "source_files": ["src/solver/mip-based/VSSGenTimetableSolver_general.cpp:1295-1328"]
+        },
+        {
+          "name": "boundary_speed",
+          "indexed_over": "train tr",
+          "expression_latex": "v_{tr, t^{first}} = v0_{tr}, \\qquad v_{tr, t^{last}+1} = vn_{tr}",
+          "expression_plain": "fix the initial and final speed of each train",
+          "source_files": ["src/solver/mip-based/VSSGenTimetableSolver_general.cpp:1466-1483"]
+        },
+        {
+          "name": "reverse_occupation_one_direction",
+          "indexed_over": "fwd/bwd section i, time t",
+          "expression_latex": "y^{fwd}_{t,i} + y^{bwd}_{t,i} \\leq 1, \\quad y^{fwd}_{t,i} \\geq x_{tr,t,e}\\;(e \\in fwd_i), \\; y^{fwd}_{t,i} \\leq \\sum x_{tr,t,e}",
+          "expression_plain": "a breakable section may be occupied in only one travel direction at a time; reversing trains are not modelled",
+          "source_files": ["src/solver/mip-based/VSSGenTimetableSolver_general.cpp:1330-1391"]
+        },
+        {
+          "name": "brakelen_quadratic_or_pwl",
+          "indexed_over": "train tr, time t",
+          "expression_latex": "brakelen_{tr,t} = \\frac{v_{tr,t+1}^2}{2 d_{tr}}",
+          "expression_plain": "braking distance equals the kinematic stopping distance at the next-step speed; modelled as a Gurobi quadratic constraint (addQConstr) or a piecewise-linear approximation (addGenConstrPWL with max error ABS_PWL_ERROR) when use_pwl",
+          "source_files": ["src/solver/mip-based/VSSGenTimetableSolver_general.cpp:1253-1293"]
+        },
+        {
+          "name": "continuous_vss_used_position_link",
+          "indexed_over": "relevant edge e, border vss",
+          "expression_latex": "len_e\\, b^{used}_{e,vss} \\geq b^{pos}_{e,vss} \\geq minblk_e\\, b^{used}_{e,vss}; \\quad b^{pos}_{e,vss} \\geq b^{pos}_{e,vss+1} + minblk_e\\, b^{used}_{e,vss+1}",
+          "expression_plain": "CONTINUOUS model: a border position is non-zero only if the border is used, respecting the minimum block length, and border positions are ordered decreasing to remove symmetric solutions",
+          "source_files": ["src/solver/mip-based/VSSGenTimetableSolver_general.cpp:804-863"]
+        },
+        {
+          "name": "border_front_rear_consistency",
+          "indexed_over": "breakable edge e, train tr, time t, border vss",
+          "expression_latex": "x_{tr,t,e} \\geq b^{front}_{tr,t,e,vss},\\; x_{tr,t,e} \\geq b^{rear}_{tr,t,e,vss};\\quad \\sum_{tr,vss} b^{front} \\geq \\sum_{tr} x - 1; \\quad \\sum_{e,vss} b^{front}_{tr,t} \\leq 1",
+          "expression_plain": "non-discretized position logic: a border can only be used by a train present on the edge, enough borders must separate co-located trains, at most one border per train, front and rear borders must coincide, and a border is usable only if the VSS is used",
+          "source_files": ["src/solver/mip-based/VSSGenTimetableSolver_general.cpp:865-1107"]
+        },
+        {
+          "name": "inferred_fraction_pwl_constraints",
+          "indexed_over": "relevant edge e, separation type k, border vss",
+          "expression_latex": "\\sum_k edge\\_type_{e,k} = 1; \\quad frac\\_vss\\_segments_{e,k,vss} = sep_k(vss, \\text{num\\_segments}); \\quad b^{pos}_{e,vss} = len_e \\sum_k frac\\_type_{e,k,vss}",
+          "expression_plain": "INFERRED model: choose exactly one separation function per edge, compute fractional border positions via a PWL of the chosen separation function, and linearize the product frac_type = frac_vss_segments * edge_type",
+          "source_files": ["src/solver/mip-based/VSSGenTimetableSolver_general.cpp:1109-1202"]
+        },
+        {
+          "name": "inferred_alt_fraction_constraints",
+          "indexed_over": "relevant edge e, separation type k, border vss",
+          "expression_latex": "\\sum_{k,vss} type\\_num\\_vss\\_segments_{e,k,vss} \\leq 1; \\quad b^{pos}_{e,vss} = \\sum_{k, n} type\\_num\\_vss\\_segments_{e,k,n-1}\\, len_e\\, sep_k(vss,n+1)",
+          "expression_plain": "INFERRED_ALT model: at most one (separation type, segment count) per edge sets all border positions directly",
+          "source_files": ["src/solver/mip-based/VSSGenTimetableSolver_general.cpp:1204-1251"]
+        },
+        {
+          "name": "fixed_routes_position_dynamics",
+          "indexed_over": "train tr, time t",
+          "expression_latex": "mu_{tr,t} - lda_{tr,t} = len_{tr} + \\tfrac{(v_{tr,t}+v_{tr,t+1})}{2}\\Delta t \\,(+\\,brakelen_{tr,t}); \\quad mu_{tr,t} - lda_{tr,t+1} = len_{tr}(+brakelen); \\quad mu_{tr,t+1}\\geq mu_{tr,t};\\; lda_{tr,t+1}\\geq lda_{tr,t}",
+          "expression_plain": "FIXED-ROUTES: front-rear distance equals train length plus distance travelled (plus braking distance); positions are monotonically non-decreasing",
+          "source_files": ["src/solver/mip-based/VSSGenTimetableSolver_fixedRoutes.cpp:76-122"]
+        },
+        {
+          "name": "fixed_routes_boundary",
+          "indexed_over": "train tr",
+          "expression_latex": "lda_{tr,t^{first}} = -len_{tr}, \\qquad mu_{tr,t^{last}} = r\\_len_{tr} + len_{tr} (+ brakelen)",
+          "expression_plain": "FIXED-ROUTES: rear starts just before route entry, front ends just past route exit",
+          "source_files": ["src/solver/mip-based/VSSGenTimetableSolver_fixedRoutes.cpp:124-147"]
+        },
+        {
+          "name": "fixed_routes_edge_occupation",
+          "indexed_over": "train tr, route edge e, time t",
+          "expression_latex": "x_{tr,t,e} = x^{lda}_{tr,t,e} \\wedge x^{mu}_{tr,t,e}, \\quad \\text{with } x^{mu}=1 \\Leftrightarrow mu_{tr,t} > pos^{start}_e,\\; x^{lda}=1 \\Leftrightarrow lda_{tr,t} < pos^{end}_e",
+          "expression_plain": "FIXED-ROUTES: a train occupies an edge iff its front has passed the edge start and its rear has not passed the edge end (modelled with big-M indicator pairs and a Gurobi AND)",
+          "source_files": ["src/solver/mip-based/VSSGenTimetableSolver_fixedRoutes.cpp:149-209"]
+        },
+        {
+          "name": "fixed_routes_station_position",
+          "indexed_over": "train tr, stop",
+          "expression_latex": "mu_{tr,t_0-1} \\geq pos^{start}_{stop}, \\; mu_{tr,t_1-1} \\leq pos^{end}_{stop}, \\; lda_{tr,t_0} \\geq pos^{start}_{stop}, \\; lda_{tr,t_1} \\leq pos^{end}_{stop}",
+          "expression_plain": "FIXED-ROUTES: front/rear positions confine the train to the station tracks during its dwell window",
+          "source_files": ["src/solver/mip-based/VSSGenTimetableSolver_fixedRoutes.cpp:211-244"]
+        },
+        {
+          "name": "fixed_routes_impossibility_cuts",
+          "indexed_over": "train tr, time t (only if use_schedule_cuts)",
+          "expression_latex": "mu_{tr,t} \\leq before\\_max + \\text{maxDist}(\\cdot), \\qquad lda_{tr,t} \\geq after\\_min - \\text{maxDist}(\\cdot)",
+          "expression_plain": "FIXED-ROUTES: cutting planes bounding reachable positions from the previous/next known position using max travel distance (search-space reduction, not required for feasibility)",
+          "source_files": ["src/solver/mip-based/VSSGenTimetableSolver_fixedRoutes.cpp:246-303"]
+        },
+        {
+          "name": "fixed_routes_common_entry_exit",
+          "indexed_over": "trains sharing an entry/exit vertex",
+          "expression_latex": "lda_{tr1,t} \\geq 0 \\;\\text{(shared entry)}, \\qquad mu_{tr1,t} \\leq r\\_len_{tr1}\\;\\text{(shared exit)}",
+          "expression_plain": "FIXED-ROUTES: trains sharing an entry/exit point must not overlap there",
+          "source_files": ["src/solver/mip-based/VSSGenTimetableSolver_fixedRoutes.cpp:358-410"]
+        },
+        {
+          "name": "fixed_routes_nondiscretized_border_position",
+          "indexed_over": "train tr, route edge e, border vss",
+          "expression_latex": "mu_{tr,t} - pos^{start}_e \\leq b^{pos}_{e,vss} + M(1 - b^{front}_{tr,t,e,vss}); \\quad lda_{tr,t} - pos^{start}_e + M(1-b^{rear}) \\geq b^{pos}_{e,vss}",
+          "expression_plain": "FIXED-ROUTES non-discretized: relate the continuous front/rear positions to the VSS border position via big-M when the train front/rear is in front of the border",
+          "source_files": ["src/solver/mip-based/VSSGenTimetableSolver_fixedRoutes.cpp:305-356"]
+        },
+        {
+          "name": "free_routes_position_and_routing",
+          "indexed_over": "train tr, time t, edge e, vertex v",
+          "expression_latex": "len^{in}_{tr,t} + len^{out}_{tr,t} + \\sum_e (e^{mu}_{tr,t,e} - e^{lda}_{tr,t,e}) = len_{tr} + \\tfrac{(v_{tr,t}+v_{tr,t+1})}{2}\\Delta t (+ brakelen); \\quad \\text{vertex/edge occupation linking } x_v, x",
+          "expression_plain": "FREE-ROUTES: when routing is part of the optimization, per-edge position fragments (e_mu, e_lda), vertex-occupation (x_v) and in/out tail lengths jointly enforce train length, distance travelled, overlap and valid edge selection",
+          "source_files": ["src/solver/mip-based/VSSGenTimetableSolver_freeRoutes.cpp:96-751"]
+        },
+        {
+          "name": "only_stop_at_vss_constraints",
+          "indexed_over": "train tr, time t, edge e, border vss (only if get_only_stop_at_vss)",
+          "expression_latex": "\\sum_{e,vss} b^{tight}_{tr,t,e,vss} \\leq 1; \\quad e^{tight}_{tr,t,e} + \\sum_{vss} b^{tight}_{tr,t,e,vss} \\geq x_{tr,t-1,e} - stopped_{tr,t}; \\quad V_{MIN}\\, stopped \\leq v_{tr,t} \\leq vmax_{tr}\\, stopped",
+          "expression_plain": "optional only-stop-at-VSS feature: a train may only come to a halt exactly at a VSS/TTD border; ties stopped indicator to speed and tight-border indicators",
+          "source_files": ["src/solver/mip-based/VSSGenTimetableSolver_general.cpp:764-778", "src/solver/mip-based/VSSGenTimetableSolver_general.cpp:1508-1678", "src/solver/mip-based/VSSGenTimetableSolver_fixedRoutes.cpp:412-489"]
+        }
+      ],
+      "instances": [
+        {"name": "example-networks (10 networks: SimpleStation, SimpleNetwork, SingleTrack, SingleTrackWithStation, Overtake, HighSpeedTrack2Trains, HighSpeedTrack5Trains, Stammstrecke4/8/16Trains)", "path": "test/example-networks/", "format": "directory per instance with network/ (tracks.graphml, successors), routes/ (routes.json), timetable/ (trains.json, schedules.json, stations.json)", "size": "564 KB total for all 10 networks", "license": "MIT"}
+      ],
+      "notes": "Single flexible MILP with many compile-/run-time toggles assembled in create_variables (VSSGenTimetableSolver_general.cpp:1680-1705) and create_constraints (1707-1732). Branches: fix_routes -> fixedRoutes.cpp vs freeRoutes.cpp; vss_model type (Discrete -> discretized vertex variables b; Continuous/Inferred/InferredAlt -> non-discretized b_pos/b_used). include_train_dynamics toggles acceleration constraints; include_braking_curves toggles brakelen (quadratic addQConstr, or addGenConstrPWL if use_pwl). use_schedule_cuts adds impossibility cuts. The VSSGenTimetableSolverWithMovingBlockInformation subclass (VSSGenTimetableSolver_MovingBlockInformation.cpp) adds variable fixings/hints from a precomputed moving-block solution rather than new model structure. Big-M values are data-derived (mu_ub = r_len + tr_len + max_brakelen). Brakelen constraint and the Inferred PWL constraints make the full model an MIQCP/MINLP-with-PWL, not a pure MILP, depending on settings."
+    },
+    {
+      "model_id": "gen-po-moving-block-routing-milp",
+      "source_files": [
+        "src/solver/mip-based/GenPOMovingBlockMIPSolver.cpp:206-447",
+        "src/solver/mip-based/GenPOMovingBlockMIPSolver.cpp:609-1910",
+        "src/solver/mip-based/GenPOMovingBlockMIPSolver_Lazy.cpp:1-1180",
+        "include/solver/mip-based/GenPOMovingBlockMIPSolver.hpp:71-246"
+      ],
+      "description": "Optimal train routing and timetabling under moving-block train control. Trains are routed over a railway network with continuous velocity-extended arcs (each arc carries an entry and exit velocity discretization), and conflict-free running is enforced through headway constraints based on braking distances (moving authority), plus TTD-section and opposite-direction (reverse) safety constraints. The objective minimizes weighted total delay at network exit. Based on reference [5] (Engels, Wille, 'Comparing Lazy Constraint Selection Strategies in Train Routing with Moving Block Control', FedCSIS 2024, doi:10.15439/2024F3041, arXiv:2405.18977). Headway/TTD/reverse constraints may instead be generated on demand as Gurobi lazy constraints (GenPOMovingBlockMIPSolver_Lazy.cpp).",
+      "sets_indices": [
+        {"name": "TR", "meaning": "set of trains", "source_symbol": "num_tr"},
+        {"name": "V", "meaning": "set of network vertices", "source_symbol": "num_vertices"},
+        {"name": "E", "meaning": "set of network edges", "source_symbol": "num_edges"},
+        {"name": "TTD", "meaning": "set of trackside-train-detection (TTD) sections", "source_symbol": "ttd_sections / num_ttd"},
+        {"name": "VE_tr,v", "meaning": "velocity extension set: discretized possible speeds of train tr at vertex v", "source_symbol": "velocity_extensions[tr][v]"},
+        {"name": "RE", "meaning": "relevant reverse edge pairs (e1,e2) for opposite-direction collision avoidance", "source_symbol": "relevant_reverse_edges"},
+        {"name": "Stops_tr", "meaning": "scheduled stops of train tr with candidate stop vertices", "source_symbol": "tr_stop_data[tr]"}
+      ],
+      "parameters": [
+        {"name": "w_tr", "meaning": "objective weight of train tr", "domain": "R_>=0", "source_symbol": "instance.get_train_weight(tr)"},
+        {"name": "tmin_n_tr", "meaning": "earliest desired exit (departure) time of train tr at its exit node", "domain": "R_>=0", "source_symbol": "get_schedule(tr).get_t_n_range().first"},
+        {"name": "tmax_n_tr", "meaning": "latest allowed exit time of train tr; also serves as big-M upper bound for timing variables", "domain": "R_>=0", "source_symbol": "get_schedule(tr).get_t_n_range().second / ub_timing_variable(tr)"},
+        {"name": "t0_range_tr", "meaning": "[min,max] entry (arrival) time window of train tr", "domain": "R^2", "source_symbol": "get_schedule(tr).get_t_0_range()"},
+        {"name": "len_tr, vmax_tr, a_tr, d_tr", "meaning": "train length, max speed, acceleration, deceleration", "domain": "R_>=0", "source_symbol": "Train fields"},
+        {"name": "len_e, vmax_e", "meaning": "edge length and max speed", "domain": "R_>=0", "source_symbol": "Edge fields"},
+        {"name": "max_velocity_delta", "meaning": "velocity discretization step", "domain": "R_>0", "source_symbol": "model_detail.max_velocity_delta", "value": "default 5.55 m/s = 20 km/h (GenPOMovingBlockMIPSolver.hpp:41)"},
+        {"name": "min_t_arc / max_t_arc", "meaning": "min/max travel time over an arc at given entry/exit speeds, from kinematics (EOMHelper)", "domain": "R_>=0", "source_symbol": "cda_rail::min_travel_time / max_travel_time"},
+        {"name": "abs_mip_gap", "meaning": "absolute MIP gap target", "domain": "R_>=0", "source_symbol": "solver_strategy.abs_mip_gap", "value": "default 10 (GenPOMovingBlockMIPSolver.hpp:68)"},
+        {"name": "V_MIN, EPS, GRB_EPS", "meaning": "minimum speed (0.3), numerical epsilons (10*eps, 1e-4)", "domain": "R_>0", "source_symbol": "V_MIN / EPS / GRB_EPS", "value": "include/Definitions.hpp:24-26"}
+      ],
+      "decision_variables": [
+        {"name": "t_front_arrival_{tr,v}", "type": "continuous", "domain": "[0, tmax_n_tr]", "meaning": "time the front of train tr arrives at vertex v", "source_symbol": "vars[\"t_front_arrival\"](tr,v)"},
+        {"name": "t_front_departure_{tr,v}", "type": "continuous", "domain": "[0, tmax_n_tr]", "meaning": "time the front of train tr departs vertex v", "source_symbol": "vars[\"t_front_departure\"](tr,v)"},
+        {"name": "t_rear_departure_{tr,v}", "type": "continuous", "domain": "[0, tmax_n_tr]", "meaning": "time the rear of train tr departs vertex v", "source_symbol": "vars[\"t_rear_departure\"](tr,v)"},
+        {"name": "t_ttd_departure_{tr,s}", "type": "continuous", "domain": "[0, tmax_n_tr]", "meaning": "time train tr fully leaves TTD section s", "source_symbol": "vars[\"t_ttd_departure\"](tr,ttd)"},
+        {"name": "x_{tr,e}", "type": "binary", "meaning": "1 if train tr uses edge e", "source_symbol": "vars[\"x\"](tr,e)"},
+        {"name": "x_ttd_{tr,s}", "type": "binary", "meaning": "1 if train tr uses TTD section s", "source_symbol": "vars[\"x_ttd\"](tr,ttd)"},
+        {"name": "y_{tr,e,i,j}", "type": "binary", "meaning": "1 if train tr traverses edge e entering at velocity-extension i and leaving at velocity-extension j (only for kinematically feasible (i,j) per possible_by_eom)", "source_symbol": "vars[\"y\"](tr,e,i,j)"},
+        {"name": "order_{tr1,tr2,e}", "type": "binary", "meaning": "1 if tr1 immediately follows tr2 on edge e", "source_symbol": "vars[\"order\"](tr1,tr2,e)"},
+        {"name": "order_ttd_{tr1,tr2,s}", "type": "binary", "meaning": "1 if tr1 follows tr2 through TTD section s", "source_symbol": "vars[\"order_ttd\"](tr1,tr2,ttd)"},
+        {"name": "reverse_order_{tr1,tr2,idx}", "type": "binary", "meaning": "1 if tr1 traverses reverse-edge pair idx before tr2 (opposite directions)", "source_symbol": "vars[\"reverse_order\"](tr1,tr2,idx)"},
+        {"name": "stop_{tr,k,v}", "type": "binary", "meaning": "1 if train tr serves its k-th scheduled stop at vertex v", "source_symbol": "vars[\"stop\"](tr,stop,v)"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min \\; \\frac{1}{\\sum_{tr} w_{tr}} \\sum_{tr \\in TR} w_{tr}\\,\\bigl(t^{rear\\_departure}_{tr, exit(tr)} - tmin\\_n_{tr}\\bigr)",
+        "expression_plain": "minimize the weighted average delay, i.e. the train-weight-weighted sum of how much later than the earliest allowed exit time each train's rear actually leaves the network, normalized by the total weight",
+        "source_files": ["src/solver/mip-based/GenPOMovingBlockMIPSolver.cpp:404-418"]
+      },
+      "constraints": [
+        {
+          "name": "edge_velocity_extension_aggregation",
+          "indexed_over": "train tr, edge e used by tr",
+          "expression_latex": "x_{tr,e} = \\sum_{(i,j) \\text{ feasible}} y_{tr,e,i,j}",
+          "expression_plain": "an edge is used iff exactly one of its kinematically feasible (entry-velocity, exit-velocity) arcs is selected",
+          "source_files": ["src/solver/mip-based/GenPOMovingBlockMIPSolver.cpp:611-642"]
+        },
+        {
+          "name": "path_entry_exit_flow",
+          "indexed_over": "train tr, vertex v",
+          "expression_latex": "\\sum_{e \\in \\delta^{out}(entry)} x_{tr,e} = 1; \\quad \\sum_{e \\in \\delta^{in}(exit)} x_{tr,e} = 1; \\quad \\sum_{e \\in \\delta^{in}(v)} x \\leq 1,\\; \\sum_{e \\in \\delta^{out}(v)} x \\leq 1",
+          "expression_plain": "each train leaves its entry vertex exactly once, enters its exit vertex exactly once, and passes any other vertex at most once",
+          "source_files": ["src/solver/mip-based/GenPOMovingBlockMIPSolver.cpp:643-689"]
+        },
+        {
+          "name": "velocity_extension_flow_conservation",
+          "indexed_over": "train tr, intermediate vertex v, velocity-extension i",
+          "expression_latex": "\\sum_{e \\in \\delta^{in}(v)} y_{tr,e,*,i} = \\sum_{e \\in \\delta^{out}(v)} y_{tr,e,i,*}",
+          "expression_plain": "velocity continuity: the speed at which a train arrives at a vertex must equal the speed at which it leaves (flow conservation on velocity-extended arcs)",
+          "source_files": ["src/solver/mip-based/GenPOMovingBlockMIPSolver.cpp:690-746"]
+        },
+        {
+          "name": "illegal_path_elimination",
+          "indexed_over": "train tr, edge pairs (e,e2) that are not a valid successor",
+          "expression_latex": "x_{tr,e} + x_{tr,e2} \\leq 1",
+          "expression_plain": "forbid traversing two consecutive edges that do not form a valid path (e.g. too-sharp turns)",
+          "source_files": ["src/solver/mip-based/GenPOMovingBlockMIPSolver.cpp:750-770"]
+        },
+        {
+          "name": "edge_travel_time_bounds",
+          "indexed_over": "train tr, edge e, feasible (i,j)",
+          "expression_latex": "t^{front\\_arrival}_{tr,target(e)} \\geq t^{front\\_departure}_{tr,source(e)} + t^{min}_{arc} - (M + t^{min}_{arc})(1 - y_{tr,e,i,j}); \\quad t^{front\\_arrival}_{tr,target(e)} \\leq t^{front\\_departure}_{tr,source(e)} + t^{max}_{arc} + (M - t^{max}_{arc})(1 - y_{tr,e,i,j})",
+          "expression_plain": "if a velocity-extended arc is used, the front travel time over that edge lies between the kinematic minimum and maximum travel time (big-M deactivated otherwise; upper bound omitted when max travel time is infinite)",
+          "source_files": ["src/solver/mip-based/GenPOMovingBlockMIPSolver.cpp:774-833"]
+        },
+        {
+          "name": "departure_after_arrival_and_stop_logic",
+          "indexed_over": "train tr, vertex v",
+          "expression_latex": "t^{front\\_departure}_{tr,v} \\geq t^{front\\_arrival}_{tr,v}; \\quad t^{front\\_departure}_{tr,v} \\leq t^{front\\_arrival}_{tr,v} + M \\cdot (\\text{speed-0 arcs at } v)",
+          "expression_plain": "departure is no earlier than arrival at a vertex, and equals it unless the train can come to a stop there (i.e. uses a zero-speed arc)",
+          "source_files": ["src/solver/mip-based/GenPOMovingBlockMIPSolver.cpp:835-897"]
+        },
+        {
+          "name": "basic_edge_order",
+          "indexed_over": "edge e, train pair (tr1,tr2) on e (non-lazy mode)",
+          "expression_latex": "order_{tr1,tr2,e} + order_{tr2,tr1,e} \\leq \\tfrac12 (x_{tr1,e}+x_{tr2,e}); \\quad order_{tr1,tr2,e}+order_{tr2,tr1,e} \\geq x_{tr1,e}+x_{tr2,e}-1",
+          "expression_plain": "if both trains use an edge, exactly one ordering is selected; if not both, none",
+          "source_files": ["src/solver/mip-based/GenPOMovingBlockMIPSolver.cpp:907-937"]
+        },
+        {
+          "name": "train_rear_departure_definition",
+          "indexed_over": "train tr, vertex v, brake/length paths p",
+          "expression_latex": "t^{rear\\_departure}_{tr,v} \\geq t^{front\\_departure}_{tr,\\cdot} + (\\text{min time for rear to clear length } len_{tr}) - M\\,(\\text{path not used})",
+          "expression_plain": "the rear-departure time at v is derived from the front-departure time plus the time the train of length len_tr needs to fully clear v along each candidate path (handles trains partially leaving the network at the exit)",
+          "source_files": ["src/solver/mip-based/GenPOMovingBlockMIPSolver.cpp:939-1218"]
+        },
+        {
+          "name": "stopping_constraints",
+          "indexed_over": "train tr, stop k, candidate vertex v",
+          "expression_latex": "\\sum_v stop_{tr,k,v} = 1; \\; t^{front\\_dep}_{tr,v} - t^{front\\_arr}_{tr,v} \\geq stoptime_k\\, stop_{tr,k,v}; \\; t_0^{min}\\,stop \\leq t^{front\\_arr}_{tr,v} \\leq t_0^{max} + M(1-stop); \\; stop_{tr,k,v} \\leq \\sum_p path\\_expr",
+          "expression_plain": "each scheduled stop is served at exactly one candidate vertex; the dwell time meets the minimum stopping time; arrival and departure fall inside the timetable windows; a stop is allowed only if a valid edge path through it is used",
+          "source_files": ["src/solver/mip-based/GenPOMovingBlockMIPSolver.cpp:1220-1312"]
+        },
+        {
+          "name": "initial_final_time_windows",
+          "indexed_over": "train tr",
+          "expression_latex": "t0^{min}_{tr} \\leq t^{front\\_arr}_{tr,entry} \\leq t0^{max}_{tr}; \\quad tmin\\_n_{tr} \\leq t^{rear\\_dep}_{tr,exit} \\leq tmax\\_n_{tr}",
+          "expression_plain": "the network entry and exit times of each train must lie inside the timetable's arrival/departure windows",
+          "source_files": ["src/solver/mip-based/GenPOMovingBlockMIPSolver.cpp:1314-1331"]
+        },
+        {
+          "name": "headway_constraints_moving_block",
+          "indexed_over": "train tr, vertex v, source velocity, brake path p, following train tr2",
+          "expression_latex": "t^{front\\_arrival}_{tr,v} + M(|p| - \\sum_{e\\in p} x_{tr,e}) + M(1 - order_{tr,tr2,p_{last}}) \\geq t^{rear\\_departure}_{tr2,\\cdot} + (\\text{kinematic terms})",
+          "expression_plain": "core moving-block safety: a following train may only reach the moving-authority point (front position minus its braking distance) after the leading train's rear has cleared that point; the braking distance bd = v^2/(2 d_tr) defines the look-ahead path p along which the constraint is enforced",
+          "source_files": ["src/solver/mip-based/GenPOMovingBlockMIPSolver.cpp:1334-1605"]
+        },
+        {
+          "name": "simplified_headway_constraints",
+          "indexed_over": "train tr, edge e, following train tr2 (only if simplify_headway_constraints)",
+          "expression_latex": "t^{front\\_dep}_{tr,source(e)} - t^{rear\\_dep}_{tr2,target(e)} + (M + hw_{max})(1 - order_{tr,tr2,e}) \\geq hw_{tr,e}",
+          "expression_plain": "less accurate but cheaper headway alternative defined per edge instead of per braking path; also enforced on entering TTD sections",
+          "source_files": ["src/solver/mip-based/GenPOMovingBlockMIPSolver.cpp:1607-1690"]
+        },
+        {
+          "name": "basic_ttd_constraints",
+          "indexed_over": "TTD section s, train tr, train pair (tr,tr2)",
+          "expression_latex": "x^{ttd}_{tr,s} \\geq x_{tr,e}\\;(e\\in s), \\; x^{ttd}_{tr,s} \\leq \\sum_{e\\in s} x_{tr,e}; \\; t^{ttd\\_dep}_{tr,s} \\geq t^{rear\\_dep}_{tr,target(e)} - M(1-x_{tr,e}); \\; order\\_ttd\\text{ linking + time order}",
+          "expression_plain": "a TTD section is used iff one of its edges is used; section-departure time is bounded by rear departure on used edges; only one train order per shared TTD section, with consistent departure-time ordering (TTD sections allow only one train at a time)",
+          "source_files": ["src/solver/mip-based/GenPOMovingBlockMIPSolver.cpp:1692-1786"]
+        },
+        {
+          "name": "reverse_edge_constraints",
+          "indexed_over": "reverse edge pair idx, opposite-direction train pair (tr1,tr2)",
+          "expression_latex": "reverse\\_order_{tr1,tr2}+reverse\\_order_{tr2,tr1} \\geq x_{tr1,e1}+x_{tr2,e2}-1, \\;\\leq 1; \\quad t^{front\\_arr}_{tr1,source} + M(1-reverse\\_order_{tr1,tr2}) \\geq t^{rear\\_dep}_{tr2,source}",
+          "expression_plain": "two trains traversing the same physical track in opposite directions must be temporally separated so they never meet",
+          "source_files": ["src/solver/mip-based/GenPOMovingBlockMIPSolver.cpp:1788-1842"]
+        },
+        {
+          "name": "vertex_headway_constraints",
+          "indexed_over": "edge e, train pair (tr1,tr2) sharing e",
+          "expression_latex": "t^{front\\_arr}_{tr1,source} + (M + hw^{s1}_{max})(1 - order_{tr1,tr2,e}) \\geq t^{rear\\_dep}_{tr2,source} + hw^{s1} \\quad(\\text{and analog at target vertex / both orders})",
+          "expression_plain": "enforce any line headway specified at shared vertices (most importantly exit nodes), depending on the train order, at both endpoints of the shared edge",
+          "source_files": ["src/solver/mip-based/GenPOMovingBlockMIPSolver.cpp:1844-1910"]
+        }
+      ],
+      "instances": [
+        {"name": "example-networks (same 10 networks as the VSS model)", "path": "test/example-networks/", "format": "directory per instance (network/, routes/, timetable/); GeneralPerformanceOptimizationInstance supports general timetables with time windows", "size": "564 KB total", "license": "MIT"}
+      ],
+      "notes": "Constraints are assembled in create_constraints (GenPOMovingBlockMIPSolver.cpp:420-447). When solver_strategy.use_lazy_constraints is true (default), basic_order, vertex_headway, reverse_edge and headway/simplified_headway constraints are NOT added up front; instead they are generated on demand inside LazyCallback (GenPOMovingBlockMIPSolver_Lazy.cpp), with several selection strategies (OnlyViolated/OnlyFirstFound/AllChecked, OnlyAdjacent/All trains). The big-M for timing constraints is the per-train upper exit time tmax_n_tr (ub_timing_variable). Velocity-extension sets and kinematic feasibility (possible_by_eom, min/max_travel_time*) are computed in EOMHelper and fill_velocity_extensions (MinOneStep vs None strategy). A separate A*-based solver (GenPOMovingBlockAStarSolver) exists for the same problem but is NOT a MILP and is excluded. The detailed algebraic form of the headway and rear-departure kinematic coefficient terms is implemented numerically (helper functions) rather than as closed-form symbols; those coefficient expressions are summarized in expression_plain rather than transcribed term-by-term."
+    }
+  ],
+  "extraction_confidence": "medium-high",
+  "extraction_notes": "Two distinct Gurobi MILP formulations were found and extracted. (1) VSS Generation Timetable solver: class VSSGenTimetableSolver across VSSGenTimetableSolver_general.cpp (variables/objective/general+non-discretized constraints), VSSGenTimetableSolver_fixedRoutes.cpp, and VSSGenTimetableSolver_freeRoutes.cpp; header VSSGenTimetableSolver.hpp. (2) GenPO Moving-Block routing solver: class GenPOMovingBlockMIPSolver in GenPOMovingBlockMIPSolver.cpp (+ _Lazy.cpp lazy callbacks). Counts: VSS model ~25 named decision-variable families and 21 constraint groups extracted (each group corresponds to one create_*_constraints method and may expand to many indexed Gurobi rows); GenPO model 11 variable families and 14 constraint groups. The repository has NO single README/paper section transcribing the equations, so symbols were invented from code identifiers and recorded in source_symbol; mathematical meaning was inferred from inline comments and variable names. paper_reference at the top level is null because the repo spans multiple papers ([3]-[6]) with no single canonical DOI; per-model DOIs are given in each model's description (VSS=ATMOS 2023 doi:10.4230/OASIcs.ATMOS.2023.6; GenPO=FedCSIS 2024 doi:10.15439/2024F3041 / arXiv:2405.18977). GAPS / things set to null or summarized rather than transcribed: (a) the exact big-M-laden kinematic coefficients in the VSS impossibility cuts and the GenPO headway/rear-departure constraints are computed by numeric helper functions (EOMHelper: min/max_travel_time, min_time_from_rear_to_ma_point, possible_by_eom) and are described in plain English rather than as closed-form LaTeX, to avoid fabricating formulas; (b) the brakelen constraint and Inferred-model PWL/product linearizations make the VSS model an MIQCP/MINLP-with-PWL under some settings, not a pure MILP; (c) the free-routes variant constraints (VSSGenTimetableSolver_freeRoutes.cpp) are summarized at the group level rather than enumerated row-by-row given their volume; (d) lazy-constraint generation logic in GenPOMovingBlockMIPSolver_Lazy.cpp mirrors the up-front headway/order/reverse constraints and was not separately enumerated. All source_files line ranges were read directly during extraction. Nothing was invented beyond mapping code identifiers to math symbols."
+}

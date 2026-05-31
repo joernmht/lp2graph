@@ -1,0 +1,136 @@
+{
+  "repo": "mesenrj/transit-network-optimization",
+  "url": "https://github.com/mesenrj/transit-network-optimization",
+  "license": "MIT",
+  "language": "FICO Xpress Mosel (.mos); Python (Jupyter) for instance data generation",
+  "solver": "Xpress",
+  "area": "transport-operations",
+  "paper_reference": null,
+  "models": [
+    {
+      "model_id": "transit-line-config-passenger-assignment-milp",
+      "source_files": [
+        "xpress/transit-network-optimization.mos:201-211",
+        "xpress/transit-network-optimization.mos:363-450"
+      ],
+      "description": "Simultaneous optimization of transit line configuration and passenger line assignment. Selects a subset of routes from a precomputed candidate set and assigns each origin-destination demand to a route and a path, minimizing a weighted combination of total selected-route length, total transfers, and total travel distance. Implementation of Guan, Yang & Wirasinghe (2006). The Mosel model is the MILP; the Python notebooks/scripts (hrga.py route generation, tndp.py graph/path preprocessing) only produce the instance data files read by the model.",
+      "sets_indices": [
+        {"name": "N", "meaning": "set of nodes (stations) in the graph, indexed 1.._N", "source_symbol": "N = 1.._N"},
+        {"name": "E", "meaning": "set of edges (links) in the graph, indexed 1.._E", "source_symbol": "E = 1.._E"},
+        {"name": "R", "meaning": "set of candidate transit routes (lines), indexed 1.._R", "source_symbol": "R = 1.._R"},
+        {"name": "W", "meaning": "set of origin-destination pairs with demand > 0, indexed 1.._W", "source_symbol": "W = 1.._W"},
+        {"name": "K", "meaning": "set of k-shortest path options per OD pair, indexed 1.._K", "source_symbol": "K = 1.._K"},
+        {"name": "YF", "meaning": "index set of fixed (route,OD) combinations forced to zero in preprocessing (route contains neither origin nor destination of the pair)", "source_symbol": "YF = 1.._fy"},
+        {"name": "Rd", "meaning": "flattened index set of nonzero entries of the path-edge incidence (small delta) matrix", "source_symbol": "Rd = 1.._rd"},
+        {"name": "RD", "meaning": "flattened index set of nonzero entries of the route-edge incidence (big DELTA) matrix", "source_symbol": "RD = 1.._rD"}
+      ],
+      "parameters": [
+        {"name": "alpha", "meaning": "objective weight on total extension (length) of chosen lines", "domain": "[0,1]", "source_symbol": "alpha", "value": "default 0.7 in source; README sample uses 0.5"},
+        {"name": "beta", "meaning": "objective weight on number of transfers", "domain": "[0,1]", "source_symbol": "beta", "value": "default 0.2 in source; README sample uses 0.3"},
+        {"name": "gamma", "meaning": "objective weight on travel time/distance, set to 1-(alpha+beta)", "domain": "[0,1]", "source_symbol": "gamma", "value": "1 - (alpha + beta)"},
+        {"name": "a_bal", "meaning": "balancing divisor placing the route-length objective term in a comparable order of magnitude", "domain": "R_>0", "source_symbol": "a_bal", "value": "1 (default)"},
+        {"name": "b_bal", "meaning": "balancing divisor for the transfers objective term", "domain": "R_>0", "source_symbol": "b_bal", "value": "1 (default)"},
+        {"name": "c_bal", "meaning": "balancing divisor for the travel-time objective term", "domain": "R_>0", "source_symbol": "c_bal", "value": "1 (default)"},
+        {"name": "route_length_r", "meaning": "length of candidate route r", "domain": "R_>=0", "source_symbol": "route_length(r)"},
+        {"name": "route_frequency_r", "meaning": "frequency of candidate route r (used only in commented-out capacity constraint)", "domain": "R_>=0", "source_symbol": "route_frequency(r)"},
+        {"name": "demand_w", "meaning": "passenger demand for OD pair w", "domain": "Z_>=0", "source_symbol": "demand(w)"},
+        {"name": "path_length_wk", "meaning": "length of the k-th path for OD pair w", "domain": "R_>=0", "source_symbol": "path_length(w, k)"},
+        {"name": "edge_length_e", "meaning": "length of edge e", "domain": "R_>=0", "source_symbol": "edge_length(e)"},
+        {"name": "edge_time_e", "meaning": "travel time on edge e", "domain": "R_>=0", "source_symbol": "edge_time(e)"},
+        {"name": "edge_capacity_e", "meaning": "capacity of edge e (used only in commented-out capacity constraint)", "domain": "Z_>=0", "source_symbol": "edge_capacity(e)"},
+        {"name": "DELTA", "meaning": "route-edge incidence (1 if edge belongs to route), stored sparsely via flattened DELTA with per-edge start/finish offsets SD(e)..FD(e)", "domain": "{0,1} (flattened)", "source_symbol": "DELTA, SD, FD"},
+        {"name": "delta", "meaning": "path-edge incidence (1 if edge belongs to a path), stored sparsely via flattened delta with per-(w,k) start/finish offsets Sd(w,k)..Fd(w,k)", "domain": "{0,1} (flattened)", "source_symbol": "delta, Sd, Fd"},
+        {"name": "yf_OD, yf_R", "meaning": "paired index arrays giving the (OD pair, route) combinations whose y variable is fixed to 0 by preprocessing", "domain": "indices", "source_symbol": "yf_OD(yf), yf_R(yf)"},
+        {"name": "MAX_ROUTES", "meaning": "maximum number of routes any passenger (OD pair) may use; one transfer allowed (Rio fare policy)", "domain": "Z_>=1", "source_symbol": "MAX_ROUTES", "value": "2"},
+        {"name": "MIN_LENGTH", "meaning": "minimum allowed length of a transit line (only used in commented-out constraint)", "domain": "R_>=0", "source_symbol": "MIN_LENGTH", "value": "0"},
+        {"name": "MAX_LENGTH", "meaning": "maximum allowed length of a transit line (only used in commented-out constraint)", "domain": "R_>=0", "source_symbol": "MAX_LENGTH", "value": "100000000000"}
+      ],
+      "decision_variables": [
+        {"name": "x_r", "type": "binary", "meaning": "1 if candidate route r is chosen for the transit plan", "source_symbol": "x(r)"},
+        {"name": "y_wr", "type": "binary", "meaning": "1 if the demand of OD pair w uses (is assigned to) route r", "source_symbol": "y(w, r)"},
+        {"name": "z_wk", "type": "binary", "meaning": "1 if the demand of OD pair w uses path option k", "source_symbol": "z(w, k)"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min\\; \\alpha \\frac{\\sum_{r \\in R} l_r x_r}{a_{bal}} + \\beta \\frac{\\sum_{w \\in W}\\sum_{r \\in R} d_w y_{wr}}{b_{bal}} + \\gamma \\frac{\\sum_{w \\in W}\\sum_{k \\in K} d_w p_{wk} z_{wk}}{c_{bal}}",
+        "expression_plain": "minimize a weighted, magnitude-balanced sum of: (1) total length of selected routes, (2) total transfers (demand-weighted route assignments), and (3) total travel distance (demand-weighted path lengths)",
+        "source_files": ["xpress/transit-network-optimization.mos:369-379", "xpress/transit-network-optimization.mos:489"]
+      },
+      "constraints": [
+        {
+          "name": "coupling_path_edges_covered_by_routes",
+          "indexed_over": "w in W, k in K, e in Sd(w,k)..Fd(w,k)",
+          "expression_latex": "\\sum_{r:\\, e \\in r} y_{wr} \\geq z_{wk}",
+          "expression_plain": "every edge on a path chosen by an OD pair must be covered by at least one route that pair is assigned to; r ranges over routes incident to edge delta(e) via the sparse DELTA(SD..FD) index lists",
+          "source_files": ["xpress/transit-network-optimization.mos:395-399"]
+        },
+        {
+          "name": "no_empty_path",
+          "indexed_over": "w in W, k in K",
+          "expression_latex": "p_{wk} \\geq z_{wk}",
+          "expression_plain": "a path with zero length (nonexistent k-th path for the pair) cannot be chosen; path_length(w,k) acts as a 0/positive upper bound on z(w,k)",
+          "source_files": ["xpress/transit-network-optimization.mos:402-404"]
+        },
+        {
+          "name": "coupling_assignment_requires_selected_route",
+          "indexed_over": "r in R, w in W",
+          "expression_latex": "x_r - y_{wr} \\geq 0",
+          "expression_plain": "a passenger (OD pair) may only be assigned to a route that is selected in the plan",
+          "source_files": ["xpress/transit-network-optimization.mos:407-409"]
+        },
+        {
+          "name": "assignment_one_path_per_od",
+          "indexed_over": "w in W",
+          "expression_latex": "\\sum_{k \\in K} z_{wk} = 1",
+          "expression_plain": "each OD pair chooses exactly one path",
+          "source_files": ["xpress/transit-network-optimization.mos:412-414"]
+        },
+        {
+          "name": "max_routes_per_passenger",
+          "indexed_over": "w in W",
+          "expression_latex": "\\sum_{r \\in R} y_{wr} \\leq MAX\\_ROUTES",
+          "expression_plain": "each OD pair uses at most MAX_ROUTES routes (i.e. at most MAX_ROUTES-1 transfers)",
+          "source_files": ["xpress/transit-network-optimization.mos:428-430"]
+        },
+        {
+          "name": "domain_x_binary",
+          "indexed_over": "r in R",
+          "expression_latex": "x_r \\in \\{0,1\\}",
+          "expression_plain": "route selection variables are binary",
+          "source_files": ["xpress/transit-network-optimization.mos:433-435"]
+        },
+        {
+          "name": "domain_y_binary",
+          "indexed_over": "w in W, r in R",
+          "expression_latex": "y_{wr} \\in \\{0,1\\}",
+          "expression_plain": "route assignment variables are binary",
+          "source_files": ["xpress/transit-network-optimization.mos:437-438"]
+        },
+        {
+          "name": "domain_z_binary",
+          "indexed_over": "w in W, k in K",
+          "expression_latex": "z_{wk} \\in \\{0,1\\}",
+          "expression_plain": "path assignment variables are binary",
+          "source_files": ["xpress/transit-network-optimization.mos:437-440"]
+        },
+        {
+          "name": "fix_infeasible_route_assignments",
+          "indexed_over": "yf in YF (precomputed (OD,route) pairs where route contains neither origin nor destination)",
+          "expression_latex": "y_{w r} = 0 \\quad \\forall (w,r) \\in YF",
+          "expression_plain": "preprocessing fixes to zero the assignment of an OD pair to any route that contains neither its origin nor its destination (exploits the single-transfer fare policy; reduces y variables by up to ~72%)",
+          "source_files": ["xpress/transit-network-optimization.mos:448-450"]
+        }
+      ],
+      "instances": [
+        {"name": "instance_01 (Guan et al. 2006 toy example)", "path": "xpress/instance_01/data/", "format": "txt (Mosel readable arrays)", "size": "N=9 nodes, E=8 edges, W=72 OD pairs, R=36 routes, K=10 paths", "license": "MIT"},
+        {"name": "instance_02 (Guan et al. 2006 case study; random demand)", "path": "xpress/instance_02/data/", "format": "txt", "size": "N=9 nodes, E=10 edges, W=66 OD pairs, R=110 routes, K=10 paths", "license": "MIT"},
+        {"name": "instance_03 (Mandl's network, Mandl 1979)", "path": "xpress/instance_03/data/", "format": "txt", "size": "N=15 nodes, E=21 edges, W=191 OD pairs, R=775 routes, K=10 paths", "license": "MIT"},
+        {"name": "instance_04 (Rio de Janeiro administrative regions)", "path": "xpress/instance_04/data/", "format": "txt", "size": "N=32 nodes, E=73 edges, W=794 OD pairs, R=1040 routes, K=10 paths", "license": "MIT"},
+        {"name": "instance_05 (Rio de Janeiro neighborhoods)", "path": "xpress/instance_05/data/", "format": "txt", "size": "N=162 nodes, E=429 edges, W=5942 OD pairs, R=1952 routes, K=10 paths; ~80MB on disk", "license": "MIT"}
+      ],
+      "notes": "Three constraint blocks are present in the source but commented out and NOT part of the active model: (1) covering - each link covered by >=1 line (mos:390-392); (2) knapsack segment capacity - sum of route frequencies on an edge <= edge_capacity (mos:417-419); (3) knapsack min/max line length (mos:422-425). These were transcribed into parameters (route_frequency, edge_capacity, MIN_LENGTH, MAX_LENGTH) only because they are declared, but excluded from constraints[] because they are disabled. The DELTA/delta incidence matrices are passed in flattened sparse form with per-row start/finish offset arrays (SD/FD, Sd/Fd) rather than as dense 2D matrices, an explicit preprocessing optimization described in the README. A primal-heuristic cutoff (XPRS_MIPABSCUTOFF) line is also commented out (mos:454)."
+    }
+  ],
+  "extraction_confidence": "high",
+  "extraction_notes": "The MILP is implemented in FICO Xpress Mosel in xpress/transit-network-optimization.mos (NOT Python/`import xpress`; the task's Python-Xpress dialect hint does not match this repo). The README states it implements Guan et al. (2006), 'Simultaneous optimization of transit line configuration and passenger line assignment'. The Python files (tndp.py, hrga.py, utils.py, plot.py, export.py) and the five Jupyter notebooks (instance_0{1..5}_generator.ipynb) only build the road/transit graphs, generate candidate routes (HRGA heuristic), compute k-shortest paths, and write the instance .txt data files consumed by the Mosel model; none of them define a MILP, so there is exactly one models[] entry. paper_reference is null: only the textual citation 'Guan et al. (2006)' is given in the README (line 3) and model header (mos:78); no DOI is present in the repo, so none was fabricated. Variable/constraint symbols (x, y, z, alpha/beta/gamma) are taken verbatim from the Mosel code; LaTeX math is a faithful transcription of the Mosel arithmetic, not copied from the paper (paper not in repo). Instance sizes read directly from xpress/instance_0*/data/array_sizes.txt (order: _N _E _W _R _K _rd _rD _fy)."
+}

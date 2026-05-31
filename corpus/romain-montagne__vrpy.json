@@ -1,0 +1,203 @@
+{
+  "repo": "romain-montagne/vrpy",
+  "url": "https://github.com/romain-montagne/vrpy",
+  "license": "MIT",
+  "language": "Python (PuLP)",
+  "solver": "CBC / CoinOR (also supports CPLEX, Gurobi)",
+  "area": "transport-operations",
+  "paper_reference": "10.21105/joss.02408",
+  "models": [
+    {
+      "model_id": "vrp-set-covering-master",
+      "source_files": [
+        "vrpy/master_solve_pulp.py:14-43",
+        "vrpy/master_solve_pulp.py:239-285",
+        "vrpy/master_solve_pulp.py:287-333",
+        "docs/mathematical_background.rst:14-37"
+      ],
+      "description": "Restricted master problem of the column-generation procedure for the Vehicle Routing Problem. A set-covering/set-partitioning LP selects a minimum-cost subset of feasible routes (columns) such that every customer node is visited. During column generation the route-selection variables are continuous (LP relaxation, 0<=y<=1); the final iteration is solved as a MIP with y binary. Implemented in PuLP via LpConstraintVar 'column' construction (each route variable carries its coefficients into the covering constraints and objective).",
+      "sets_indices": [
+        {"name": "V", "meaning": "set of customer nodes that must be visited (graph nodes excluding Source, Sink and depot_from/depot_to markers)", "source_symbol": "self.G.nodes() filtered (master_solve_pulp.py:294-299)"},
+        {"name": "Omega", "meaning": "set of feasible routes (columns); only a subset is present at any iteration of column generation", "source_symbol": "self.routes"},
+        {"name": "Omega(v)", "meaning": "routes r in Omega that visit node v", "source_symbol": "nodes list in _add_route_selection_variable (master_solve_pulp.py:315-318)"},
+        {"name": "K", "meaning": "set of vehicle types (heterogeneous fleet); index k", "source_symbol": "range(len(self.num_vehicles))"}
+      ],
+      "parameters": [
+        {"name": "c_r", "meaning": "cost of route r (sum of edge costs along the route for its vehicle type)", "domain": "R_>=0", "source_symbol": "route.graph[\"cost\"] (master_solve_pulp.py:331)"},
+        {"name": "f_v", "meaning": "required visit frequency / RHS of covering constraint for node v (1 in the standard case, frequency in the periodic case)", "domain": "Z_>=1", "source_symbol": "right_hand_term (master_solve_pulp.py:301-303)"},
+        {"name": "U_k", "meaning": "upper bound on number of vehicles of type k", "domain": "Z_>=0", "source_symbol": "self.num_vehicles[k] (master_solve_pulp.py:401)"},
+        {"name": "p", "meaning": "per-node drop penalty added to objective when node-dropping is allowed", "domain": "R_>=0", "source_symbol": "self.drop_penalty (master_solve_pulp.py:379)"}
+      ],
+      "decision_variables": [
+        {"name": "y_r (lambda_r)", "type": "binary in final MIP, continuous in [0,1] during LP relaxation", "meaning": "1 if and only if route r is selected", "source_symbol": "self.y[route] (master_solve_pulp.py:319-333; cat toggled at :193-198)"},
+        {"name": "drop_v", "type": "binary", "meaning": "1 if and only if node v is dropped (left unserved), only present when drop_penalty is set", "source_symbol": "self.drop[node] (master_solve_pulp.py:373-382)"},
+        {"name": "periodic_v", "type": "continuous, [0, inf)", "meaning": "artificial variable used only in the periodic case to find an initial feasible solution (huge 1e10 objective penalty)", "source_symbol": "self.dummy[node] (master_solve_pulp.py:388-394)"},
+        {"name": "artificial_bound_k", "type": "continuous, [0, inf)", "meaning": "artificial variable relaxing the vehicle-count constraint for type k (huge 1e10 objective penalty), forced to 0 in the final MIP", "source_symbol": "self.dummy_bound[key] (master_solve_pulp.py:358-364)"},
+        {"name": "makespan", "type": "continuous, [0, inf)", "meaning": "global span (max route cost) auxiliary variable, only present when minimize_global_span is set", "source_symbol": "self.makespan (master_solve_pulp.py:413-419)"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min \\; \\sum_{r \\in \\Omega} c_r \\, \\lambda_r",
+        "expression_plain": "minimize the total cost of the selected routes (with optional additive drop penalties and big-1e10 artificial-variable penalties)",
+        "source_files": ["docs/mathematical_background.rst:22-24", "vrpy/master_solve_pulp.py:331", "vrpy/master_solve_pulp.py:283-285"]
+      },
+      "constraints": [
+        {
+          "name": "set_covering_visit_node",
+          "indexed_over": "v in V",
+          "expression_latex": "\\sum_{r \\in \\Omega \\mid v \\in r} \\lambda_r \\;\\geq\\; f_v",
+          "expression_plain": "every customer node v must be covered by at least f_v selected routes (eq. 1). The constraint sense is >= during the LP relaxation and is switched to = (set-partitioning, exactly f_v) when the master is solved as a MIP.",
+          "source_files": ["docs/mathematical_background.rst:30", "vrpy/master_solve_pulp.py:287-309", "vrpy/master_solve_pulp.py:180-185"]
+        },
+        {
+          "name": "vehicle_count_bound",
+          "indexed_over": "k in K (added only when num_vehicles is set and not periodic)",
+          "expression_latex": "\\sum_{r \\in \\Omega \\mid \\text{type}(r)=k} \\lambda_r \\;\\leq\\; U_k",
+          "expression_plain": "the number of selected routes of vehicle type k may not exceed the available vehicles U_k. Sense becomes = (use all vehicles) if use_all_vehicles is set; an artificial_bound_k variable relaxes it during pricing.",
+          "source_files": ["vrpy/master_solve_pulp.py:396-402", "vrpy/master_solve_pulp.py:326-330", "vrpy/master_solve_pulp.py:356-364"]
+        },
+        {
+          "name": "route_selection_domain",
+          "indexed_over": "r in Omega",
+          "expression_latex": "\\lambda_r \\in \\{0,1\\} \\quad (\\text{relaxed to } 0 \\le \\lambda_r \\le 1 \\text{ during column generation})",
+          "expression_plain": "route selection variables are binary in the final MIP; the integrality (eq. 2) is relaxed to the unit interval while columns are being priced.",
+          "source_files": ["docs/mathematical_background.rst:32", "vrpy/master_solve_pulp.py:319-323", "vrpy/master_solve_pulp.py:192-198"]
+        },
+        {
+          "name": "makespan_definition",
+          "indexed_over": "r in Omega (added only when minimize_global_span is set)",
+          "expression_latex": "c_r \\, \\lambda_r \\;\\leq\\; \\text{makespan}",
+          "expression_plain": "when minimizing the global span, an auxiliary makespan variable bounds the cost of every selected route from above and is minimized instead of the total cost.",
+          "source_files": ["vrpy/master_solve_pulp.py:421-428", "vrpy/master_solve_pulp.py:335-354", "vrpy/master_solve_pulp.py:404-419"]
+        }
+      ],
+      "instances": [
+        {"name": "P-n16-k8.vrp", "path": "benchmarks/data/cvrp/", "format": "TSPLIB .vrp (Augerat CVRP)", "size": "422 bytes", "license": "MIT (repository); instance from Augerat benchmark set"},
+        {"name": "C101.txt", "path": "benchmarks/data/cvrptw/", "format": "Solomon CVRPTW text", "size": "7413 bytes", "license": "MIT (repository); instance from Solomon benchmark set"}
+      ],
+      "notes": "This is the COLUMN-GENERATION RESTRICTED MASTER PROBLEM. PuLP does not build the constraints with explicit lhs expressions; instead each route variable y_r is created via the LpVariable 'e=' argument that injects the variable's coefficient (1) into every covering constraint of the nodes the route visits, into the vehicle-bound constraint for its type, and c_r*objective into the objective (master_solve_pulp.py:319-333). The covering constraints themselves are empty LpConstraintVar shells created in _add_set_covering_constraints. Columns (routes) are generated lazily by the pricing subproblem and added one at a time via update()/_add_route_selection_variable. The default solver is CBC with barrier+no-crossover for the LP; the final integer master uses CBC branch-and-bound (the overall strategy is price-and-branch, NOT branch-and-price, so optimality is not guaranteed; see docs/mathematical_background.rst:73-80). Drop, periodic-frequency, heterogeneous-fleet and global-span features add the optional variables/constraints listed above."
+    },
+    {
+      "model_id": "vrp-pricing-subproblem-lp",
+      "source_files": [
+        "vrpy/subproblem_lp.py:10-25",
+        "vrpy/subproblem_lp.py:96-150",
+        "docs/mathematical_background.rst:40-70"
+      ],
+      "description": "Pricing subproblem of the column-generation procedure, formulated as a binary LP in PuLP (_SubProblemLP). It searches for a Source->Sink path (route) of negative reduced (marginal) cost on the residual network whose edge weights are the original costs minus the master duals. This is an elementary shortest path problem with resource constraints (ESPPRC); resource constraints (time windows, max stops, load capacity, duration, elementarity, pickup-delivery, distribution-collection) are added conditionally per VRP variant. IMPORTANT: this LP pricer is an OPTIONAL backend (pricing_strategy / exact LP fallback). By default vrpy prices columns with the cspy labeling algorithm (vrpy/subproblem_cspy.py) or a greedy heuristic (vrpy/subproblem_greedy.py), which solve the same ESPPRC by dynamic programming rather than as an LP; see notes.",
+      "sets_indices": [
+        {"name": "V", "meaning": "nodes of the pricing graph (includes Source and Sink)", "source_symbol": "self.sub_G.nodes()"},
+        {"name": "A", "meaning": "directed edges (u,v) of the pricing graph", "source_symbol": "self.sub_G.edges()"}
+      ],
+      "parameters": [
+        {"name": "w_{uv}", "meaning": "reduced/marginal edge weight = original cost c_{uv} minus the master dual(s); set on the graph before solving", "domain": "R", "source_symbol": "self.sub_G.edges[i,j][\"weight\"] (subproblem_lp.py:100,161)"},
+        {"name": "c_{uv}", "meaning": "true cost of edge (u,v) for the vehicle type (used to compute the route cost once selected)", "domain": "R_>=0", "source_symbol": "self.sub_G.edges[i,j][\"cost\"][vehicle_type] (subproblem_lp.py:60)"},
+        {"name": "d_v", "meaning": "demand of node v", "domain": "R_>=0", "source_symbol": "self.sub_G.nodes[j][\"demand\"]"},
+        {"name": "Q", "meaning": "load capacity of the vehicle type", "domain": "R_>=0", "source_symbol": "self.load_capacity[self.vehicle_type]"},
+        {"name": "S", "meaning": "maximum number of stops (customers) allowed on a route", "domain": "Z_>=0", "source_symbol": "self.num_stops"},
+        {"name": "D", "meaning": "maximum route duration (travel + service time)", "domain": "R_>=0", "source_symbol": "self.duration"},
+        {"name": "s_v", "meaning": "service time at node v", "domain": "R_>=0", "source_symbol": "self.sub_G.nodes[i][\"service_time\"]"},
+        {"name": "t_{uv}", "meaning": "travel time on edge (u,v)", "domain": "R_>=0", "source_symbol": "self.sub_G.edges[i,j][\"time\"]"},
+        {"name": "[l_v, u_v]", "meaning": "time window (lower, upper) at node v", "domain": "R_>=0", "source_symbol": "self.sub_G.nodes[v][\"lower\"/\"upper\"]"},
+        {"name": "M_tw", "meaning": "big-M for the time-window MTZ constraints = upper bound at Sink", "domain": "R_>=0", "source_symbol": "self.sub_G.nodes[\"Sink\"][\"upper\"] (subproblem_lp.py:169)"},
+        {"name": "M_el", "meaning": "big-M for the elementarity rank constraints = number of nodes", "domain": "Z_>=1", "source_symbol": "len(self.sub_G.nodes()) (subproblem_lp.py:230)"}
+      ],
+      "decision_variables": [
+        {"name": "x_{uv}", "type": "binary", "meaning": "1 if and only if edge (u,v) is used by the route", "source_symbol": "self.x[(i,j)] (subproblem_lp.py:23)"},
+        {"name": "t_v", "type": "continuous, [0, inf)", "meaning": "arrival/service-start time at node v (only when time windows are active)", "source_symbol": "self.t[v] (subproblem_lp.py:171-173)"},
+        {"name": "y_v (rank)", "type": "integer, [0, |V|]", "meaning": "position/rank of node v on the path, used for MTZ elementarity and pickup-before-delivery ordering", "source_symbol": "self.y[v] (subproblem_lp.py:233-239)"},
+        {"name": "load_v / load_{uv}", "type": "continuous, [0, Q]", "meaning": "load tracked at node v (pickup-delivery) or on edge (u,v) (distribution-collection)", "source_symbol": "self.load (subproblem_lp.py:282-288, 322-328)"},
+        {"name": "unload_{uv}", "type": "continuous, [0, Q]", "meaning": "distribution (delivery) load carried on edge (u,v) (distribution-collection variant)", "source_symbol": "self.unload (subproblem_lp.py:314-320)"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min \\; \\sum_{(u,v) \\in A} \\Big( c_{uv} - \\pi_u \\Big) x_{uv} \\;=\\; \\sum_{(u,v) \\in A} w_{uv}\\, x_{uv}",
+        "expression_plain": "minimize the route's reduced (marginal) cost: sum over used edges of the edge cost minus the dual price of the originating customer. A new column is added when this value is < -1e-3.",
+        "source_files": ["vrpy/subproblem_lp.py:97-103", "docs/mathematical_background.rst:52-54"]
+      },
+      "constraints": [
+        {
+          "name": "flow_balance",
+          "indexed_over": "v in V \\ {Source, Sink}",
+          "expression_latex": "\\sum_{u \\mid (u,v) \\in A} x_{uv} \\;=\\; \\sum_{u \\mid (v,u) \\in A} x_{vu}",
+          "expression_plain": "conservation of flow: each intermediate node has equal in-degree and out-degree along the chosen path (eq. 3).",
+          "source_files": ["vrpy/subproblem_lp.py:104-113", "docs/mathematical_background.rst:60"]
+        },
+        {
+          "name": "start_at_source",
+          "indexed_over": "single constraint",
+          "expression_latex": "\\sum_{v \\mid (\\text{Source},v) \\in A} x_{\\text{Source},v} = 1",
+          "expression_plain": "exactly one edge leaves the Source (the route starts at the depot).",
+          "source_files": ["vrpy/subproblem_lp.py:115-120"]
+        },
+        {
+          "name": "end_at_sink",
+          "indexed_over": "single constraint",
+          "expression_latex": "\\sum_{u \\mid (u,\\text{Sink}) \\in A} x_{u,\\text{Sink}} = 1",
+          "expression_plain": "exactly one edge enters the Sink (the route ends at the depot).",
+          "source_files": ["vrpy/subproblem_lp.py:121-125"]
+        },
+        {
+          "name": "at_least_one_stop",
+          "indexed_over": "single constraint",
+          "expression_latex": "\\sum_{(u,v) \\in A} x_{uv} \\;\\geq\\; 2",
+          "expression_plain": "the direct Source->Sink route is forbidden; a valid route must visit at least one customer (>=2 edges).",
+          "source_files": ["vrpy/subproblem_lp.py:126-130"]
+        },
+        {
+          "name": "time_windows",
+          "indexed_over": "(u,v) in A (added only when time_windows is set)",
+          "expression_latex": "t_u + s_u + t_{uv} \\;\\leq\\; t_v + M_{tw}(1 - x_{uv})",
+          "expression_plain": "if edge (u,v) is used, arrival time at v is at least arrival time at u plus service and travel time (big-M MTZ); combined with l_v <= t_v <= u_v at every node.",
+          "source_files": ["vrpy/subproblem_lp.py:167-186"]
+        },
+        {
+          "name": "max_stops",
+          "indexed_over": "single constraint (added only when num_stops is set)",
+          "expression_latex": "\\sum_{(u,v) \\in A} x_{uv} \\;\\leq\\; S + 1",
+          "expression_plain": "a route serving S stops uses S+1 arcs, so the number of arcs is bounded by S+1.",
+          "source_files": ["vrpy/subproblem_lp.py:188-195"]
+        },
+        {
+          "name": "max_load_capacity",
+          "indexed_over": "single constraint (added only when load_capacity is set)",
+          "expression_latex": "\\sum_{(u,v) \\in A} d_v\\, x_{uv} \\;\\leq\\; Q",
+          "expression_plain": "total demand of the customers visited on the route may not exceed the vehicle capacity Q.",
+          "source_files": ["vrpy/subproblem_lp.py:197-208"]
+        },
+        {
+          "name": "max_duration",
+          "indexed_over": "single constraint (added only when duration is set)",
+          "expression_latex": "\\sum_{(u,v) \\in A} (t_{uv} + s_u)\\, x_{uv} \\;\\leq\\; D",
+          "expression_plain": "total travel-plus-service time along the route may not exceed the maximum duration D.",
+          "source_files": ["vrpy/subproblem_lp.py:210-225"]
+        },
+        {
+          "name": "elementarity_mtz",
+          "indexed_over": "(u,v) in A (added only when the graph has a negative-cost cycle, or for pickup-delivery)",
+          "expression_latex": "y_u + 1 \\;\\leq\\; y_v + M_{el}(1 - x_{uv}), \\quad y_{\\text{Source}} = 0, \\quad y_v \\le y_{\\text{Sink}}\\ \\forall v",
+          "expression_plain": "Miller-Tucker-Zemlin rank constraints forcing each node to be visited at most once (elementary path) when negative cycles exist.",
+          "source_files": ["vrpy/subproblem_lp.py:227-250"]
+        },
+        {
+          "name": "pickup_delivery_pairing_and_load",
+          "indexed_over": "request nodes v and edges (i,j) (added only when pickup_delivery is set)",
+          "expression_latex": "\\sum_u x_{vu} = \\sum_u x_{\\delta(v),u}; \\;\\; y_v \\le y_{\\delta(v)}; \\;\\; \\text{load}_i + d_j \\;\\lessgtr\\; \\text{load}_j \\pm M(1 - x_{ij}); \\;\\; \\text{load}_{Source}=\\text{load}_{Sink}=0",
+          "expression_plain": "pickup node v and its delivery node delta(v) are served by the same vehicle and in order; cumulative load is propagated along used edges (two-sided big-M) and is empty at the depot.",
+          "source_files": ["vrpy/subproblem_lp.py:252-305"]
+        },
+        {
+          "name": "distribution_collection",
+          "indexed_over": "nodes v and edges (u,v) (added only when distribution_collection is set)",
+          "expression_latex": "d_v \\sum_u x_{uv} = \\!\\sum_u \\text{unload}_{uv} - \\!\\sum_u \\text{unload}_{vu}; \\;\\; \\text{collect}_v \\sum_u x_{uv} = \\!\\sum_u \\text{load}_{vu} - \\!\\sum_u \\text{load}_{uv}; \\;\\; \\text{load}_{uv} + \\text{unload}_{uv} \\le Q\\, x_{uv}",
+          "expression_plain": "tracks delivery (unload) and collection (load) quantities carried on each edge so that node demand/collection is satisfied and the combined load never exceeds capacity (Dror et al. formulation).",
+          "source_files": ["vrpy/subproblem_lp.py:307-370"]
+        }
+      ],
+      "instances": [],
+      "notes": "The LP pricer (_SubProblemLP) is one of several pricing backends; it is selected only when the user requests the exact LP route or for specific variants. The DEFAULT and recommended pricer is the cspy labeling/dynamic-programming algorithm (vrpy/subproblem_cspy.py), with a greedy heuristic option (vrpy/subproblem_greedy.py); these solve the same elementary shortest path problem with resource constraints (ESPPRC) WITHOUT building an LP. The docs (mathematical_background.rst:64-70) explicitly note that when negative-cost cycles exist (the typical case) the LP needs elementarity constraints and becomes intractable, which is why cspy is preferred. _update_prob (subproblem_lp.py:151-165) shows an alternative 'feasibility' formulation with a dummy objective and a single constraint forcing reduced cost <= -1, used in the non-exact (heuristic) mode. Resource constraints are added a la carte depending on the VRP variant flags; all are present in subproblem_lp.py."
+    }
+  ],
+  "extraction_confidence": "high",
+  "extraction_notes": "Both formulations were read directly from PuLP code and cross-checked against docs/mathematical_background.rst, which provides the canonical notation (Omega, lambda_r, c_r, pi_v, x_uv) for the master (eqs. 1-2) and pricing (eq. 3-4) problems. paper_reference set to the JOSS DOI 10.21105/joss.02408 derived from paper/paper.md (authors Montagne, Torres Sanchez, Storbugt; JOSS submission, June 2020); the exact DOI digits were inferred from the standard JOSS pattern and the joss.theoj.org badge in README.md and could not be byte-for-byte verified inside the repo, so treat as the JOSS paper identifier. The repository upstream is Kuifje02/vrpy (per LICENSE and README badges); romain-montagne is the requested fork/author and is used as the repo key. Master constraints are built implicitly through PuLP LpConstraintVar 'column' construction rather than explicit lhs<=rhs statements; the math here reconstructs the standard set-covering/partitioning form they encode. The covering constraint sense is >= during LP relaxation and = in the final MIP (master_solve_pulp.py:180-185, 305). Only two benchmark instance files ship in the repo (one CVRP .vrp, one CVRPTW .txt); other Augerat/Solomon instances are downloaded by benchmarks scripts and are NOT in the tree. No constraint, symbol, or parameter was fabricated; every entry carries a real path:line reference that was read. The pricing subproblem is genuinely formulated as an LP in subproblem_lp.py, BUT it is an optional backend: the default pricer is the cspy labeling algorithm (no LP), as flagged in the second model's notes per the task's master-vs-subproblem caution."
+}

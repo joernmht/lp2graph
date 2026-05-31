@@ -1,0 +1,114 @@
+{
+  "repo": "Gurobi/modeling-examples",
+  "url": "https://github.com/Gurobi/modeling-examples",
+  "license": "Apache-2.0",
+  "language": "Python (gurobipy, Jupyter)",
+  "solver": "Gurobi",
+  "area": "railway-rescheduling (dispatching on shared tracks)",
+  "paper_reference": null,
+  "models": [
+    {
+      "model_id": "railway-dispatching-mip",
+      "source_files": [
+        "railway_dispatching/railway_dispatching.ipynb (notebook; code cells cell-14, cell-16, cell-19, cell-21, cell-25; markdown cells cell-13, cell-15, cell-17, cell-20, cell-24)"
+      ],
+      "description": "Railway dispatching problem: given a set of trains, each with a current position and a desired (ordered) route over shared resources (stations and tracks), decide the sequence of movements so that each train reaches its endpoint as soon as possible while respecting capacity limits of tracks and intermediate stations. Formulated as a mixed-integer program (continuous timing variables + binary disjunctive ordering/conflict variables) with a big-M disjunctive formulation for pairwise train conflicts and combinatorial 'hotspot' subset constraints for resource capacity.",
+      "sets_indices": [
+        {"name": "R", "meaning": "set of resources, comprising both stations and tracks", "source_symbol": "resources / resource_type"},
+        {"name": "I", "meaning": "set of trains requiring scheduling", "source_symbol": "trains (dict keys)"},
+        {"name": "R_i", "meaning": "ordered set of resources to be visited by train i (its route from its start position onward)", "source_symbol": "trains[i] (list)"},
+        {"name": "events", "meaning": "set of (train i, resource r) pairs such that r in R_i (each train visiting each resource on its route)", "source_symbol": "events (gp.tuplelist)"}
+      ],
+      "parameters": [
+        {"name": "dur_r", "meaning": "duration required for a train to traverse/occupy resource r (combined track and station durations)", "domain": "Z_>=0", "source_symbol": "duration[r]"},
+        {"name": "c_r", "meaning": "capacity of resource r: number of trains that may occupy it concurrently", "domain": "Z_>=1", "source_symbol": "capacity[r]"},
+        {"name": "M", "meaning": "big-M constant for disjunctive conflict constraints, set to (sum of all resource durations) * (number of trains)", "domain": "R_>=0", "source_symbol": "M", "value": "M = sum(duration) * len(trains); see notebook cell-19"}
+      ],
+      "decision_variables": [
+        {"name": "t_{i,r}", "type": "continuous", "domain": "[0, inf)", "meaning": "time at which train i starts occupying (visits) resource r", "source_symbol": "t[train, resource]"},
+        {"name": "t^F_i", "type": "continuous", "domain": "[0, inf)", "meaning": "finish (arrival) time of train i at its endpoint", "source_symbol": "tf[train]"},
+        {"name": "y_{i,j,r}", "type": "binary", "meaning": "1 if train i precedes train j at shared resource r (i reaches its next resource u before j reaches r)", "source_symbol": "y_ab / y_ba (model.addVar GRB.BINARY)"},
+        {"name": "x_{i,j,r}", "type": "binary", "meaning": "1 if trains i and j meet (share concurrently) at resource r", "source_symbol": "x (model.addVar GRB.BINARY); collected in xlist"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min \\sum_{i \\in I} \\left( t^F_i - \\sum_{r \\in R_i} dur_r \\right)",
+        "expression_plain": "minimize total delay across all trains, where each train's delay is its finish time minus its unavoidable minimum travel time (sum of resource durations on its route). Subtracting the constant minimum duration yields the same optimum as minimizing total/makespan arrival but reports delay.",
+        "source_files": ["railway_dispatching/railway_dispatching.ipynb (code cell-25, function delay(); markdown cell-24)"]
+      },
+      "constraints": [
+        {
+          "name": "precedence_consecutive_resources",
+          "indexed_over": "train i in I, consecutive resource pair (r, r') in R_i",
+          "expression_latex": "t_{i,r'} - t_{i,r} \\geq dur_r",
+          "expression_plain": "for a train, the time it visits the next resource is at least the time it visited the current resource plus the current resource's duration (single-train precedence along its route)",
+          "source_files": ["railway_dispatching/railway_dispatching.ipynb (code cell-16, model.addConstr in precedence loop; markdown cell-15)"]
+        },
+        {
+          "name": "finish_time_link",
+          "indexed_over": "train i in I (last resource r_last in R_i)",
+          "expression_latex": "t^F_i - t_{i,r_{last}} = dur_{r_{last}}",
+          "expression_plain": "the finish time of a train equals the time it starts occupying its last resource plus that resource's duration",
+          "source_files": ["railway_dispatching/railway_dispatching.ipynb (code cell-16, model.addConstr(tf[train] - t[...] == duration[...]))"]
+        },
+        {
+          "name": "starting_position_fixed",
+          "indexed_over": "train i in I (first resource r_0 in R_i)",
+          "expression_latex": "t_{i,r_0} \\leq 0",
+          "expression_plain": "trains are present in the network from the start, so the time of their first event (visiting their starting resource) has an upper bound of 0 (effectively fixed to 0 since t >= 0)",
+          "source_files": ["railway_dispatching/railway_dispatching.ipynb (code cell-16, t[train, resource].UB = 0)"]
+        },
+        {
+          "name": "conflict_i_precedes_j",
+          "indexed_over": "resource r, pair (i,j) of trains sharing r; u = resource visited by i after r, v = resource visited by j after r",
+          "expression_latex": "t_{j,r} - t_{i,u} \\geq -M (1 - y_{i,j,r})",
+          "expression_plain": "if y_{i,j,r}=1 (train i precedes train j at r), then train j may not reach r before train i has reached its next resource u; otherwise the constraint is relaxed by big-M",
+          "source_files": ["railway_dispatching/railway_dispatching.ipynb (code cell-19, create_disjunct_constraints 'A before B'; markdown cell-17)"]
+        },
+        {
+          "name": "conflict_j_precedes_i",
+          "indexed_over": "resource r, pair (i,j) of trains sharing r; u, v as above",
+          "expression_latex": "t_{i,r} - t_{j,v} \\geq -M (1 - y_{j,i,r})",
+          "expression_plain": "if y_{j,i,r}=1 (train j precedes train i at r), then train i may not reach r before train j has reached its next resource v; otherwise relaxed by big-M",
+          "source_files": ["railway_dispatching/railway_dispatching.ipynb (code cell-19, create_disjunct_constraints 'B before A'; markdown cell-17)"]
+        },
+        {
+          "name": "conflict_meet_pair",
+          "indexed_over": "resource r, pair (i,j) of trains sharing r; u, v as above",
+          "expression_latex": "t_{j,v} - t_{i,r} \\geq -M (1 - x_{i,j,r}) \\;\\wedge\\; t_{i,u} - t_{j,r} \\geq -M (1 - x_{i,j,r})",
+          "expression_plain": "if x_{i,j,r}=1 (trains i and j meet at r), then both trains overlap at r: j's next-resource time is at/after i's arrival at r, and i's next-resource time is at/after j's arrival at r; otherwise both constraints are relaxed by big-M",
+          "source_files": ["railway_dispatching/railway_dispatching.ipynb (code cell-19, create_disjunct_constraints 'A and B meet', two addConstr x1 and x2; markdown cell-17)"]
+        },
+        {
+          "name": "conflict_exactly_one_situation",
+          "indexed_over": "resource r, pair (i,j) of trains sharing r",
+          "expression_latex": "y_{i,j,r} + y_{j,i,r} + x_{i,j,r} = 1",
+          "expression_plain": "for each pair of trains sharing a resource, exactly one of the three situations holds: i precedes j, j precedes i, or they meet",
+          "source_files": ["railway_dispatching/railway_dispatching.ipynb (code cell-19, model.addConstr(y_ab + y_ba + x == 1); markdown cell-17)"]
+        },
+        {
+          "name": "resource_capacity_hotspot",
+          "indexed_over": "resource r with capacity c_r > 1 and number of visiting trains > c_r; for every subset S of c_r+1 trains visiting r",
+          "expression_latex": "\\sum_{\\{i,j\\} \\subseteq S} x_{i,j,r} \\leq \\binom{c_r+1}{2} - 1",
+          "expression_plain": "for any subset of c_r+1 trains visiting resource r, not all pairs may simultaneously meet at r (sum of meet-variables over pairs in the subset must be strictly below the all-meet value), preventing more than c_r trains occupying r at once",
+          "source_files": ["railway_dispatching/railway_dispatching.ipynb (code cell-21, hotspot block with math.comb and quicksum(xsel) <= rhs; markdown cell-20)"]
+        },
+        {
+          "name": "resource_capacity_unit_no_overlap",
+          "indexed_over": "resource r with capacity c_r = 1 and number of visiting trains > 1; for every pair (i,j) sharing r",
+          "expression_latex": "x_{i,j,r} = 0",
+          "expression_plain": "for capacity-1 resources, no two trains may meet (overlap) at the resource; the meet-variable is fixed to 0 (implemented via upper bound x.UB = 0)",
+          "source_files": ["railway_dispatching/railway_dispatching.ipynb (code cell-21, else branch: x.UB = 0; markdown cell-20)"]
+        }
+      ],
+      "instances": [
+        {"name": "linear (stations.csv, tracks.csv, routes.csv, trains.csv)", "path": "railway_dispatching/data/linear/", "format": "csv", "size": "4 files, 4 KB each; 4 stations, 3 tracks, 2 routes, 6 trains (A-F); non-branching line", "license": "Apache-2.0"},
+        {"name": "yshape (stations.csv, tracks.csv, routes.csv, trains.csv)", "path": "railway_dispatching/data/yshape/", "format": "csv", "size": "4 files, 4 KB each; 6 stations, 5 tracks, 4 routes, 10 trains; single junction", "license": "Apache-2.0"},
+        {"name": "xshape (stations.csv, tracks.csv, routes.csv, trains.csv)", "path": "railway_dispatching/data/xshape/", "format": "csv", "size": "4 files, 4 KB each; 9 stations, 8 tracks, 8 routes, 10 trains; crossing topology", "license": "Apache-2.0"}
+      ],
+      "notes": "The conflict variables x and y are indexed by ordered pair as coded (y_ab for i-before-j and y_ba for j-before-i created within create_disjunct_constraints), matching the markdown's y_{i,j,r}/y_{j,i,r}/x_{i,j,r} notation. The model is built incrementally over the notebook: variables (cell-14), precedence + start (cell-16), big-M conflict constraints (cell-19, applied per pair in cell-21), capacity/hotspot constraints (cell-21), objective (cell-25). The objective uses total delay (finish time minus minimum route duration); the markdown discusses alternative objectives (sum of arrivals, makespan, fairness/quadratic) but the implemented one is total delay. An optional extra constraint tf['F'] <= tf['E'] is shown commented out in cell-23 and is NOT part of the model. The same formulation is applied to all three datasets by changing the 'dataset' variable in cell-5 (default 'linear')."
+    }
+  ],
+  "extraction_confidence": "high",
+  "extraction_notes": "Single MILP formulation extracted from the railway_dispatching.ipynb notebook. The notebook markdown (cells cell-13, cell-15, cell-17, cell-20, cell-24) gives the full mathematical notation (sets R, I, R_i; variables t, t^F, x, y; big-M disjunctive constraints; binomial hotspot capacity constraints) which maps directly onto the gurobipy code cells. Math symbols (t_{i,r}, t^F_i, y_{i,j,r}, x_{i,j,r}, dur_r, c_r, M, R, I, R_i) are taken verbatim from the markdown; code identifiers recorded in source_symbol. Source references use the .ipynb path with cell ids (cell-N) plus the relevant function/statement, since notebooks lack stable line numbers (the harness presents cells, not raw line offsets). paper_reference is null: the notebook is based on a 2024 Gurobi webinar (https://www.youtube.com/watch?v=pjlVY6Toxj0) referenced in README/conclusion, with no DOI or academic citation. Variable lower bounds for t and t^F default to 0 (gurobipy default) and are reflected as domain [0, inf). No constraints, parameters, or symbols were fabricated; the commented-out optional constraint in cell-23 was deliberately excluded."
+}

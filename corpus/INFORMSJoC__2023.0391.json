@@ -1,0 +1,213 @@
+{
+  "repo": "INFORMSJoC/2023.0391",
+  "url": "https://github.com/INFORMSJoC/2023.0391",
+  "license": "MIT",
+  "language": "C# (ILOG.CPLEX / Concert .NET API)",
+  "solver": "CPLEX 12.80",
+  "area": "railway-rescheduling (urban rail rolling-stock + timetable)",
+  "paper_reference": "10.1287/ijoc.2023.0391",
+  "models": [
+    {
+      "model_id": "erst-event-based-rsto-milp",
+      "source_files": [
+        "src/WindowsFormsApplication7/Algorithm/Method.cs:711-1010"
+      ],
+      "description": "Event-based RSTO (ERST) MILP for real-time joint rolling-stock and timetable rescheduling in an urban rail line (Beijing metro line 1). Termed 'MIP' in the paper. Built over an event-activity network where each event is a train arrival/departure at a station. Decides which events to cancel, the (possibly delayed) realized time of each event, how many rolling-stock units dwell at each station, and depot in/out turnaround connections, minimizing weighted cancellation plus delay cost. Solved directly with CPLEX default parameters via EventBasedFormulation().",
+      "sets_indices": [
+        {"name": "E", "meaning": "set of events (each a train arrival at a station in the event-activity network)", "source_symbol": "EventSet (List<Event>)"},
+        {"name": "P", "meaning": "set of event pairs / consecutive events used for headway and precedence relations", "source_symbol": "EventParis (List<EventPair>)"},
+        {"name": "I", "meaning": "set of stations (23 stations of Beijing metro line 1; indices doubled for up/down direction)", "source_symbol": "Form1.Stations"},
+        {"name": "D", "meaning": "set of depots (2: indexed i in {0,1})", "source_symbol": "for (int i=0;i<2;i++) over DepotPosition"},
+        {"name": "E^{in}_d", "meaning": "in-events: events arriving at depot d (trains entering service from depot)", "source_symbol": "EventNumDepotArrive[d]"},
+        {"name": "E^{out}_d", "meaning": "out-events: events departing toward depot d (trains leaving service to depot)", "source_symbol": "EventNumDepotDepart[d]"}
+      ],
+      "parameters": [
+        {"name": "c^{cancel}", "meaning": "penalty cost per cancelled event", "domain": "Z_>=0", "source_symbol": "InputParameters.CancelPenalty", "value": "100000"},
+        {"name": "c^{delay}", "meaning": "penalty cost per unit of event delay", "domain": "Z_>=0", "source_symbol": "InputParameters.DelayPenalty", "value": "0"},
+        {"name": "a_e", "meaning": "planned (scheduled) arrival time of event e", "domain": "Z_>=0", "source_symbol": "EventSet[e].ArrivalTime"},
+        {"name": "M^{dur}", "meaning": "big-M = time span of the event set (last minus first planned arrival time), used to deactivate the realized-time bound for cancelled events", "domain": "Z_>=0", "source_symbol": "DurationM = EventSet.Last().ArrivalTime - EventSet.First().ArrivalTime", "value": "data-dependent; computed at Method.cs:713"},
+        {"name": "M^{big}", "meaning": "large big-M constant used in the depot turnaround timing constraint", "domain": "Z_>=0", "source_symbol": "bigM (local)", "value": "1000000000 (Method.cs:955)"},
+        {"name": "epsilon", "meaning": "slack travel time / allowed segment running-time variation per section, divided by time unit", "domain": "R_>=0", "source_symbol": "InputParameters.SegmentTimeVariation / InputParameters.TimeUnit", "value": "10/10 = 1"},
+        {"name": "h", "meaning": "minimum safety headway time", "domain": "Z_>=0", "source_symbol": "InputParameters.MinHeadwayTime", "value": "60 (s)"},
+        {"name": "T^{turn}", "meaning": "minimum turnaround time at a depot/turnback station", "domain": "Z_>=0", "source_symbol": "InputParameters.TurnAroundTime", "value": "150 (s)"},
+        {"name": "n_i", "meaning": "number of initially-positioned trains that must be present/covered at station i (count from TrainPosition matching station i or its mirrored down-direction index)", "domain": "Z_>=0", "source_symbol": "trainnum (derived from InputParameters.TrainPosition)"},
+        {"name": "d_{e,e'}", "meaning": "planned running-time gap between event e and its successor (AfterEvent[0])", "domain": "Z", "source_symbol": "e.AfterEvent[0].ArrivalTime - e.ArrivalTime"}
+      ],
+      "decision_variables": [
+        {"name": "z_e", "type": "binary", "meaning": "1 if event e is cancelled", "source_symbol": "z[e] (NumVarType.Int in [0,1])"},
+        {"name": "t_e", "type": "integer", "domain": "[0, 10000000]", "meaning": "realized (rescheduled) time of event e", "source_symbol": "te[e] (NumVarType.Int)"},
+        {"name": "delta_e", "type": "binary", "meaning": "1 if a rolling-stock unit is held/present at the station of event e (rolling-stock balance indicator)", "source_symbol": "delta[e] (NumVarType.Int in [0,1])"},
+        {"name": "m_{e,e'}^{d}", "type": "binary", "meaning": "1 if in-event e (arriving) at depot d is connected to out-event e' (departing) at depot d via a turnaround", "source_symbol": "mee[d][iindex][jindex] (NumVarType.Int in [0,1])"},
+        {"name": "in_{e}^{d}", "type": "binary", "meaning": "declared in-event selection variable for depot d (declared but no constraints/objective terms reference it in the released code)", "source_symbol": "ine[d] (NumVarType.Int in [0,1])"},
+        {"name": "out_{e}^{d}", "type": "binary", "meaning": "declared out-event selection variable for depot d (declared but no constraints/objective terms reference it in the released code)", "source_symbol": "oute[d] (NumVarType.Int in [0,1])"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min \\sum_{e \\in E} \\left( c^{cancel} z_e + c^{delay} t_e \\right)",
+        "expression_plain": "minimize total cost of event cancellations (weighted by c_cancel) plus realized event times (weighted by c_delay). A constant additionobj = sum of c_delay * a_e over cancelled events is subtracted afterwards in post-processing to report net delay.",
+        "source_files": ["src/WindowsFormsApplication7/Algorithm/Method.cs:776-782", "src/WindowsFormsApplication7/Algorithm/Method.cs:996"]
+      },
+      "constraints": [
+        {
+          "name": "delay_lower_bound_active_event",
+          "indexed_over": "e in E",
+          "expression_latex": "t_e - a_e \\geq M^{dur} z_e",
+          "expression_plain": "for a non-cancelled event (z_e=0) the realized time must be at least its planned time; if cancelled (z_e=1) the realized time is pushed up by big-M. (c2 lower part)",
+          "source_files": ["src/WindowsFormsApplication7/Algorithm/Method.cs:786-793"],
+          "source_symbol": "cplex.AddGe(cplex.Sum(te[e], -EventSet[e].ArrivalTime), cplex.Prod(DurationM, z[e]))"
+        },
+        {
+          "name": "delay_upper_bound",
+          "indexed_over": "e in E",
+          "expression_latex": "t_e - a_e \\leq M^{dur}",
+          "expression_plain": "realized time of any event may not exceed its planned time by more than the horizon span M_dur. (c2 upper part)",
+          "source_files": ["src/WindowsFormsApplication7/Algorithm/Method.cs:786-793"],
+          "source_symbol": "cplex.AddLe(cplex.Sum(te[e], -EventSet[e].ArrivalTime), DurationM)"
+        },
+        {
+          "name": "precedence_running_time",
+          "indexed_over": "e in E with successor e'=e.AfterEvent[0], for non-terminal stations, where planned gap > 0",
+          "expression_latex": "t_{e'} + \\epsilon \\geq t_e + d_{e,e'}",
+          "expression_plain": "the realized time of the successor event e' (plus a slack epsilon) must respect the realized time of e plus the planned running/dwell time between them (segment running-time / precedence constraint). (c3)",
+          "source_files": ["src/WindowsFormsApplication7/Algorithm/Method.cs:796-807"],
+          "source_symbol": "cplex.AddGe(cplex.Sum(te[e.AfterEvent[0].index], SegmentTimeVariation/TimeUnit), cplex.Sum(te[e.index], d_{e,e'}))"
+        },
+        {
+          "name": "rolling_stock_count_per_station",
+          "indexed_over": "i in I",
+          "expression_latex": "\\sum_{e \\in E:\\, st(e)=i} \\delta_e = n_i",
+          "expression_plain": "the number of rolling-stock-holding indicators delta_e summed over events at station i (or its mirrored down-direction index) equals the prescribed train count n_i for that station. (CE / fleet balance)",
+          "source_files": ["src/WindowsFormsApplication7/Algorithm/Method.cs:812-831"],
+          "source_symbol": "cplex.AddEq(expr, trainnum)"
+        },
+        {
+          "name": "event_continuity_interior",
+          "indexed_over": "e in E whose former event has a valid arrival station (FormerEvent[0].ArrivalStation >= 0)",
+          "expression_latex": "z_e + (1 - z_{f(e)}) + \\delta_e = 1",
+          "expression_plain": "rolling-stock / event linking for an interior event: relates the cancellation of event e, the non-cancellation of its predecessor f(e), and the holding indicator delta_e. (continuity / flow conservation)",
+          "source_files": ["src/WindowsFormsApplication7/Algorithm/Method.cs:834-843"],
+          "source_symbol": "cplex.AddEq(1, cplex.Sum(z[e.index], cplex.Sum(1 - z[f(e)], delta[e.index])))"
+        },
+        {
+          "name": "event_continuity_depot_boundary",
+          "indexed_over": "e in E whose former event has no valid station (depot-boundary in/out events at station = |Stations| or 0)",
+          "expression_latex": "z_e + \\sum_{e' \\in E^{in}_d} m^{d}_{e',e} + \\delta_e \\leq 1",
+          "expression_plain": "for an out-event at a depot, the event is either cancelled, supplied by exactly one depot turnaround connection from an in-event, or held; the sum of these is at most one. (depot boundary continuity)",
+          "source_files": ["src/WindowsFormsApplication7/Algorithm/Method.cs:844-875"],
+          "source_symbol": "cplex.AddGe(1, cplex.Sum(z[e.index], cplex.Sum(expr, delta[e.index])))"
+        },
+        {
+          "name": "depot_out_connection_balance",
+          "indexed_over": "d in {0,1}, out-event e in E^{out}_d at the depot-side station",
+          "expression_latex": "\\sum_{e' \\in E^{in}_d} m^{d}_{e',e} + z_e = 1",
+          "expression_plain": "each depot out-event is either cancelled or connected to exactly one in-event via a turnaround (train-circulation balance, out side).",
+          "source_files": ["src/WindowsFormsApplication7/Algorithm/Method.cs:883-898", "src/WindowsFormsApplication7/Algorithm/Method.cs:918-933"],
+          "source_symbol": "cplex.AddEq(cplex.Sum(expr, z[e.index]), 1)"
+        },
+        {
+          "name": "depot_in_connection_balance",
+          "indexed_over": "d in {0,1}, in-event e in E^{in}_d at the line-end station (with time window e.ArrivalTime < CurrentTime+14400)",
+          "expression_latex": "\\sum_{e' \\in E^{out}_d} m^{d}_{e,e'} + z_e = 1",
+          "expression_plain": "each depot in-event is either cancelled or connected to exactly one out-event via a turnaround (train-circulation balance, in side).",
+          "source_files": ["src/WindowsFormsApplication7/Algorithm/Method.cs:900-915", "src/WindowsFormsApplication7/Algorithm/Method.cs:935-950"],
+          "source_symbol": "cplex.AddEq(cplex.Sum(expr, z[e.index]), 1)"
+        },
+        {
+          "name": "turnaround_timing",
+          "indexed_over": "d in {0,1}, in-event e_in in E^{in}_d, out-event e_out in E^{out}_d with a_{e_in} < a_{e_out}",
+          "expression_latex": "M^{big} z_{e_{in}} + 2h\\,(1 - m^{d}_{e_{in},e_{out}}) + t_{e_{out}} - t_{e_{in}} \\geq T^{turn}\\, m^{d}_{e_{in},e_{out}}",
+          "expression_plain": "if in-event e_in is connected to out-event e_out at depot d (m=1) and e_in is not cancelled, the realized time gap between them must be at least the turnaround time T_turn; big-M and headway terms relax the constraint otherwise. (turnaround timing)",
+          "source_files": ["src/WindowsFormsApplication7/Algorithm/Method.cs:953-975"],
+          "source_symbol": "cplex.AddGe(expr, cplex.Prod(mee[i][iindex][jindex], InputParameters.TurnAroundTime))"
+        },
+        {
+          "name": "infeasible_turnaround_forbidden",
+          "indexed_over": "d in {0,1}, in-event e_in, out-event e_out with a_{e_in} >= a_{e_out}",
+          "expression_latex": "m^{d}_{e_{in},e_{out}} = 0",
+          "expression_plain": "a turnaround connection from an in-event to an earlier-or-equal out-event is forbidden (chronological feasibility).",
+          "source_files": ["src/WindowsFormsApplication7/Algorithm/Method.cs:976-979"],
+          "source_symbol": "cplex.AddEq(mee[i][iindex][jindex], 0)"
+        }
+      ],
+      "instances": [
+        {"name": "I_1..I_10.csv", "path": "Input_data/Small_instances/", "format": "csv", "size": "10 small-scale instances, ~16 KB each (e.g. I_1.csv 15910 bytes); planned timetable, one row = arrival+departure event", "license": "MIT"},
+        {"name": "I_6..I_25.csv", "path": "Input_data/Medium_instances/", "format": "csv", "size": "10 medium-scale instances, ~38 KB each (e.g. I_6.csv 37896 bytes)", "license": "MIT"},
+        {"name": "I_11..I_30.csv", "path": "Input_data/Large_instances/", "format": "csv", "size": "10 large-scale instances, ~58 KB each (e.g. I_11.csv 58376 bytes)", "license": "MIT"},
+        {"name": "Section_running_time.txt / Section_distance.txt / Station_information.txt", "path": "Input_data/Layout_information/", "format": "txt", "size": "layout data for the 23-station Beijing metro line 1 (running times, distances, station info); 73-213 bytes", "license": "MIT"}
+      ],
+      "notes": "30 instances total (10 small / 10 medium / 10 large). Instance CSV headers and station names are GBK/Chinese-encoded. CancelPenalty=100000 and DelayPenalty=0 in the released InputParameters.cs mean the shipped objective minimizes cancellations only; DelayPenalty is varied for the weight tests (Output_Results/weight_test.xlsx). Variables ine/oute are declared but never appear in any constraint or the objective in the released code (the depot in/out balance is realized through mee, z, delta), so they are effectively unused. Constraint indices (c2, c3, CE, c4...) are taken from inline code comments; the c4 headway-time block is commented as a header but the only headway-using formulation in the released code is in the path-based MasterProblem (model 2). Big-M values are hard-coded (DurationM data-dependent; bigM=1e9). The objective realized-time term and the post-solve 'additionobj' subtraction together recover net delay relative to planned times."
+    },
+    {
+      "model_id": "prst-path-based-set-partitioning-master",
+      "source_files": [
+        "src/WindowsFormsApplication7/Algorithm/Method.cs:427-527"
+      ],
+      "description": "Path-based RSTO (PRST) restricted master problem of the branch-and-price (BAP) scheme. Termed 'BAP' in the paper. Each candidate train path (a sequence of events) is a column; the master selects a fractional/integral combination of paths to cover the existing trains and the events while respecting headway and depot constraints, minimizing total path cost. Columns are generated by a shortest-path pricing subproblem on a space-time network (SPNetwork); this MasterProblem object solves the LP relaxation (NumVarType.Float) and returns duals for pricing. Integrality is enforced externally via the BCTree branch-and-bound (BCTree.cs).",
+      "sets_indices": [
+        {"name": "P", "meaning": "set of all candidate paths (columns): existing-train paths plus depot-generated paths", "source_symbol": "PathSet (List<path>), size 'index'"},
+        {"name": "K", "meaning": "set of existing trains (initial train positions)", "source_symbol": "InputParameters.TrainPosition"},
+        {"name": "P_k", "meaning": "subset of paths assignable to existing train k", "source_symbol": "PathsExistingTrains[k] / PathIndex[k]"},
+        {"name": "E", "meaning": "set of events to be covered", "source_symbol": "EventSet"},
+        {"name": "Pr", "meaning": "set of event pairs used for headway constraints", "source_symbol": "EventParis"},
+        {"name": "D", "meaning": "set of depots", "source_symbol": "InputParameters.DepotNum / DepotPosition"}
+      ],
+      "parameters": [
+        {"name": "c_p", "meaning": "cost of path p (cancellation/delay cost of the events it serves)", "domain": "R", "source_symbol": "PathSet[p].PathCost(EventSet)"},
+        {"name": "a_{ep}", "meaning": "1 if path p covers event e (event-path incidence)", "domain": "{0,1}", "source_symbol": "PathSet[p].PathEventConject(EventSet[e])"},
+        {"name": "h", "meaning": "minimum headway time", "domain": "Z_>=0", "source_symbol": "InputParameters.MinHeadwayTime", "value": "60 (s)"},
+        {"name": "tau_{ep}", "meaning": "realized event-time contribution of path p at event e (PathEventTime)", "domain": "R", "source_symbol": "PathSet[p].PathEventTime(...)"},
+        {"name": "g_{dp}", "meaning": "1 if path p ends at depot d", "domain": "{0,1}", "source_symbol": "PathSet[p].EndDepot(DepotPosition[d])"},
+        {"name": "N_d", "meaning": "required number of trains ending at depot d", "domain": "Z_>=0", "source_symbol": "InputParameters.DepotNum[d]"}
+      ],
+      "decision_variables": [
+        {"name": "x_p", "type": "continuous", "domain": "[0,1]", "meaning": "selection weight of path p (LP relaxation of the binary path-selection variable; integrality enforced by branch-and-bound)", "source_symbol": "xp[p] (NumVarType.Float in [0,1])"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min \\sum_{p \\in P} c_p\\, x_p",
+        "expression_plain": "minimize total cost of selected paths (a constant offset objectivevalue2 is added in post-processing to convert to the reported objective).",
+        "source_files": ["src/WindowsFormsApplication7/Algorithm/Method.cs:502-508"]
+      },
+      "constraints": [
+        {
+          "name": "train_cover",
+          "indexed_over": "k in K (existing trains)",
+          "expression_latex": "\\sum_{p \\in P_k} x_p = 1",
+          "expression_plain": "exactly one path is selected for each existing train k.",
+          "source_files": ["src/WindowsFormsApplication7/Algorithm/Method.cs:456-465"],
+          "source_symbol": "cons[k] = cplex.AddEq(expr, 1)"
+        },
+        {
+          "name": "event_set_cover",
+          "indexed_over": "e in E",
+          "expression_latex": "\\sum_{p \\in P} a_{ep}\\, x_p \\leq 1",
+          "expression_plain": "each event is covered by at most one selected path (set-packing). NOTE: the incidence term is commented out in the released code so the constraint is built as 0 <= 1; duals are still read for pricing.",
+          "source_files": ["src/WindowsFormsApplication7/Algorithm/Method.cs:467-475"],
+          "source_symbol": "cons2[e] = cplex.AddLe(expr, 1)"
+        },
+        {
+          "name": "headway",
+          "indexed_over": "e in Pr (event pairs)",
+          "expression_latex": "\\sum_{p \\in P} \\big(\\tau^{cur}_{ep} - \\tau^{form}_{ep} - a^{cur}_{ep}(\\tau^{form}_{ep}+h)\\big) x_p \\geq h - \\sum_{p \\in P}(\\tau^{form}_{ep}+h)",
+          "expression_plain": "for each event pair, the headway between the current and former event implied by the selected paths must respect the minimum headway h (rearranged into a single >= row with constant 'barte').",
+          "source_files": ["src/WindowsFormsApplication7/Algorithm/Method.cs:477-490"],
+          "source_symbol": "cons3[e] = cplex.AddGe(expr, barte)"
+        },
+        {
+          "name": "depot_balance",
+          "indexed_over": "d in D",
+          "expression_latex": "\\sum_{p \\in P} g_{dp}\\, x_p = N_d",
+          "expression_plain": "the number of selected paths ending at depot d equals the required count N_d. NOTE: this AddEq call is commented out in the released code (the expression is built but not added to the model).",
+          "source_files": ["src/WindowsFormsApplication7/Algorithm/Method.cs:492-501"],
+          "source_symbol": "//cons4[d] = cplex.AddEq(expr, InputParameters.DepotNum[d]); (commented out)"
+        }
+      ],
+      "instances": [
+        {"name": "shared with model 1", "path": "Input_data/", "format": "csv/txt", "size": "same 30 instances + Layout_information (see model 1)", "license": "MIT"}
+      ],
+      "notes": "This is the restricted master of a branch-and-price method; columns (paths) are priced via a shortest-path subproblem over the space-time network (SPNetwork, Method.cs:193-346) using duals DualTau/DualPi/DualPhi (Method.cs:523-526). The H-strategy initial solution comes from InitialSolution()/BCTree CurrentBestSolution. Two model rows in the released master (event_set_cover incidence term, and the depot_balance AddEq) are commented out in the shipped code; they are reported here as the intended formulation with that caveat flagged. Integrality of x_p is handled by BCTree.cs branch-and-bound (no CPLEX MILP model there), so this CPLEX object solves only the LP relaxation."
+    }
+  ],
+  "extraction_confidence": "medium",
+  "extraction_notes": "Both formulations were read directly from CPLEX Concert .NET calls in src/WindowsFormsApplication7/Algorithm/Method.cs: EventBasedFormulation() (ERST/MIP, lines 711-1010) and MasterProblem() (PRST/BAP master, lines 427-527). Math symbols (z, t, delta, m, x) were assigned by me to match the code identifiers (recorded in source_symbol); the repo ships NO written mathematical formulation (README/ReadMe.md only describe replication steps, not equations), so symbol names and the c2/c3/CE constraint groupings come from terse inline code comments plus the variable semantics, not from a published notation in the repo. The associated paper (Yin, Yang, Liang, D'Ariano, Gao, INFORMS J. on Computing, DOI 10.1287/ijoc.2023.0391) presumably contains the canonical formulation but is not included in the archive, so confidence is MEDIUM rather than HIGH. Honest caveats: (1) variables ine/oute in model 1 are declared but unused; (2) in model 2, the event-set-cover incidence term and the depot_balance constraint are commented out in the released code (flagged in each constraint's note); (3) headway 'c4' is mentioned as a comment header in model 1 but not implemented there. Parameter values (CancelPenalty=100000, DelayPenalty=0, headway=60, turnaround=150) are the literal shipped defaults from InputParameters.cs and are varied across experiments. No DOIs, constraints, or symbols were fabricated; uncertain items are marked in notes rather than invented. BCTree.cs and Form1.cs also reference Cplex but contain no additional distinct LP/MILP model (branch-and-bound bookkeeping / GUI)."
+}

@@ -1,0 +1,289 @@
+{
+  "repo": "INFORMSJoC/2023.0014",
+  "url": "https://github.com/INFORMSJoC/2023.0014",
+  "license": "MIT",
+  "language": "Python (gurobipy)",
+  "solver": "Gurobi",
+  "area": "transport-operations",
+  "paper_reference": "10.1287/ijoc.2023.0014",
+  "models": [
+    {
+      "model_id": "p-path-odmts-adoption-aware-design",
+      "source_files": [
+        "odmtsda/solve/model_p_path.py:49-221",
+        "odmtsda/solve/model_p_path.py:224-651"
+      ],
+      "description": "Enhanced path-based MILP (P-PATH) for designing an On-Demand Multimodal Transit System (ODMTS) with passenger adoption awareness. Decides which hub-to-hub (bus/backbone) network arcs to open (network design), routes core-trip riders over opened arcs + first/last-mile shuttle legs, and models latent (additional) riders' adoption decisions via per-path indicator/choice variables. Solved as Stage 2 after a Stage-1 path-enumeration preprocessing step. This is the formulation the paper and README showcase (default s_path_enum_alg = 'time_and_transfer_tol_specific'). Maximizes net benefit, implemented as a Gurobi MINIMIZE of negated objective coefficients.",
+      "sets_indices": [
+        {"name": "H", "meaning": "set of hubs (candidate backbone/bus network nodes)", "source_symbol": "config.l_hubs"},
+        {"name": "Z", "meaning": "set of candidate hub-to-hub (h2h) arcs a; binary design decisions z_a; arc names 'z{idx}'", "source_symbol": "config.l_h2h_arcs_info"},
+        {"name": "S", "meaning": "set of shuttle (connection / first-last-mile) arcs", "source_symbol": "config.l_shuttle_arcs_info"},
+        {"name": "R_core", "meaning": "set of core trips (origin-destination demand groups present regardless of design); trip_name starts with 'c'", "source_symbol": "config.l_core_stage_1_res"},
+        {"name": "R_latent", "meaning": "set of latent/additional trips (adopt only if served attractively); trip_name starts with 'l'", "source_symbol": "config.l_addt_stage_1_res"},
+        {"name": "AuP_r", "meaning": "for latent trip r, the union of adopting path set A and profitable-candidate path set P (A u P), each path being a sequence of z- and s-arcs", "source_symbol": "d_trip['set_AuP']"},
+        {"name": "A_r", "meaning": "for latent trip r, the subset of AuP_r that are adopting paths (path['adopt'] is True)", "source_symbol": "d_path['adopt']"},
+        {"name": "Z_pi", "meaning": "the h2h (z) arcs lying on a given path pi (arc names beginning with 'z')", "source_symbol": "[a for a in d_path['arcs'] if a[0]=='z']"}
+      ],
+      "parameters": [
+        {"name": "beta_a", "meaning": "objective coefficient of opening h2h arc a: convex-weighted bus investment cost f_inv_fee*(1-theta) (negative net-benefit contribution under MINIMIZE)", "domain": "R", "source_symbol": "d_arc['inv_obj_beta']", "value": "createNewbusArcs.py:272-278 (= f_inv_fee*(1-theta)); backbone arcs have beta=0 (createBackboneArcs.py:68)"},
+        {"name": "c^r_r", "meaning": "number of riders of trip r (objective weight on per-rider travel cost g_r for core trips; 0 for non-core/served latent rider cost handled via lambda)", "domain": "Z_>=0", "source_symbol": "d_trip['num_riders']", "value": "int(counts)*i_pax_multip; createTrips.py:92"},
+        {"name": "tau_a", "meaning": "per-rider objective coefficient (cost) of traversing h2h arc a: convex-weighted rider travel time", "domain": "R_>=0", "source_symbol": "d_h2h_arc['rider_obj_tau']", "value": "rider_min*f_time_convex_fac*theta; createNewbusArcs.py:230-236"},
+        {"name": "gamma_e", "meaning": "per-rider objective coefficient (cost) of using shuttle arc e: convex-weighted shuttle operating cost + rider time", "domain": "R_>=0", "source_symbol": "config.l_shuttle_arcs_info[i]['arc_obj_gamma']", "value": "f_opt_cost*(1-theta) + rider_min*f_time_convex_fac*theta; createConnectionArcs.py:184-196"},
+        {"name": "g_ub_r", "meaning": "upper bound on trip r's achievable travel objective g_r (best obtainable cost using only fixed arcs + shuttles); also used as path-specific big-M replacement in (i)", "domain": "R_>=0", "source_symbol": "d_trip['g_ub']", "value": "computed in filterConnectionArcs.compute_trip_g_ub_then_filter; createTrips.py:106"},
+        {"name": "g_path_pi", "meaning": "travel objective (cost) of path pi for trip r", "domain": "R_>=0", "source_symbol": "d_path['g_path']"},
+        {"name": "theta", "meaning": "convex combination weight between operator cost and rider time in objective", "domain": "[0,1]", "source_symbol": "config.f_convex_theta", "value": "0.001 in test_case/settings.yaml"},
+        {"name": "p", "meaning": "base ticket price / fare used in adoption net-benefit term", "domain": "R_>=0", "source_symbol": "other_utils.get_ticket_price(config)", "value": "f_base_ticket_fare = 2.5; other_utils.py:12-14"},
+        {"name": "epsilon_num", "meaning": "small numerical-protection slack added to g upper bounds", "domain": "R_>=0", "source_symbol": "config.f_mip_numer_protect"}
+      ],
+      "decision_variables": [
+        {"name": "z_a", "type": "binary", "meaning": "1 if candidate h2h network arc a is opened (network design); has branch priority 1; fixed to 1 if d_arc['fixed']", "source_symbol": "self.d_var_z[arc_name]"},
+        {"name": "g_r", "type": "continuous", "domain": "[0, g_ub_r]", "meaning": "travel objective (weighted cost) realized by trip r's served riders", "source_symbol": "self.d_var_g[g_r]"},
+        {"name": "x_{r,a}", "type": "continuous", "domain": "[0,1]", "meaning": "flow of trip r on h2h arc a (LP-relaxed binary 'continuous x technique'; ub=1)", "source_symbol": "self.d_var_x[x_r_a]"},
+        {"name": "y_{r,e}", "type": "continuous", "domain": "[0,1]", "meaning": "flow of trip r on shuttle arc e (LP-relaxed; ub=1)", "source_symbol": "self.d_var_y[y_r_e]"},
+        {"name": "lambda_{r,pi}", "type": "binary", "meaning": "1 if latent trip r adopts via adopting path pi (only defined for adopting paths); carries the adoption net-benefit objective coefficient", "source_symbol": "self.d_var_lambda[lambda_r_pi]"},
+        {"name": "f_{r,pi}", "type": "binary", "meaning": "1 if path pi is 'feasible'/available for latent trip r given the opened z-arcs on pi", "source_symbol": "self.d_var_f[f_r_pi]"},
+        {"name": "dummy_only_adopt", "type": "binary", "meaning": "fixed-to-1 auxiliary carrying the constant objective contribution of always-adopting latent trips (only_adopt)", "source_symbol": "self.dummy_var"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min \\; \\sum_{a \\in Z} \\beta_a z_a + \\sum_{r \\in R_{core}} c^r_r g_r + \\sum_{r \\in R_{latent}} \\sum_{\\pi \\in A_r} c^r_r\\,(g^{\\pi}_{r} - (1-\\theta) p)\\, \\lambda_{r\\pi} + \\Big(\\sum_{r \\in only\\_adopt} c^r_r (g\\_ub_r - (1-\\theta) p)\\Big)\\, dummy",
+        "expression_plain": "Minimize negated net benefit: opening costs of h2h design arcs (beta_a z_a) + core riders' weighted travel cost (num_riders * g_r) + latent riders' adoption term (num_riders*(g_path - (1-theta)*price)*lambda) + constant for always-adopting latent trips. Objective coefficients are attached directly to variables via addVar(obj=...); modelSense = MINIMIZE.",
+        "source_files": ["odmtsda/solve/model_p_path.py:15-16", "odmtsda/solve/model_p_path.py:62-67", "odmtsda/solve/model_p_path.py:104-109", "odmtsda/solve/model_p_path.py:179-217"]
+      },
+      "constraints": [
+        {
+          "name": "hub_weak_connectivity",
+          "indexed_over": "h in H",
+          "expression_latex": "\\sum_{a \\in Z:\\,orig(a)=h} z_a = \\sum_{a \\in Z:\\,dest(a)=h} z_a",
+          "expression_plain": "(b) weak connectivity: at each hub, the number of opened outgoing h2h arcs equals the number of opened incoming h2h arcs",
+          "source_files": ["odmtsda/solve/model_p_path.py:241-264"]
+        },
+        {
+          "name": "arc_fixed_open",
+          "indexed_over": "a in Z with d_arc['fixed']",
+          "expression_latex": "z_a = 1",
+          "expression_plain": "pre-fixed (mandatory backbone) arcs are forced open",
+          "source_files": ["odmtsda/solve/model_p_path.py:72-78"]
+        },
+        {
+          "name": "trip_cost_definition",
+          "indexed_over": "r in R_core u R_latent (served)",
+          "expression_latex": "g_r = \\sum_{a \\in Z} \\tau_a x_{r,a} + \\sum_{e \\in S_r} \\gamma_e y_{r,e}",
+          "expression_plain": "(d) trip r's travel objective equals weighted h2h arc cost (tau) over its x-flows plus weighted shuttle cost (gamma) over its y-flows",
+          "source_files": ["odmtsda/solve/model_p_path.py:267-317"]
+        },
+        {
+          "name": "trip_cost_upper_bound",
+          "indexed_over": "r in R_core u R_latent (served)",
+          "expression_latex": "g_r \\le g\\_ub_r + \\epsilon_{num}",
+          "expression_plain": "(d) trip cost capped by its precomputed upper bound (plus numerical slack)",
+          "source_files": ["odmtsda/solve/model_p_path.py:319-324"]
+        },
+        {
+          "name": "flow_conservation_x_y",
+          "indexed_over": "r in R, i_stop in {orig_r, dest_r} u H",
+          "expression_latex": "\\sum_{e \\in S_r: orig(e)=v} y_{r,e} - \\sum_{e \\in S_r: dest(e)=v} y_{r,e} + [v \\in H]\\Big(\\sum_{a: orig(a)=v} x_{r,a} - \\sum_{a: dest(a)=v} x_{r,a}\\Big) = \\begin{cases} 1 & v=orig_r \\\\ -1 & v=dest_r \\\\ 0 & else \\end{cases}",
+          "expression_plain": "(e) per-trip flow conservation combining shuttle (y) and h2h (x) arcs: +1 at origin, -1 at destination, 0 at hubs/intermediate; h2h flow only balances at hubs",
+          "source_files": ["odmtsda/solve/model_p_path.py:331-429"]
+        },
+        {
+          "name": "x_linked_to_design",
+          "indexed_over": "r in R (served), a in Z",
+          "expression_latex": "x_{r,a} \\le z_a",
+          "expression_plain": "(f) a trip can only flow on an h2h arc if that arc is opened",
+          "source_files": ["odmtsda/solve/model_p_path.py:431-466"]
+        },
+        {
+          "name": "path_feasible_lower",
+          "indexed_over": "r in R_latent, pi in AuP_r",
+          "expression_latex": "\\sum_{a \\in Z_{\\pi}} z_a - |Z_{\\pi}| + 1 \\le f_{r,\\pi}",
+          "expression_plain": "(g) path pi is feasible (f=1) only if all of its h2h arcs are opened (logical AND of z over Z_pi forces f>=1 when all open)",
+          "source_files": ["odmtsda/solve/model_p_path.py:468-507"]
+        },
+        {
+          "name": "path_feasible_upper",
+          "indexed_over": "r in R_latent, pi in AuP_r, a in Z_pi",
+          "expression_latex": "f_{r,\\pi} \\le z_a",
+          "expression_plain": "(h) path feasibility f bounded above by each of its h2h arcs being open",
+          "source_files": ["odmtsda/solve/model_p_path.py:509-517"]
+        },
+        {
+          "name": "served_cost_le_path_bigM",
+          "indexed_over": "r in R_latent, pi in AuP_r",
+          "expression_latex": "g_r \\le g^{\\pi}_{r} + (g\\_ub_r + \\epsilon_{num})(1 - f_{r,\\pi})",
+          "expression_plain": "(i) if path pi is feasible (f=1) the trip's served cost g_r is bounded by that path's cost; big-M replaced by the trip's g_ub",
+          "source_files": ["odmtsda/solve/model_p_path.py:523-556"]
+        },
+        {
+          "name": "adopt_requires_feasible",
+          "indexed_over": "r in R_latent, pi in A_r (adopting paths)",
+          "expression_latex": "\\lambda_{r,\\pi} \\le f_{r,\\pi}",
+          "expression_plain": "(j) a latent trip can adopt via path pi only if that path is feasible (its arcs are opened)",
+          "source_files": ["odmtsda/solve/model_p_path.py:559-582"]
+        },
+        {
+          "name": "adopt_excludes_offpath_arcs",
+          "indexed_over": "r in R_latent, pi in A_r, a in Z with a not on pi (and not far-eliminated)",
+          "expression_latex": "\\lambda_{r,\\pi} \\le 1 - x_{r,a}",
+          "expression_plain": "(k) if trip r adopts via path pi, it cannot use any h2h arc that is not on pi (flow must follow the adopted path)",
+          "source_files": ["odmtsda/solve/model_p_path.py:585-614"]
+        },
+        {
+          "name": "adopt_forces_onpath_flow",
+          "indexed_over": "r in R_latent, pi in A_r",
+          "expression_latex": "\\Big(\\sum_{a \\in Z} \\sigma_{a,\\pi} x_{r,a}\\Big) - |Z_{\\pi}| + 1 \\le \\lambda_{r,\\pi}, \\quad \\sigma_{a,\\pi} = +1\\ \\text{if } a \\in \\pi\\ \\text{else } -1",
+          "expression_plain": "(l) coupling between path-adoption lambda and arc-flow x: when every on-path arc is used (x=1) and no off-path arc is used, lambda is forced to 1 (linearized AND/indicator)",
+          "source_files": ["odmtsda/solve/model_p_path.py:616-647"]
+        },
+        {
+          "name": "only_adopt_constant_anchor",
+          "indexed_over": "scalar",
+          "expression_latex": "dummy = 1",
+          "expression_plain": "auxiliary equality fixing the only-adopt constant-contribution dummy variable to 1",
+          "source_files": ["odmtsda/solve/model_p_path.py:213-219"]
+        }
+      ],
+      "instances": [
+        {"name": "test_case (Ann Arbor / Ypsilanti-style ODMTS network)", "path": "test_case/data/", "format": "csv + json + pickle", "size": "stops.csv: 1267 stops; hubs.csv: 9 hubs; core-trips.csv: 936 OD rows; latent-trips.csv: 565 OD rows; demographic.json per-latent-trip adoption/transfer params. Stage-1 preprocessing (authors' run): 348 latent trips decided in MIP, 218 only-adopt, 3208 paths, 8972 x-vars eliminated (test_case/result_summary_authors/stage_1_summary.json). dist_km.pickle/time_min.pickle are generated, not shipped.", "license": "MIT"}
+      ],
+      "notes": "P-PATH is selected when config.s_path_enum_alg == 'time_and_transfer_tol_specific' (the default and the paper's showcased model), via odmtsda/solve/solve_main.py:25-30. x and y are LP-relaxed to continuous in [0,1] ('continuous x technique', comments at model_p_path.py:121,142) while z, lambda, f stay binary. Constraint letters (b,d,e,f,g,h,i,j,k,l) are taken verbatim from the dispatch comments in _add_constraints (model_p_path.py:224-238); no plain-text math is shipped in the repo, so latex symbols (z,x,y,g,lambda,f and beta,tau,gamma,theta) are this extraction's own mapping of code identifiers — see extraction_notes. The big-M in (i) is the trip-specific g_ub + numerical slack, not a global constant. Latent trips flagged only_adopt contribute a constant to the objective (carried by dummy_only_adopt); only_reject trips are dropped from the model. Stage-1 path enumeration (odmtsda/path/path_enumeration_alg_choice_specific.py) and x-variable elimination are preprocessing algorithms, not part of the MILP."
+    },
+    {
+      "model_id": "c-path-odmts-adoption-aware-design",
+      "source_files": [
+        "odmtsda/solve/model_c_path.py:49-199",
+        "odmtsda/solve/model_c_path.py:201-542"
+      ],
+      "description": "Conventional path-based MILP (C-PATH) variant of the ODMTS adoption-aware design problem. Same network-design (z) + core-trip routing (x,y,g) structure as P-PATH, but latent-trip adoption is modeled with an explicit auxiliary cost variable m_r and a big-M linearization using a global constant i_big_M, and exactly one path per latent trip is selected (lambda_sum = 1). Selected when s_path_enum_alg == 'regular'. In this variant x and y are kept BINARY.",
+      "sets_indices": [
+        {"name": "H", "meaning": "set of hubs", "source_symbol": "config.l_hubs"},
+        {"name": "Z", "meaning": "set of candidate h2h design arcs a (binary z_a)", "source_symbol": "config.l_h2h_arcs_info"},
+        {"name": "S", "meaning": "set of shuttle arcs", "source_symbol": "config.l_shuttle_arcs_info"},
+        {"name": "R_core", "meaning": "set of core trips", "source_symbol": "config.l_core_stage_1_res"},
+        {"name": "R_latent", "meaning": "set of latent/additional trips", "source_symbol": "config.l_addt_stage_1_res"},
+        {"name": "Pi_r", "meaning": "for latent trip r, the enumerated path set Pi (each path a sequence of z- and s-arcs)", "source_symbol": "d_trip['set_Pi']"},
+        {"name": "Z_pi", "meaning": "the h2h (z) arcs on path pi", "source_symbol": "[a for a in d_path['arcs'] if a[0]=='z']"}
+      ],
+      "parameters": [
+        {"name": "beta_a", "meaning": "objective coefficient of opening h2h arc a (convex-weighted bus investment cost; 0 for backbone)", "domain": "R", "source_symbol": "d_arc['inv_obj_beta']"},
+        {"name": "c^r_r", "meaning": "number of riders of trip r (objective weight)", "domain": "Z_>=0", "source_symbol": "d_trip['num_riders']"},
+        {"name": "tau_a", "meaning": "per-rider weighted cost of h2h arc a", "domain": "R_>=0", "source_symbol": "d_h2h_arc['rider_obj_tau']"},
+        {"name": "gamma_e", "meaning": "per-rider weighted cost of shuttle arc e", "domain": "R_>=0", "source_symbol": "config.l_shuttle_arcs_info[i]['arc_obj_gamma']"},
+        {"name": "g_ub_r", "meaning": "upper bound on trip r's travel objective", "domain": "R_>=0", "source_symbol": "d_trip['g_ub']"},
+        {"name": "g_path_pi", "meaning": "travel objective (cost) of path pi", "domain": "R_>=0", "source_symbol": "d_path['g_path']"},
+        {"name": "theta", "meaning": "convex weight operator cost vs rider time", "domain": "[0,1]", "source_symbol": "config.f_convex_theta", "value": "0.001"},
+        {"name": "p", "meaning": "base ticket price/fare", "domain": "R_>=0", "source_symbol": "other_utils.get_ticket_price(config)", "value": "2.5"},
+        {"name": "M", "meaning": "global big-M for adoption-cost linearization", "domain": "R_>=0", "source_symbol": "config.i_big_M", "value": "100000 (path_formulation.json default --i_big_M)"},
+        {"name": "epsilon_num", "meaning": "numerical-protection slack on g upper bound", "domain": "R_>=0", "source_symbol": "config.f_mip_numer_protect"}
+      ],
+      "decision_variables": [
+        {"name": "z_a", "type": "binary", "meaning": "1 if h2h design arc a opened; branch priority 1; fixed to 1 if d_arc['fixed']", "source_symbol": "self.d_var_z[arc_name]"},
+        {"name": "g_r", "type": "continuous", "domain": "[0, g_ub_r]", "meaning": "travel objective realized by core trip r", "source_symbol": "self.d_var_g[g_r]"},
+        {"name": "x_{r,a}", "type": "binary", "meaning": "1 if core trip r uses h2h arc a (kept binary in C-PATH; ub=1)", "source_symbol": "self.d_var_x[x_r_a]"},
+        {"name": "y_{r,e}", "type": "binary", "meaning": "1 if core trip r uses shuttle arc e (kept binary; ub=1)", "source_symbol": "self.d_var_y[y_r_e]"},
+        {"name": "m_r", "type": "continuous", "domain": "[0, inf)", "meaning": "auxiliary: cost of the path selected for latent trip r (linearized via big-M)", "source_symbol": "self.d_var_m[m_r]"},
+        {"name": "lambda_{r,pi}", "type": "binary", "meaning": "1 if latent trip r selects path pi (carries adoption objective coefficient for adopting paths)", "source_symbol": "self.d_var_lambda[lambda_r_pi]"},
+        {"name": "f_{r,pi}", "type": "binary", "meaning": "1 if path pi is feasible/available for latent trip r given opened z-arcs", "source_symbol": "self.d_var_f[f_r_pi]"},
+        {"name": "dummy_only_adopt", "type": "binary", "meaning": "fixed-to-1 auxiliary carrying constant objective of always-adopting latent trips", "source_symbol": "self.dummy_var"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min \\; \\sum_{a \\in Z} \\beta_a z_a + \\sum_{r \\in R_{core}} c^r_r g_r + \\sum_{r \\in R_{latent}} \\sum_{\\pi \\in Pi_r} c^r_r (g^{\\pi}_{r} - (1-\\theta) p)\\, \\lambda_{r\\pi} + const_{only\\_adopt}\\, dummy",
+        "expression_plain": "Minimize negated net benefit: design arc costs + core travel cost + latent adoption term over selected paths + only-adopt constant. Coefficients attached via addVar(obj=...); MINIMIZE.",
+        "source_files": ["odmtsda/solve/model_c_path.py:15-16", "odmtsda/solve/model_c_path.py:62-66", "odmtsda/solve/model_c_path.py:88-92", "odmtsda/solve/model_c_path.py:157-197"]
+      },
+      "constraints": [
+        {
+          "name": "hub_weak_connectivity",
+          "indexed_over": "h in H",
+          "expression_latex": "\\sum_{a: orig(a)=h} z_a = \\sum_{a: dest(a)=h} z_a",
+          "expression_plain": "weak connectivity at each hub: opened out-arcs equal opened in-arcs",
+          "source_files": ["odmtsda/solve/model_c_path.py:220-240"]
+        },
+        {
+          "name": "arc_fixed_open",
+          "indexed_over": "a in Z with d_arc['fixed']",
+          "expression_latex": "z_a = 1",
+          "expression_plain": "mandatory arcs forced open",
+          "source_files": ["odmtsda/solve/model_c_path.py:71-77"]
+        },
+        {
+          "name": "core_trip_cost_definition",
+          "indexed_over": "r in R_core",
+          "expression_latex": "g_r = \\sum_{a \\in Z} \\tau_a x_{r,a} + \\sum_{e \\in S_r} \\gamma_e y_{r,e}",
+          "expression_plain": "core trip cost equals weighted h2h-arc cost plus weighted shuttle-arc cost",
+          "source_files": ["odmtsda/solve/model_c_path.py:242-279"]
+        },
+        {
+          "name": "core_trip_cost_upper_bound",
+          "indexed_over": "r in R_core",
+          "expression_latex": "g_r \\le g\\_ub_r + \\epsilon_{num}",
+          "expression_plain": "core trip cost capped by its upper bound (plus numerical slack)",
+          "source_files": ["odmtsda/solve/model_c_path.py:281-286"]
+        },
+        {
+          "name": "flow_conservation_x_y",
+          "indexed_over": "r in R_core, v in {orig_r, dest_r} u H",
+          "expression_latex": "\\sum_{e: orig(e)=v} y_{r,e} - \\sum_{e: dest(e)=v} y_{r,e} + [v \\in H]\\Big(\\sum_{a: orig(a)=v} x_{r,a} - \\sum_{a: dest(a)=v} x_{r,a}\\Big) = \\begin{cases} 1 & v=orig_r \\\\ -1 & v=dest_r \\\\ 0 & else \\end{cases}",
+          "expression_plain": "per core-trip flow conservation over shuttle + h2h arcs",
+          "source_files": ["odmtsda/solve/model_c_path.py:290-378"]
+        },
+        {
+          "name": "x_linked_to_design",
+          "indexed_over": "r in R_core, a in Z",
+          "expression_latex": "x_{r,a} \\le z_a",
+          "expression_plain": "core trip uses h2h arc only if opened",
+          "source_files": ["odmtsda/solve/model_c_path.py:381-400"]
+        },
+        {
+          "name": "path_feasible_lower",
+          "indexed_over": "r in R_latent, pi in Pi_r",
+          "expression_latex": "\\sum_{a \\in Z_{\\pi}} z_a - |Z_{\\pi}| + 1 \\le f_{r,\\pi}",
+          "expression_plain": "path pi feasible (f=1) only if all its h2h arcs opened",
+          "source_files": ["odmtsda/solve/model_c_path.py:404-443"]
+        },
+        {
+          "name": "path_feasible_upper",
+          "indexed_over": "r in R_latent, pi in Pi_r, a in Z_pi",
+          "expression_latex": "f_{r,\\pi} \\le z_a",
+          "expression_plain": "path feasibility bounded above by each on-path h2h arc being open",
+          "source_files": ["odmtsda/solve/model_c_path.py:445-454"]
+        },
+        {
+          "name": "m_le_path_cost_bigM",
+          "indexed_over": "r in R_latent, pi in Pi_r",
+          "expression_latex": "m_r \\le g^{\\pi}_{r} + M (1 - f_{r,\\pi})",
+          "expression_plain": "if path pi is feasible (f=1), the selected-path cost m_r is bounded above by that path's cost (global big-M M)",
+          "source_files": ["odmtsda/solve/model_c_path.py:459-488"]
+        },
+        {
+          "name": "path_cost_le_m_bigM",
+          "indexed_over": "r in R_latent, pi in Pi_r",
+          "expression_latex": "g^{\\pi}_{r} - M (1 - \\lambda_{r,\\pi}) \\le m_r",
+          "expression_plain": "if path pi is selected (lambda=1), m_r is bounded below by that path's cost (forces m_r to equal the chosen path cost)",
+          "source_files": ["odmtsda/solve/model_c_path.py:490-518"]
+        },
+        {
+          "name": "exactly_one_path_selected",
+          "indexed_over": "r in R_latent",
+          "expression_latex": "\\sum_{\\pi \\in Pi_r} \\lambda_{r,\\pi} = 1",
+          "expression_plain": "each latent trip selects exactly one path",
+          "source_files": ["odmtsda/solve/model_c_path.py:520-542"]
+        },
+        {
+          "name": "only_adopt_constant_anchor",
+          "indexed_over": "scalar",
+          "expression_latex": "dummy = 1",
+          "expression_plain": "auxiliary equality fixing only-adopt constant-contribution dummy to 1",
+          "source_files": ["odmtsda/solve/model_c_path.py:191-197"]
+        }
+      ],
+      "instances": [
+        {"name": "test_case (same dataset; run with --s_path_enum_alg regular)", "path": "test_case/data/", "format": "csv + json + pickle", "size": "Same raw network as P-PATH (1267 stops, 9 hubs, 936 core-trip rows, 565 latent-trip rows). Stage-1 path set is 'Pi' (path_enumeration_alg_general_or_enhance.py) rather than 'AuP'. No authors' result_summary is shipped for the regular/C-PATH path algorithm.", "license": "MIT"}
+      ],
+      "notes": "C-PATH is selected when s_path_enum_alg == 'regular' (solve_main.py:25-26) and uses Stage-1 set 'Pi'. Differs from P-PATH in three ways: (1) x and y are BINARY here (model_c_path.py:100,119) vs LP-relaxed continuous in P-PATH; (2) latent adoption uses an explicit auxiliary m_r with two-sided global big-M linearization (config.i_big_M = 100000) plus exactly-one-path selection (lambda sum = 1), whereas P-PATH instead has g_r-leq-path with trip-specific g_ub big-M and lambda-x coupling constraints (k,l); (3) constraint dispatch comments do not carry letter tags. No plain-text math ships in the repo; the latex/symbols are this extraction's own code-to-math mapping. _add_cst_z_e in C-PATH builds the same z-vs-f feasibility logic as _add_cst_z_f in P-PATH."
+    }
+  ],
+  "extraction_confidence": "medium",
+  "extraction_notes": "Two distinct gurobipy formulations were found and transcribed: P-PATH (odmtsda/solve/model_p_path.py) and C-PATH (odmtsda/solve/model_c_path.py), dispatched by config.s_path_enum_alg in odmtsda/solve/solve_main.py:25-30. P-PATH is the paper's/README's showcased 'enhanced' model (default path algorithm). No written mathematical formulation (no README math, no LaTeX, no docstrings with equations) ships in the repository, so all mathematical symbols (z,x,y,g,lambda,f,m and parameters beta,tau,gamma,theta,p,M) are THIS EXTRACTION'S OWN mapping from the gurobipy code identifiers (source_symbol records the exact code names); confidence lowered to 'medium' accordingly. Constraint letter tags (b,d,e,f,g,h,i,j,k,l) for P-PATH come verbatim from inline dispatch comments in _add_constraints (model_p_path.py:224-238) — note there is no (c) tag in the source. Objective coefficients are attached per-variable via addVar(obj=...) rather than a setObjective call; their meanings were traced to the preprocessing modules (createNewbusArcs.py for inv_obj_beta/rider_obj_tau, createConnectionArcs.py for arc_obj_gamma, createTrips.py/filterConnectionArcs.py for g_ub/num_riders, other_utils.py:12-14 for ticket price). Paper DOI 10.1287/ijoc.2023.0014 and BibTeX taken from README.md:16,23-30 (confirmed, not inferred). Sets/parameters are data-driven (loaded from test_case JSON/CSV at runtime); instance sizes counted from test_case/data files and test_case/result_summary_authors/stage_1_summary.json. Stage-1 path enumeration and x-variable elimination (odmtsda/path/) are preprocessing algorithms, not LP/MILP formulations, and were not transcribed as models. The dist_km.pickle/time_min.pickle inputs are generated at run time and are not present in the clone (not inlined)."
+}

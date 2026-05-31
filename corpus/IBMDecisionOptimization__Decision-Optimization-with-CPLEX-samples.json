@@ -1,0 +1,60 @@
+{
+  "repo": "IBMDecisionOptimization/Decision-Optimization-with-CPLEX-samples",
+  "url": "https://github.com/IBMDecisionOptimization/Decision-Optimization-with-CPLEX-samples",
+  "license": "Apache-2.0",
+  "language": "MPS (CPLEX mathematical-programming file)",
+  "solver": "CPLEX",
+  "area": "railway-timetabling",
+  "paper_reference": null,
+  "models": [
+    {
+      "model_id": "timtab1-cyclic-timetabling-milp",
+      "source_files": [
+        "Timetabling-problem/timtab1.mps:1-1273"
+      ],
+      "description": "Mixed-integer program 'timtab1' distributed by IBM as the Railway-timetabling CPLEX sample. Per the repository README, the sample concerns a CYCLIC railway timetable (a train for a given destination departs a station at the same minute in every cycle) and is provided to DEMONSTRATE CPLEX 'warm start' (an accompanying .sol incumbent re-starts a similar/interrupted solve). The model is supplied ONLY as a flat MPS file: it has no symbolic/semantic variable or constraint names (rows are c1..c171, columns are x1..x397), so the real-world meaning of individual variables and constraints is NOT documented in the repository and is NOT recoverable from the file. timtab1 is the small member of the well-known MIPLIB 'timtab' family (timtab1/timtab2) of Periodic Event Scheduling Problem (PESP) instances for cyclic timetabling; the structure below is described from the MPS content rather than from any documented formulation.",
+      "sets_indices": [
+        {"name": "C", "meaning": "index set of constraint rows c1..c171 (all equalities); semantic role per row is not documented in the repo", "source_symbol": "ROWS section, rows c1..c171 (timtab1.mps:4-174)"},
+        {"name": "Xc", "meaning": "index set of continuous columns x1..x226", "source_symbol": "COLUMNS section before MARK0000 'INTORG' (timtab1.mps:176-617)"},
+        {"name": "Xi", "meaning": "index set of integer/general columns x227..x397 (bounded general integers; in PESP-type formulations these are typically the cyclic period/modulo offset variables, but this is NOT stated in the file)", "source_symbol": "COLUMNS section between MARK0000 'INTORG' and MARK0001 'INTEND' (timtab1.mps:618-790)"}
+      ],
+      "parameters": [
+        {"name": "obj_coeff(x_j)", "meaning": "objective cost coefficient of column x_j (nonzero only for a subset of continuous columns; integer columns carry no objective coefficient)", "domain": "R", "source_symbol": "COLUMNS entries naming row 'obj' (e.g. timtab1.mps:176,180,182,190 ...)"},
+        {"name": "a(c_i, x_j)", "meaning": "constraint-matrix coefficient of column x_j in row c_i; observed values in {-1,+1} for continuous columns and a constant -60 for every integer column (the -60 on every integer column is the characteristic cyclic period coefficient T=60 of a PESP/cyclic-timetable formulation)", "domain": "{-60, -1, +1}", "source_symbol": "COLUMNS section (timtab1.mps:176-789); integer -60 coefficients at timtab1.mps:619-789"},
+        {"name": "rhs(c_i)", "meaning": "right-hand-side constant of equality row c_i (integer-valued, both signs; one tiny value -2.84217E-14 at c32 is numerical noise / effectively 0)", "domain": "R", "source_symbol": "RHS section (timtab1.mps:792-874)"},
+        {"name": "ub(x_j)", "meaning": "upper bound of column x_j (UP); continuous columns mostly bounded by ~4..59, integer columns by small integers 1..6", "domain": "R_>=0", "source_symbol": "BOUNDS 'UP' lines (timtab1.mps:876-1272)"},
+        {"name": "T_cycle", "meaning": "cycle length implied by the recurring -60 integer-column coefficient (60 minutes / one-hour cyclic period); inferred structurally from the MPS, consistent with the README's 'every hour' cyclic-timetable description, NOT stated explicitly as a parameter in the file", "domain": "Z_>=1", "source_symbol": "constant -60 on all integer columns (timtab1.mps:619-789)"}
+      ],
+      "decision_variables": [
+        {"name": "x_j (j=1..226)", "type": "continuous", "domain": "[0, ub(x_j)] (default lower bound 0; explicit UP bounds, no LO/FR/BV/MI bounds present)", "meaning": null, "source_symbol": "x1..x226 (timtab1.mps:176-617); bounds at timtab1.mps:876-1101"},
+        {"name": "x_j (j=227..397)", "type": "integer", "domain": "bounded general integer in [0, ub(x_j)]; 13 of them fixed to 0 via FX bounds (x228,x234,x248,x253,x254,x261,x264,x270,x312,x334,x368,x379,x384)", "meaning": null, "source_symbol": "x227..x397 between 'INTORG'/'INTEND' (timtab1.mps:619-789); bounds at timtab1.mps:1102-1272"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min \\; \\sum_{j=1}^{226} c_j\\, x_j",
+        "expression_plain": "Minimize a linear cost over a subset of the continuous columns (rows entries naming N-row 'obj'). No OBJSENSE section is present, so CPLEX default sense MIN applies. Objective coefficients are positive integers (e.g. 1001, 1000, 1387, 2002) plus a few fractional values (333.33333333, 666.66666667). The real-world meaning of the objective is not documented; in cyclic-timetabling PESP it would correspond to weighted total travel/transfer/slack time, but this is not stated in the file. (Reference incumbent objectiveValue in timtab1.sol = 773433.99999978.)",
+        "source_files": ["Timetabling-problem/timtab1.mps:3", "Timetabling-problem/timtab1.mps:176-617"]
+      },
+      "constraints": [
+        {
+          "name": "equality_rows_c1_c171",
+          "indexed_over": "c_i for i in 1..171 (ALL constraint rows; grouped as one family because they are structurally identical: all are 'E' equality rows and none carry documented semantics)",
+          "expression_latex": "\\sum_{j} a_{ij}\\, x_j \\;-\\; 60\\!\\!\\sum_{j \\in Xi}\\!\\! [\\,a_{ij}\\neq 0\\,]\\, x_j \\;=\\; \\mathrm{rhs}(c_i), \\quad i=1,\\dots,171",
+          "expression_plain": "Each row c_i is a linear EQUALITY (ROWS type 'E') combining continuous columns (coefficients +/-1) with at most a few integer columns whose coefficient is -60 (the cyclic period). This is the canonical PESP cyclic-scheduling form 'difference-of-event-times = offset - period * k', i.e. each timetabling precedence/headway constraint is written modulo the 60-minute cycle via an integer multiplier variable. All 171 rows share this structure; they differ only in which columns appear and in their RHS. No RANGES section exists, so every row is a strict equality. Per-row real-world meaning is NOT documented in the repository and is set to null.",
+          "source_files": [
+            "Timetabling-problem/timtab1.mps:4-174",
+            "Timetabling-problem/timtab1.mps:176-789",
+            "Timetabling-problem/timtab1.mps:792-874"
+          ]
+        }
+      ],
+      "instances": [
+        {"name": "timtab1.mps", "path": "Timetabling-problem/timtab1.mps", "format": "MPS (CPLEX, integer markers INTORG/INTEND, no OBJSENSE/RANGES)", "size": "53477 bytes; 397 columns (226 continuous, 171 general-integer), 171 equality rows (c1..c171), 1 objective row (obj), 384 UP bounds + 13 FX bounds", "license": "Apache-2.0"},
+        {"name": "timtab1.sol", "path": "Timetabling-problem/timtab1.sol", "format": "CPLEX solution XML (CPLEXSolution version 1.2)", "size": "28479 bytes; incumbent MIP solution, objectiveValue=773433.99999977998, solutionStatusString=aborted (113), MIPNodes=283843; serves as the warm-start starting point demonstrated by this sample", "license": "Apache-2.0"}
+      ],
+      "notes": "This is a flat MPS model with NO semantic names: rows are c1..c171, columns x1..x397. The README states the sample is a cyclic railway timetable used to demonstrate CPLEX warm start, but provides NO mathematical formulation, variable dictionary, or per-row meaning. The signature structural feature is the constant -60 coefficient on every integer column, which is the one-hour (60-minute) cyclic period of a Periodic Event Scheduling Problem (PESP) formulation; this is the well-known MIPLIB 'timtab1' instance. Because the file is anonymous, individual variable and constraint meanings are set to null and the 171 equality rows are reported as ONE constraint family (they are structurally identical) with the full citing line ranges rather than enumerated one-by-one. No .lp, .prm, .mst, or .feas file is present in the Timetabling-problem folder (only .mps and .sol), contrary to the README's general description of the file set."
+    }
+  ],
+  "extraction_confidence": "medium",
+  "extraction_notes": "Parsed Timetabling-problem/timtab1.mps (53477 bytes) and timtab1.sol (28479 bytes) directly; no .lp/.prm/.mst/.feas exist in the subfolder. Structural facts verified by counting MPS sections: 1 N-row (obj, line 3), 171 E-rows c1..c171 (lines 4-174), 0 L/G rows, no RANGES section, 397 columns split by the INTORG marker (line 618) into 226 continuous (x1..x226) and 171 integer (x227..x397, INTEND at line 790), BOUNDS = 384 UP + 13 FX (all 13 FX fix integer columns x>=228 to 0). Default sense MIN assumed (no OBJSENSE). Every integer column carries a -60 coefficient, the cyclic 60-minute period of a PESP timetabling model; this and the README ('cyclic railway timetable', 'warm start') are the ONLY semantic anchors. The MPS carries NO symbolic names, so per-variable and per-row real-world meaning is genuinely not recoverable and is reported as null; the 171 identically-structured equality rows are grouped into one constraint family with full line-range citations rather than fabricating 171 distinct railway meanings. Hence confidence is 'medium' (structure is certain; semantics are undocumented and not invented). LICENSE HANDLING: the README (line 76) declares Apache-2.0 referencing LICENSE.txt, but no LICENSE/LICENSE.txt file exists anywhere in the repository (verified via find). Per instructions, license is set to 'Apache-2.0' and a sidecar /home/joern/extracted_milps/IBMDecisionOptimization__Decision-Optimization-with-CPLEX-samples.LICENSE was written containing the verbatim README license statement plus a note that the referenced LICENSE.txt is absent upstream."
+}

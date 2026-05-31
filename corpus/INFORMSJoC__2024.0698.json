@@ -1,0 +1,220 @@
+{
+  "repo": "INFORMSJoC/2024.0698",
+  "url": "https://github.com/INFORMSJoC/2024.0698",
+  "license": "MIT",
+  "language": "Java (CPLEX / Concert API)",
+  "solver": "CPLEX 22.1",
+  "area": "transport-operations",
+  "paper_reference": "10.1287/ijoc.2024.0698",
+  "models": [
+    {
+      "model_id": "mdvsp-ts-arc-flow-time-expanded",
+      "source_files": [
+        "src/ddd/MDVSP.java:43-80",
+        "src/ddd/MDVSP.java:102-138",
+        "src/ddd/MDVSP.java:158-238",
+        "src/ddd/TimedArc.java:95-122",
+        "src/ddd/TimeSpaceGraph.java:121-153"
+      ],
+      "description": "Arc-flow (multi-commodity, one commodity per depot) formulation of the Multi-Depot Vehicle Scheduling Problem with Trip Shifting on a fully time-expanded network. Each depot has its own copy of the time-space graph; integer arc-flow variables route vehicles from a source depot node to a sink depot node. Trip shifting is modelled implicitly: each timetabled trip is expanded into multiple parallel trip arcs, one per admissible departure-time deviation in [-maxDeviation, +maxDeviation] (TimeSpaceGraph.initNodes/addTripArcs), and a cover constraint forces exactly one of these copies (across all depots) to be used. Objective minimizes total cost = fixed cost per vehicle (pull-in/pull-out arcs) + variable deadheading cost. This is the model solved both by the MIP baseline (SolverMIP on the full network) and, on iteratively refined sparser networks, by the DDD algorithm; the formulation is identical, only the underlying TimeSpaceGraph differs.",
+      "sets_indices": [
+        {"name": "D", "meaning": "set of depots (vehicle types / commodities)", "source_symbol": "in.getDepots()"},
+        {"name": "T", "meaning": "set of timetabled trips that must be covered", "source_symbol": "in.getTrips()"},
+        {"name": "L", "meaning": "set of locations (depots + stations)", "source_symbol": "in.getLocations()"},
+        {"name": "G_d = (V_d, A_d)", "meaning": "per-depot time-space network: timed nodes V_d (station x time) and timed arcs A_d", "source_symbol": "graph.get(depot) : TimeSpaceGraph"},
+        {"name": "A_d", "meaning": "timed arcs for depot d (trip, deadhead, waiting, pull-in, pull-out arcs)", "source_symbol": "graph.get(depot).getArcs()"},
+        {"name": "A^trip_d", "meaning": "subset of A_d that are trip arcs (type==1); each is a (trip, departure-deviation) copy", "source_symbol": "a.getType()==TimedArc.TRIP_ARC"},
+        {"name": "in(n)", "meaning": "arcs entering timed node n", "source_symbol": "graph.get(depot).getInArcs(n)"},
+        {"name": "out(n)", "meaning": "arcs leaving timed node n", "source_symbol": "graph.get(depot).getOutArcs(n)"},
+        {"name": "arcs(t)", "meaning": "all trip arcs (over all depots) that represent some departure-time copy of trip t", "source_symbol": "tripVars.get(t) (MDVSP.addCoverConstraints)"}
+      ],
+      "parameters": [
+        {"name": "c_{d,a}", "meaning": "cost of using arc a in depot layer d: 0 for trip/waiting arcs, VARIABLE_COST*travelTime for deadhead arcs, FIXED_COST+VARIABLE_COST*travelTime for pull-in/pull-out arcs", "domain": "Z_>=0", "source_symbol": "a.getCost() (TimedArc.computeCost)"},
+        {"name": "FIXED_COST", "meaning": "fixed cost charged on each pull-in and pull-out arc (so 2*FIXED_COST = 1000 per vehicle)", "domain": "Z_>=0", "source_symbol": "Instance.FIXED_COST", "value": "500"},
+        {"name": "VARIABLE_COST", "meaning": "variable cost per minute of driving (deadhead / pull travel time)", "domain": "Z_>=0", "source_symbol": "Instance.VARIABLE_COST", "value": "1"},
+        {"name": "maxDeviation", "meaning": "maximum allowed forward/backward shift (in minutes) of a trip's departure time; controls how many parallel trip-arc copies exist per trip", "domain": "Z_>=0", "source_symbol": "inst.getMaxDeviation()", "value": "set per experiment in MainMIP (maxDev=3) / MainBNP (maxDev=1)"},
+        {"name": "tau_{ij}", "meaning": "travel (deadhead/pull) time between locations i and j, from the instance travel-time matrix", "domain": "Z_>=0", "source_symbol": "Location.getTimeTo / getTimeFrom"},
+        {"name": "maxVehicles", "meaning": "optional cap on number of vehicles dispatched (total depot outflow); only enforced when nonzero", "domain": "Z_>=0", "source_symbol": "SolverMIP.maxVehicles / MDVSP.addDepotOutflowConstraints(max)"}
+      ],
+      "decision_variables": [
+        {"name": "x_{d,a}", "type": "integer", "domain": "trip arcs: {0,1}; other arcs: {0,...,inf}", "meaning": "flow on arc a in the time-space network of depot d (number of vehicles of depot d using arc a)", "source_symbol": "X.get(depot).get(a)"},
+        {"name": "x_{d,a} (LP relaxation)", "type": "continuous", "domain": "trip arcs: [0,1]; other arcs: [0,inf)", "meaning": "same arc-flow variable, continuously relaxed when relaxation==true", "source_symbol": "cplex.numVar (MDVSP.addVariables, relaxation branch)"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min \\sum_{d \\in D} \\sum_{a \\in A_d} c_{d,a}\\, x_{d,a}",
+        "expression_plain": "minimize total vehicle-scheduling cost = fixed cost per dispatched vehicle (on pull-in/pull-out arcs) plus variable deadheading/pull travel cost summed over all depot layers and arcs",
+        "source_files": ["src/ddd/MDVSP.java:224-238"]
+      },
+      "constraints": [
+        {
+          "name": "flow_conservation",
+          "indexed_over": "d in D, n in V_d with n not a depot node",
+          "expression_latex": "\\sum_{a \\in in(n)} x_{d,a} \\;=\\; \\sum_{a \\in out(n)} x_{d,a}",
+          "expression_plain": "at every non-depot timed node, inflow equals outflow in each depot layer (vehicles are conserved; depot source/sink nodes are unconstrained so they emit/absorb the fleet)",
+          "source_files": ["src/ddd/MDVSP.java:158-189"]
+        },
+        {
+          "name": "trip_cover",
+          "indexed_over": "t in T",
+          "expression_latex": "\\sum_{d \\in D} \\sum_{a \\in A^{trip}_d,\\; trip(a)=t} x_{d,a} \\;=\\; 1",
+          "expression_plain": "each timetabled trip is served exactly once, by exactly one depot and exactly one of its admissible departure-time (shift) copies",
+          "source_files": ["src/ddd/MDVSP.java:191-222"]
+        },
+        {
+          "name": "depot_outflow_cap",
+          "indexed_over": "global (added only when maxVehicles != 0)",
+          "expression_latex": "\\sum_{d \\in D} \\sum_{a \\in out(\\text{depot}_d, t=0)} x_{d,a} \\;=\\; \\text{maxVehicles}",
+          "expression_plain": "optional: total number of vehicles leaving the depots at time 0 is fixed to maxVehicles",
+          "source_files": ["src/ddd/MDVSP.java:140-156", "src/ddd/SolverMIP.java:57-59"]
+        },
+        {
+          "name": "arc_domain_trip_binary",
+          "indexed_over": "d in D, a in A^trip_d",
+          "expression_latex": "x_{d,a} \\in \\{0,1\\}",
+          "expression_plain": "trip arcs carry binary flow (a trip copy is either used or not)",
+          "source_files": ["src/ddd/MDVSP.java:112-119"]
+        },
+        {
+          "name": "arc_domain_other_integer",
+          "indexed_over": "d in D, a in A_d \\ A^trip_d",
+          "expression_latex": "x_{d,a} \\in \\mathbb{Z}_{\\geq 0}",
+          "expression_plain": "deadhead, waiting, pull-in and pull-out arcs carry nonnegative integer flow (multiple vehicles may share them)",
+          "source_files": ["src/ddd/MDVSP.java:120-127"]
+        }
+      ],
+      "instances": [
+        {"name": "GD-4-{trips}-{i}.txt", "path": "dataEUC/", "format": "txt (header: numDepots numTrips numLocations; depot locations; per-trip startLoc startTime endLoc endTime; full location travel-time matrix)", "size": "41 Kulkarni et al. (2019)-style 4-depot instances, trips in {100,250,500,750,1000}, indices 0-9 per size (250 has indices 0-9 incl.); plus GD-2-4140.txt (2-depot, 4140 trips)", "license": "MIT"}
+      ],
+      "notes": "Trip shifting has no explicit shift decision variable in this MIP: it is encoded structurally by expanding each trip into 2*maxDeviation+1 parallel trip arcs in the time-space network (TimeSpaceGraph.initNodes lines 136-151, addTripArcs lines 192-255) and letting the trip_cover constraint pick one. The 'aggregate' flag merges trip-arc copies with the same head node to shrink the model (lines 231-238) without changing feasible costs. The same MDVSP class is reused by the DDD algorithm (Solver_DDD) on iteratively refined sparse networks plus a separation/refinement loop; the LP/MIP formulation is identical, so DDD is not a distinct formulation. CPLEX gap params: MIPGap 1e-9, AbsMIPGap 0.99 (lines 77-78)."
+    },
+    {
+      "model_id": "mdvsp-ts-set-partitioning-master",
+      "source_files": [
+        "src/bnp/MasterProblem.java:40-65",
+        "src/bnp/MasterProblem.java:95-107",
+        "src/bnp/Route.java:34-53",
+        "src/bnp/ShortestPathWithResources.java:63-106",
+        "src/bnp/BranchAndPrice.java:42-153"
+      ],
+      "description": "Extended set-partitioning (route-based / Dantzig-Wolfe) reformulation of the MDVSP-TS solved by branch-and-price. A column is a feasible vehicle route (an ordered sequence of trips for one depot) with a precomputed cost; the master selects a minimum-cost set of routes covering each trip exactly once. Columns are generated by a per-depot resource-constrained shortest-path pricing problem over a connection network, where the time-shifting window (maxDeviation) is the resource handled in the label start-time. Branching is done on color (depot assignment), inter-task arcs, and most-fractional arcs. The master LP relaxation is what is actually solved at each B&P node.",
+      "sets_indices": [
+        {"name": "T", "meaning": "set of timetabled trips to cover", "source_symbol": "inst.getTrips()"},
+        {"name": "D", "meaning": "set of depots", "source_symbol": "inst.getDepots()"},
+        {"name": "Omega", "meaning": "set of generated feasible routes (columns) across all depots", "source_symbol": "routeSet / varMap"},
+        {"name": "Omega_d", "meaning": "routes belonging to depot d", "source_symbol": "Route.getDepot()"},
+        {"name": "trips(r)", "meaning": "ordered set of trips covered by route r", "source_symbol": "Route.getTrips()"},
+        {"name": "arcs(r)", "meaning": "connection-network arcs traversed by route r (used for branching/forbidden-arc filtering)", "source_symbol": "Route.getArcs()"}
+      ],
+      "parameters": [
+        {"name": "c_r", "meaning": "cost of route r = 2*FIXED_COST (one vehicle) + VARIABLE_COST * (total pull-out + deadhead + pull-in travel time along the route)", "domain": "Z_>=0", "source_symbol": "Route.cost / Route.computeCosts()"},
+        {"name": "a_{t,r}", "meaning": "covering coefficient: 1 if route r covers trip t, else 0", "domain": "{0,1}", "source_symbol": "implicit via col.and(cplex.column(coveringConstraints.get(t),1)) in addColumn"},
+        {"name": "FIXED_COST", "meaning": "fixed cost per vehicle leg (pull-out and pull-in each pay it)", "domain": "Z_>=0", "source_symbol": "Instance.FIXED_COST", "value": "500"},
+        {"name": "VARIABLE_COST", "meaning": "variable cost per minute of driving", "domain": "Z_>=0", "source_symbol": "Instance.VARIABLE_COST", "value": "1"},
+        {"name": "maxDeviation", "meaning": "trip-shifting window used as the time resource in the pricing label-setting feasibility check", "domain": "Z_>=0", "source_symbol": "inst.getMaxDeviation() / ShortestPathWithResources.maxDeviation"}
+      ],
+      "decision_variables": [
+        {"name": "lambda_r", "type": "continuous", "domain": "[0, inf)", "meaning": "fraction/number of times route r is selected; relaxed to continuous in the master LP solved at each B&P node (integrality enforced by branching, not by the variable type)", "source_symbol": "cplex.numVar(col, 0, Double.MAX_VALUE) in MasterProblem.addColumn"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min \\sum_{r \\in \\Omega} c_r\\, \\lambda_r",
+        "expression_plain": "minimize total cost of the selected routes",
+        "source_files": ["src/bnp/MasterProblem.java:48-49", "src/bnp/MasterProblem.java:95-100"]
+      },
+      "constraints": [
+        {
+          "name": "trip_cover_partitioning",
+          "indexed_over": "t in T",
+          "expression_latex": "\\sum_{r \\in \\Omega} a_{t,r}\\, \\lambda_r \\;=\\; 1",
+          "expression_plain": "each trip must be covered by exactly one selected route (set-partitioning covering constraint; built as an equality == 1)",
+          "source_files": ["src/bnp/MasterProblem.java:50-61", "src/bnp/MasterProblem.java:96-99"]
+        },
+        {
+          "name": "lambda_nonnegativity",
+          "indexed_over": "r in Omega",
+          "expression_latex": "\\lambda_r \\geq 0",
+          "expression_plain": "route-usage variables are nonnegative (LP relaxation of the master)",
+          "source_files": ["src/bnp/MasterProblem.java:100"]
+        },
+        {
+          "name": "pricing_reduced_cost (column-generation oracle, not a master row)",
+          "indexed_over": "d in D",
+          "expression_latex": "\\bar c_r = c_r - \\sum_{t \\in trips(r)} \\pi_t < 0",
+          "expression_plain": "columns are added when a resource-constrained shortest path in depot d's connection network finds a route with negative reduced cost; pi_t are the duals of the trip-cover constraints. The time-shift window maxDeviation is enforced as a resource on label start times in the label-setting algorithm",
+          "source_files": ["src/bnp/BranchAndPrice.java:158-238", "src/bnp/ShortestPathWithResources.java:138-220", "src/bnp/MasterProblem.java:114-139"]
+        },
+        {
+          "name": "branching (color / inter-task / arc) — enforces integrality",
+          "indexed_over": "B&P tree nodes",
+          "expression_latex": null,
+          "expression_plain": "integrality of the route selection is enforced by branching (color branching on depot assignment, inter-task branching, and forbidding fractional arcs), not by declaring lambda integer; see getColorBranching / getInterTaskBranching / getMostFractionalArc",
+          "source_files": ["src/bnp/BranchAndPrice.java:112-147", "src/bnp/MasterProblem.java:160-385"]
+        }
+      ],
+      "instances": [
+        {"name": "GD-4-{trips}-{i}.txt", "path": "dataEUC/", "format": "txt (same format as the arc-flow model)", "size": "same 41 four-depot instances + GD-2-4140.txt; MainBNP defaults to nrTrips=250, maxDev=1", "license": "MIT"}
+      ],
+      "notes": "The master is built incrementally (column generation): coveringConstraints are initialized as cplex.addEq(0,1) for every trip and columns are attached via IloColumn. lambda_r is declared continuous (numVar) because the master is the LP relaxation at each node; integrality comes from the branch-and-price tree. Route cost (Route.computeCosts) bakes in trip shifting: arrival time is clamped to within +/-5 of the scheduled start (note: this '5' is hard-coded in Route.computeCosts and differs from inst.maxDeviation, which governs the pricing graph — recorded faithfully as found). The pricing problem (ShortestPathWithResources) is a labelling algorithm with cost+startTime dominance; it is the column oracle, not part of the MILP rows, but is recorded so the formulation is auditable."
+    },
+    {
+      "model_id": "duty-deviation-conversion-lp",
+      "source_files": [
+        "src/ddd/ConversionModel.java:29-51",
+        "src/ddd/ConversionModel.java:53-121"
+      ],
+      "description": "Auxiliary trip-shifting subproblem used to (re)assign actual departure times to the ordered sequence of trips in a single fixed vehicle duty. Given a duty (sequence of trips with deadheads), choose each trip's departure time within its shift window so that either the total absolute deviation from the timetable, or the total in-route waiting time, is minimized while respecting travel-time precedence. Used inside the DDD/heuristic machinery to convert a path/duty into a feasible timed schedule; it is a small standalone CPLEX model, distinct from the two scheduling formulations above.",
+      "sets_indices": [
+        {"name": "R", "meaning": "ordered sequence of trips in the given duty", "source_symbol": "route.getTrips() -> trips"},
+        {"name": "consecutive pairs (i, i+1)", "meaning": "adjacent trips in the duty for precedence constraints", "source_symbol": "for i in 0..trips.size()-2"}
+      ],
+      "parameters": [
+        {"name": "s_t", "meaning": "scheduled (timetable) start time of trip t", "domain": "Z_>=0", "source_symbol": "t.getStartTime()"},
+        {"name": "p_t", "meaning": "trip duration (travel time) of trip t", "domain": "Z_>=0", "source_symbol": "t.getTripTime()"},
+        {"name": "d_{t,t'}", "meaning": "deadhead travel time from end location of t to start location of next trip t'", "domain": "Z_>=0", "source_symbol": "first.getEndLocation().getTimeTo(second.getStartLocation())"},
+        {"name": "maxDeviation", "meaning": "maximum allowed forward/backward shift bounding delta+ and delta-", "domain": "Z_>=0", "source_symbol": "in.getMaxDeviation()"},
+        {"name": "[startHorizon, endHorizon+1000]", "meaning": "bounds on the chosen departure-time variable pi_t", "domain": "Z", "source_symbol": "in.getStartHorizon() / in.getEndHorizon()+1000"}
+      ],
+      "decision_variables": [
+        {"name": "pi_t", "type": "continuous", "domain": "[startHorizon, endHorizon+1000]", "meaning": "chosen actual departure time of trip t", "source_symbol": "pi.get(t)"},
+        {"name": "delta^+_t", "type": "integer", "domain": "[0, maxDeviation]", "meaning": "forward shift (delay) of trip t relative to its scheduled start", "source_symbol": "deltaplus.get(t)"},
+        {"name": "delta^-_t", "type": "integer", "domain": "[0, maxDeviation]", "meaning": "backward shift (advance) of trip t relative to its scheduled start", "source_symbol": "deltaminus.get(t)"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min \\sum_{t \\in R} (\\delta^+_t + \\delta^-_t) \\quad\\text{or}\\quad \\min \\sum_{(t,t')} \\big(\\pi_{t'} - \\pi_t - p_t - d_{t,t'}\\big)",
+        "expression_plain": "if minimizeDeviation: minimize total absolute departure-time shift; otherwise minimize total in-route waiting time between consecutive trips",
+        "source_files": ["src/ddd/ConversionModel.java:92-121"]
+      },
+      "constraints": [
+        {
+          "name": "time_window_link",
+          "indexed_over": "t in R",
+          "expression_latex": "\\pi_t \\;=\\; s_t + \\delta^+_t - \\delta^-_t",
+          "expression_plain": "the chosen departure time equals the scheduled start time shifted forward by delta+ and backward by delta-",
+          "source_files": ["src/ddd/ConversionModel.java:64-72"]
+        },
+        {
+          "name": "travel_time_precedence",
+          "indexed_over": "consecutive trip pairs (t, t') in R",
+          "expression_latex": "\\pi_{t'} \\;\\geq\\; \\pi_t + p_t + d_{t,t'}",
+          "expression_plain": "the next trip cannot depart before the current trip finishes plus the deadhead time to reach the next trip's start location",
+          "source_files": ["src/ddd/ConversionModel.java:74-90"]
+        },
+        {
+          "name": "shift_bounds",
+          "indexed_over": "t in R",
+          "expression_latex": "0 \\leq \\delta^+_t \\leq maxDeviation,\\quad 0 \\leq \\delta^-_t \\leq maxDeviation,\\quad \\delta^\\pm_t \\in \\mathbb{Z}",
+          "expression_plain": "forward and backward shifts are integer and bounded by the deviation window",
+          "source_files": ["src/ddd/ConversionModel.java:59-60"]
+        }
+      ],
+      "instances": [
+        {"name": "(no standalone instance files)", "path": "n/a", "format": "n/a", "size": "instantiated at runtime from a single Duty derived from an instance solution; not driven by a separate data file", "license": "MIT"}
+      ],
+      "notes": "Small per-duty model, not the main scheduling formulation, but a genuine CPLEX MILP/LP and recorded for completeness. pi_t is continuous while delta+/delta- are integer; because pi_t = s_t + delta+ - delta- and s_t is integer, pi_t is effectively integer-valued. The waiting-time objective branch reconstructs the same precedence slack used in the constraints. This model is what realizes trip shifting *explicitly* (with delta+/delta- variables), in contrast to the implicit arc-expansion in the arc-flow MIP."
+    }
+  ],
+  "extraction_confidence": "medium",
+  "extraction_notes": "INFORMSJoC replication repo ships NO written mathematical formulation (README is replication-only: it lists the three algorithms MIP/DDD/BNP, the CPLEX 22.1 dependency, the dataEUC data, and the three Main scripts, but gives no equations). All math symbols here are the extractor's own mapping derived directly from the CPLEX Concert API calls in the Java source; code identifiers are preserved in source_symbol. Confidence is 'medium' rather than 'high' precisely because there is no documented notation to cross-check against and the symbol choices are ours. Three distinct CPLEX models were found and recorded: (1) the arc-flow time-expanded MDVSP-TS in ddd/MDVSP.java (used by both the MIP baseline via SolverMIP and the DDD algorithm via Solver_DDD on refined networks — same formulation, so a single models[] entry); (2) the set-partitioning master in bnp/MasterProblem.java solved by branch-and-price with a resource-constrained-shortest-path pricing oracle (bnp/ShortestPathWithResources.java) and column costs from bnp/Route.java; (3) the small per-duty trip-shifting conversion model in ddd/ConversionModel.java. Trip shifting is modelled two different ways across these: implicitly via parallel trip-arc copies in the time-space network (model 1, controlled by maxDeviation in TimeSpaceGraph) and the pricing label resource (model 2), and explicitly via delta+/delta- shift variables (model 3). Paper DOI 10.1287/ijoc.2024.0698 is taken verbatim from the README (link + bibtex), so it is NOT inferred. The arc-flow LP relaxation and the master LP both rely on CPLEX-internal handling; no constraint/objective was fabricated. Files Solver_DDD.java, SuperDuty.java, Duty.java, ConnectionNetwork.java, BNP_Node.java contain algorithmic scaffolding (network refinement, path decomposition, branching nodes), not additional MILP rows, so they are referenced only where they touch a model. The hard-coded '+/-5' clamp in Route.computeCosts differs from inst.maxDeviation and is recorded as-found (model 2 notes) rather than reconciled."
+}

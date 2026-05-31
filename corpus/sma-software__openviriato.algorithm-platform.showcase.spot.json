@@ -1,0 +1,147 @@
+{
+  "repo": "sma-software/openviriato.algorithm-platform.showcase.spot",
+  "url": "https://github.com/sma-software/openviriato.algorithm-platform.showcase.spot",
+  "license": "Apache-2.0",
+  "language": "C# (SMA AlgorithmsUtils LPCreation abstraction over Gurobi)",
+  "solver": "Gurobi",
+  "area": "railway-timetabling",
+  "paper_reference": "10.1016/j.trb.2021.02.006",
+  "models": [
+    {
+      "model_id": "spot-pesp-passenger-timetabling",
+      "source_files": [
+        "Spot/MilpGeneration/SpotProblemBuilder.cs:12-15",
+        "Spot/MilpGeneration/Commands/SpotProblemGenerationCommand.cs:3-7",
+        "Spot/MilpGeneration/SpotVariableFactory.cs:30-102",
+        "Spot/MilpGeneration/Commands/AddObjectiveCommand.cs:7-10",
+        "Spot/MilpGeneration/Commands/AddStopTimeConstraintCommand.cs:39-54",
+        "Spot/MilpGeneration/Commands/AddRunningTimeEqualityCommand.cs:16-33",
+        "Spot/MilpGeneration/Commands/AddTravelDurationsOnRoutePartsConstraintCommand.cs:23-56",
+        "Spot/MilpGeneration/Commands/AddTransferDurationsBetweenRoutePartsConstraintCommand.cs:38-57",
+        "Spot/MilpGeneration/Commands/AddMinimumDurationOverAllTravelRoutesConstraintCommand.cs:11-18"
+      ],
+      "description": "SPOT (a Periodic Event Scheduling Problem / PESP extension after Polinder, Schmidt & Huisman 2021) for strategic passenger railway timetabling. The model fixes, per period of length T (CycleTime), the arrival and departure event times of each train at each stop so as to minimise total demand-weighted passenger travel time. Passengers choose exactly one of several candidate travel routes per OD relation; each route is a sequence of in-train route parts joined by transfers. Periodic (cyclic, modulo-T) timing relations between successive events are linearised with a cycle-time-shift variable k (the integer/binary wrap variable) so that running-time, stop-time, route-part-duration and transfer relations hold within one period. This implementation deliberately deviates from the original SPOT (readme.md:54-84): it neglects waiting time at the passenger origin and assumes all passengers of an OD relation use the same route (single route selection per relation). Build is orchestrated by SpotProblemGenerationCommand -> {AddObjectiveCommand, AddTrainRunConstraintsCommand, AddRelationsConstraintsCommand}. The model is assembled via SMA's AlgorithmsUtils LPCreation abstraction (Constraint/Term/Monomial/ContinuousVariable/BinaryVariable/Objective), not raw gurobipy/GRBModel; that library wraps Gurobi (readme.md:221-247).",
+      "sets_indices": [
+        {"name": "L", "meaning": "set of (template) train lines in the scenario", "source_symbol": "ctx.Scenario.Lines"},
+        {"name": "P_l", "meaning": "ordered sequence of path-node constraints (events) of line l", "source_symbol": "lineConstraint.PathNodes"},
+        {"name": "R", "meaning": "set of passenger OD relations that have at least one routing", "source_symbol": "ctx.Scenario.PassengerRelationsWithRoutes"},
+        {"name": "TR_r", "meaning": "candidate travel routes for relation r", "source_symbol": "relation.TravelRoutes"},
+        {"name": "RP_{r,tr}", "meaning": "ordered in-train route parts of travel route tr", "source_symbol": "travelRoute.TravelRouteParts"},
+        {"name": "TRX_{r,tr}", "meaning": "transfers between consecutive route parts of travel route tr (consecutive pairs of route parts)", "source_symbol": "travelRoute.TravelRouteParts.IterateInConsecutivePairs()"},
+        {"name": "VN_{rp}", "meaning": "visited path nodes (events) along a route part rp", "source_symbol": "travelRoutePart.VisitedNodes"}
+      ],
+      "parameters": [
+        {"name": "T", "meaning": "cycle time / period of the PESP (length of one period); used as the modulo base in every periodic timing constraint", "domain": "Z_>=1 (model-time units of 6 s)", "source_symbol": "scenario.CycleTime (via TimeConverter.ToModelTime)"},
+        {"name": "TimeStep", "meaning": "time discretisation granularity = 6 seconds; ToModelTime divides real durations by this to get integer model time", "domain": "fixed = 6 s", "source_symbol": "TimeConverter.TimeStep", "value": "Duration.FromSeconds(6); see Spot/Model/Scenario/TimeConverter.cs:10,24-26"},
+        {"name": "l^stop_n", "meaning": "minimum stop (dwell) time required at path node n", "domain": "Z_>=0 (model time)", "source_symbol": "nodeConstraint.MinStopTime (-> minStopTime)"},
+        {"name": "l^run_n", "meaning": "minimum running (travel) time on the section ending at node n (predecessor -> n)", "domain": "Z_>=1 (model time)", "source_symbol": "currentNode.MinRunTime.Value (-> minRt)"},
+        {"name": "alpha", "meaning": "additional-running-time factor; bounds slack running time as floor(alpha * l^run_n)", "domain": "R_>=0", "source_symbol": "scenario.AdditionalRunTimeFactor"},
+        {"name": "l^trans_{a,d}", "meaning": "required minimum transfer (connection) time between an arriving and a departing event at a transfer", "domain": "Z_>=0 (model time)", "source_symbol": "ctx.Scenario.TransferTimeLookup.GetRequiredMinimumTransferDuration(...)"},
+        {"name": "phi_r", "meaning": "total passenger demand of OD relation r (objective weight)", "domain": "R_>=0", "source_symbol": "relation.TotalDemand"},
+        {"name": "TransferMax", "meaning": "maximum transfer time, used as upper bound on transfer-duration variables and in big-M route-duration bounds", "domain": "Z_>=0 (model time)", "source_symbol": "scenario.MaximumTransferTime (_maximumTransferTime)"},
+        {"name": "M_{r,tr}", "meaning": "big-M for the route-selection linking lower bound = maximum possible total travel time on route tr (CalculateMaximumTravelTimeOnTravelRoute)", "domain": "R_>=0 (model time)", "source_symbol": "TravelTimesCalculationServices.CalculateMaximumTravelTimeOnTravelRoute(travelRoute, MaximumTransferTime, CycleTime)"}
+      ],
+      "decision_variables": [
+        {"name": "dep_{l,n}", "type": "continuous", "domain": "[0, T - TimeStep]", "meaning": "departure event time of line l at path node n, within one period", "source_symbol": "VariableFactory.CreateDeparture (\"DEP\")"},
+        {"name": "arr_{l,n}", "type": "continuous", "domain": "[0, T - TimeStep]", "meaning": "arrival event time of line l at path node n, within one period", "source_symbol": "VariableFactory.CreateArrival (\"ARR\")"},
+        {"name": "k_{i,j}", "type": "binary", "meaning": "cycle-time-shift / modulo wrap variable for the periodic relation between events i and j: number of periods T added so the linearised cyclic constraint holds (a single period wrap, modelled as binary)", "source_symbol": "VariableFactory.CreateCycleTimeShift (\"CYC\")"},
+        {"name": "addrun_{l,n}", "type": "continuous", "domain": "[0, inf)", "meaning": "additional (slack) running time beyond the minimum on the section ending at node n", "source_symbol": "VariableFactory.CreateAdditionalRunningTime (\"ADD\")"},
+        {"name": "rpd_{rp}", "type": "continuous", "domain": "[minTravelTime(rp), minTravelTime(rp) + maxCycles(rp)*T]", "meaning": "duration spent on in-train route part rp", "source_symbol": "VariableFactory.CreateRoutePartDuration (\"RPD\")"},
+        {"name": "ptd_{x}", "type": "continuous", "domain": "[0, TransferMax]", "meaning": "transfer duration at transfer x between two consecutive route parts", "source_symbol": "VariableFactory.CreateRoutePartTransferDuration (\"PTD\")"},
+        {"name": "trd_{tr}", "type": "continuous", "domain": "[minRouteTime(tr), maxRouteTime(tr)]", "meaning": "total travel duration on travel route tr (sum of route-part durations + transfer durations)", "source_symbol": "VariableFactory.CreateRouteTotalDuration (\"TRD\")"},
+        {"name": "srd_r", "type": "continuous", "domain": "[minAnyRouteTime(r), maxAnyRouteTime(r)]", "meaning": "selected (minimal/realised) total travel duration for relation r; objective term", "source_symbol": "VariableFactory.CreateSelectedRouteTotalTravelDuration (\"SRD\")"},
+        {"name": "rsd_{tr}", "type": "binary", "meaning": "1 if travel route tr is the route selected for its relation", "source_symbol": "VariableFactory.CreateRouteSelectionVariable (\"RSD\")"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min \\sum_{r \\in R} \\phi_r \\cdot srd_r",
+        "expression_plain": "minimise total demand-weighted passenger travel time: sum over OD relations of (total demand of the relation times its selected total travel duration)",
+        "source_files": ["Spot/MilpGeneration/Commands/AddObjectiveCommand.cs:8-9"]
+      },
+      "constraints": [
+        {
+          "name": "stop_time_with_dwell",
+          "indexed_over": "l in L, n in P_l with l^stop_n > 0",
+          "expression_latex": "dep_{l,n} \\geq arr_{l,n} + l^{stop}_n - T \\cdot k_{n,n}",
+          "expression_plain": "departure at a commercial stop is at least arrival plus minimum dwell time, taken modulo the period T via cycle-time-shift k (classic PESP stop-duration constraint) (C02a_STOP)",
+          "source_files": ["Spot/MilpGeneration/Commands/AddStopTimeConstraintCommand.cs:39-54"]
+        },
+        {
+          "name": "stop_time_without_dwell",
+          "indexed_over": "l in L, n in P_l with l^stop_n = 0",
+          "expression_latex": "dep_{l,n} = arr_{l,n}",
+          "expression_plain": "at non-stop path nodes the departure event equals the arrival event (no dwell) (C02b_STOP)",
+          "source_files": ["Spot/MilpGeneration/Commands/AddStopTimeConstraintCommand.cs:25-37"]
+        },
+        {
+          "name": "running_time_equality",
+          "indexed_over": "l in L, n in P_l \\ {first node} (predecessor = n.Predecessor)",
+          "expression_latex": "arr_{l,n} = dep_{l,n^-} + l^{run}_n + addrun_{l,n} - T \\cdot k_{n^-,n}",
+          "expression_plain": "arrival at a node equals departure at its predecessor plus the minimum running time plus chosen additional running time, taken modulo T via cycle-time-shift k (PESP running-time / travel-time constraint) (C01_RUN)",
+          "source_files": ["Spot/MilpGeneration/Commands/AddRunningTimeEqualityCommand.cs:16-33"]
+        },
+        {
+          "name": "additional_running_time_bound",
+          "indexed_over": "l in L, n in P_l \\ {first node}",
+          "expression_latex": "addrun_{l,n} \\leq \\lfloor \\alpha \\cdot l^{run}_n \\rfloor",
+          "expression_plain": "additional (slack) running time on a section is capped at floor(alpha * minimum running time) (C10_ADDR)",
+          "source_files": ["Spot/MilpGeneration/Commands/AddAdditionalRunningTimeBoundCommand.cs:17-28"]
+        },
+        {
+          "name": "route_part_duration_def",
+          "indexed_over": "r in R, tr in TR_r, rp in RP_{r,tr}",
+          "expression_latex": "rpd_{rp} = (arr^{end}_{rp} - dep^{start}_{rp}) + T \\sum_{i \\in (interior\\ stops)\\cup(running\\ segments)} k_i",
+          "expression_plain": "duration on a route part equals end-arrival minus start-departure event times, plus T times the sum of all cycle-time-shift variables of the interior stop events and of the running segments along the part (re-adds the period wraps subtracted in the per-event PESP constraints so the route-part duration is a true elapsed time) (C03_TRPD)",
+          "source_files": ["Spot/MilpGeneration/Commands/AddTravelDurationsOnRoutePartsConstraintCommand.cs:23-56"]
+        },
+        {
+          "name": "transfer_duration_def",
+          "indexed_over": "r in R, tr in TR_r, x in TRX_{r,tr}",
+          "expression_latex": "ptd_x = dep_{depLine,depNode} - arr_{arrLine,arrNode} + T \\cdot k_{arrNode,depNode}",
+          "expression_plain": "transfer duration equals departing-event time of the next route part minus arriving-event time of the previous route part, taken modulo T via cycle-time-shift k (PESP transfer/connection timing) (C09_RPTD)",
+          "source_files": ["Spot/MilpGeneration/Commands/AddTransferDurationsBetweenRoutePartsConstraintCommand.cs:38-57"]
+        },
+        {
+          "name": "required_minimum_transfer_duration",
+          "indexed_over": "r in R, tr in TR_r, x in TRX_{r,tr}",
+          "expression_latex": "ptd_x \\geq l^{trans}_x",
+          "expression_plain": "the transfer duration at each transfer must be at least the required minimum transfer time for that arriving/departing event pair (C08_RPTM)",
+          "source_files": ["Spot/MilpGeneration/Commands/AddRequiredMinimumTransferDurationBetweenTravelRoutePartsConstraintCommand.cs:37-49"]
+        },
+        {
+          "name": "travel_route_total_duration",
+          "indexed_over": "r in R, tr in TR_r",
+          "expression_latex": "trd_{tr} = \\sum_{rp \\in RP_{r,tr}} rpd_{rp} + \\sum_{x \\in TRX_{r,tr}} ptd_x",
+          "expression_plain": "total duration of a travel route equals the sum of its route-part durations plus the sum of its transfer durations (C07_TRD)",
+          "source_files": ["Spot/MilpGeneration/Commands/AddTotalDurationTravelRouteConstraintCommand.cs:20-39"]
+        },
+        {
+          "name": "selected_duration_upper_bound",
+          "indexed_over": "r in R, tr in TR_r",
+          "expression_latex": "srd_r \\leq trd_{tr}",
+          "expression_plain": "the relation's selected travel duration is at most every candidate route's total duration, i.e. it is bounded above by the minimum over routes (C04_MIND). Class is named ...UpperBoundForMinimum... ; the name-factory tag is C04_MIND.",
+          "source_files": ["Spot/MilpGeneration/Commands/AddTravelRouteDurationUpperBoundForMinimumConstraintCommand.cs:14-23"]
+        },
+        {
+          "name": "selected_duration_lower_bound_linking",
+          "indexed_over": "r in R, tr in TR_r",
+          "expression_latex": "srd_r \\geq trd_{tr} + M_{r,tr} \\cdot rsd_{tr} - M_{r,tr}",
+          "expression_plain": "if route tr is selected (rsd_tr = 1) then srd_r >= trd_tr, forcing the selected duration up to the chosen route's duration; if not selected the big-M term deactivates the bound. Together with the upper bound this fixes srd_r to the duration of the selected route (C05_MAXD). Class is named ...LowerBoundForMinimum... ; the name-factory tag is C05_MAXD.",
+          "source_files": ["Spot/MilpGeneration/Commands/AddTravelRouteDurationLowerBoundForMinimumConstraintCommand.cs:15-23"]
+        },
+        {
+          "name": "select_exactly_one_route",
+          "indexed_over": "r in R",
+          "expression_latex": "\\sum_{tr \\in TR_r} rsd_{tr} = 1",
+          "expression_plain": "exactly one candidate travel route is selected per OD relation (all passengers of the relation use the same route, per the implementation's simplification) (C06_TRDS)",
+          "source_files": ["Spot/MilpGeneration/Commands/AddTravelRouteDurationSelectAtLeastOneForMinimumConstraintCommand.cs:13-21"]
+        }
+      ],
+      "instances": [],
+      "notes": "PESP modulo/period representation: the period T is scenario.CycleTime converted to integer model-time units (6 s steps) by TimeConverter.ToModelTime (Spot/Model/Scenario/TimeConverter.cs:24-26). Every cyclic timing relation (stop C02a, running C01, transfer C09) is linearised as event_j - event_i - offset = -T*k or >= ..., where k = CreateCycleTimeShift is the wrap variable. IMPORTANT FIDELITY NOTE: in this code k is declared as a BinaryVariable (SpotVariableFactory.cs:40-48, returns new BinaryVariable), i.e. at most one period wrap per relation, NOT a general non-negative integer modulo variable as in textbook PESP. The route-part-duration constraint (C03) re-adds T*k for the interior events to recover true elapsed durations. The minimum-over-routes selection (C04 upper bound + C05 big-M lower bound + C06 select-one) realises srd_r = duration of the selected route. NAMING CAVEAT: the C# command class names for the two selection bounds are swapped relative to the constraint-name-factory tags - AddTravelRouteDurationUpperBoundForMinimumConstraintCommand emits tag C04_MIND (the <= bound) and AddTravelRouteDurationLowerBoundForMinimumConstraintCommand emits tag C05_MAXD (the big-M >= bound); both are transcribed faithfully above. The model is built through SMA's AlgorithmsUtils LPCreation abstraction (Constraint, Term, Monomial, ContinuousVariable, BinaryVariable, Objective, ConstraintType.Geq/Leq/Eq, ObjectiveType.Min) which wraps Gurobi; the GRBModel/AddVar/AddConstr Gurobi calls themselves live in the external (not-vendored) AlgorithmsUtils library, so no raw Gurobi API lines appear in this repo. Variable bounds are set on construction in SpotVariableFactory (arrival/departure in [0, T - TimeStep]; rpd/trd/srd carry computed lower/upper bounds; ptd in [0, TransferMax])."
+    }
+  ],
+  "instances": [],
+  "extraction_confidence": "high",
+  "extraction_notes": "Single MILP formulation; no second distinct model in the repo. Source is C# using SMA AlgorithmsUtils LPCreation abstraction over Gurobi (not gurobipy/GRBModel directly), confirmed in readme.md:221-247 ('AlgorithmsUtils library ... builds an abstraction API around the Gurobi MIP solver'). The full model is generated under Spot/MilpGeneration/, orchestrated by SpotProblemGenerationCommand -> AddObjectiveCommand + AddTrainRunConstraintsCommand (-> stop-time, running-time, additional-running-time-bound) + AddRelationsConstraintsCommand (per relation: route-part durations, transfer durations, total route duration, minimum-over-routes selection, required minimum transfer). 10 distinct constraint families (C01-C10) plus the objective, all with real source line refs. paper_reference DOI 10.1016/j.trb.2021.02.006 is the cited SPOT paper (Polinder, Schmidt, Huisman 2021, Transportation Research Part B), taken verbatim from readme.md:251-252 - VERIFIED from README, not inferred. instances: EMPTY/null - no datasets, scenario files, or .lp/.mps instances are vendored in the repo (input data is fetched at runtime from the Viriato Algorithm Platform REST interface per readme.md:14-16); App.config only holds platform connection settings. Parameter domains are stated in model-time units (integer multiples of the 6 s TimeStep). The cycle-time-shift wrap variable k is BINARY in this implementation (SpotVariableFactory.cs:40-48), a deliberate single-wrap simplification of the general PESP integer modulo variable - flagged in model notes. License is Apache-2.0, Copyright 2021 SMA und Partner AG (LICENSE:189)."
+}

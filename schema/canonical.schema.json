@@ -109,6 +109,10 @@
         "kind": {
           "enum": ["scalar", "vector", "matrix", "big_m", "tolerance"],
           "default": "scalar"
+        },
+        "domain_class": {
+          "enum": ["cost_weight", "time_duration", "capacity", "demand", "network_structure", "penalty_bigM", "count_limit", "unclassified"],
+          "description": "Optional domain-facet tag (additive). Independent of the structural 'kind'."
         }
       }
     },
@@ -133,6 +137,10 @@
         "role": {
           "enum": ["primary", "auxiliary", "slack", "indicator"],
           "default": "primary"
+        },
+        "domain_role": {
+          "enum": ["selection_assignment", "ordering_precedence", "routing_path_column", "timing", "flow_quantity", "auxiliary_linearization", "unclassified"],
+          "description": "Optional domain-facet tag (additive). Independent of the structural 'role'/'domain'."
         }
       }
     },
@@ -286,6 +294,10 @@
             "dwell"
           ],
           "default": "linear"
+        },
+        "domain_class": {
+          "enum": ["assignment_covering", "flow_conservation", "capacity_resource", "precedence_ordering", "headway_separation", "timing_window", "coupling_linking_definition", "periodic_modulo_pesp", "subtour_connectivity", "variable_bound_fix", "objective_defining", "unclassified"],
+          "description": "Optional domain-facet tag (additive). Independent of the structural 'kind'."
         }
       }
     },

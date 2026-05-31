@@ -1,0 +1,152 @@
+{
+  "repo": "INFORMSJoC/2021.0094",
+  "url": "https://github.com/INFORMSJoC/2021.0094",
+  "license": "MIT",
+  "language": "C++ (CPLEX Concert / ILOG)",
+  "solver": "CPLEX 12.80",
+  "area": "railway-rescheduling",
+  "paper_reference": "10.1287/ijoc.2022.1233",
+  "models": [
+    {
+      "model_id": "backup-rolling-stock-allocation-timetable-rescheduling-2stage-stochastic",
+      "source_files": [
+        "src/Two-stage-integer-model.cpp:1766-2016",
+        "src/Two-stage-integer-model.cpp:296-535",
+        "src/stdafx.h:13-42"
+      ],
+      "description": "Two-stage stochastic integer program for integrated backup rolling-stock allocation (first stage) and timetable rescheduling on a space-time network (second stage) under disruptive events with uncertain, time-variant passenger demand. First-stage binary decisions place backup trains at stations; per-scenario second-stage decisions select space-time train arcs (the rescheduled timetable) and route passenger flows so as to minimize expected weighted passenger waiting/travel cost plus investment cost. Canonical (extensive-form) extraction taken from the time-dependent multi-scenario builder time_dependent_solver_space_time_backup_integer_multi_scenario_new(); the same formulation also appears as a non-time-dependent extensive form, as single-scenario subproblems, and inside Benders / L-shaped decomposition (see extraction_notes).",
+      "sets_indices": [
+        {"name": "I", "meaning": "set of stations, indexed i = 0..station-1", "source_symbol": "station (loop var i)"},
+        {"name": "T", "meaning": "discrete time stamps (time horizon), indexed t = 0..T_stamp-1", "source_symbol": "T_stamp (loop var j)"},
+        {"name": "W", "meaning": "set of stochastic scenarios w (demand realizations)", "source_symbol": "num_scenario (loop var k / w)"},
+        {"name": "V", "meaning": "space-time network nodes n = i*T_stamp + t (one per station-time pair)", "source_symbol": "Space_Time_Node = T_stamp*station"},
+        {"name": "A", "meaning": "space-time arcs: travel arcs (station i to i+1, time +t_running/t_interval) and waiting arcs (same station, time +1); index 0 is a reserved dummy arc fixed to 0", "source_symbol": "Space_Time_Arc_Num (arc_network[i][j])"},
+        {"name": "A_trav", "meaning": "subset of A that are travel (running) arcs, used for train-capacity constraints", "source_symbol": "space_time_travel_arc (index_travel_time_graph)"},
+        {"name": "D_orig", "meaning": "depot/origin nodes where existing trains and candidate backup trains may enter (train_esist_position = {0,2,5,6,8,10,14,16,18,22})", "source_symbol": "train_esist_position[] / find(train_esist_position, i)"},
+        {"name": "D_dest", "meaning": "destination nodes: space-time nodes at the last station, i.e. n >= (station-1)*T_stamp", "source_symbol": "i>=(station-1)*T_stamp"}
+      ],
+      "parameters": [
+        {"name": "train_exist", "meaning": "number of existing in-service trains entering the network", "domain": "Z_>=0", "source_symbol": "train_exist", "value": "10 (src/stdafx.h:13)"},
+        {"name": "station", "meaning": "number of stations", "domain": "Z_>=1", "source_symbol": "station", "value": "26 (src/stdafx.h:17)"},
+        {"name": "T_stamp", "meaning": "number of discrete time stamps in the horizon", "domain": "Z_>=1", "source_symbol": "T_stamp", "value": "720 (src/stdafx.h:18)"},
+        {"name": "num_scenario", "meaning": "number of stochastic demand scenarios", "domain": "Z_>=1", "source_symbol": "num_scenario", "value": "10 (src/stdafx.h:39)"},
+        {"name": "h_min", "meaning": "minimum headway (number of time stamps) between two consecutive trains entering a travel arc", "domain": "Z_>=1", "source_symbol": "h_min", "value": "10 (src/stdafx.h:19)"},
+        {"name": "t_running", "meaning": "section running time between adjacent stations (time units)", "domain": "Z_>=1", "source_symbol": "t_running", "value": "120 (src/stdafx.h:37)"},
+        {"name": "t_interval", "meaning": "duration of one time stamp (discretization granularity), used as t_running/t_interval = travel-arc time span", "domain": "Z_>=1", "source_symbol": "t_interval", "value": "10 (src/stdafx.h:20)"},
+        {"name": "train_capacity", "meaning": "passenger capacity of one train on a travel arc", "domain": "Z_>=0", "source_symbol": "train_capacity", "value": "1440 (src/stdafx.h:21)"},
+        {"name": "investment_cost", "meaning": "fixed cost of allocating one backup train at a station", "domain": "Z_>=0", "source_symbol": "investment_cost", "value": "2200000 (src/stdafx.h:28)"},
+        {"name": "investment_cost_depot", "meaning": "fixed cost of a depot train (used in result accounting / commented objective term)", "domain": "Z_>=0", "source_symbol": "investment_cost_depot", "value": "1000000 (src/stdafx.h:31)"},
+        {"name": "penlty", "meaning": "penalty weight on un-alighted (detained) passengers at the horizon end", "domain": "Z_>=0", "source_symbol": "penlty", "value": "2 (src/stdafx.h:14)"},
+        {"name": "w_l", "meaning": "weight relating detained-passenger and travel-time objective components (used in result decomposition / commented term)", "domain": "Z_>=0", "source_symbol": "w_l", "value": "10 (src/stdafx.h:32)"},
+        {"name": "big_M", "meaning": "big-M linking passenger boarding/flow to whether a train serves the incoming travel arc", "domain": "Z_>=0", "source_symbol": "big_M", "value": "1000000000 (src/stdafx.h:24)"},
+        {"name": "p_w", "meaning": "probability of scenario w (uniform 1/num_scenario)", "domain": "[0,1]", "source_symbol": "p[w]", "value": "1/num_scenario (src/Two-stage-integer-model.cpp:148-151)"},
+        {"name": "O_iw", "meaning": "total origin (boarding) passenger demand at station i in scenario w", "domain": "R_>=0", "source_symbol": "origin_total[i][w]"},
+        {"name": "Dst_iw", "meaning": "total destination (alighting) passenger demand at station i in scenario w", "domain": "R_>=0", "source_symbol": "destination_total[i][w]"},
+        {"name": "b_itw", "meaning": "time-variant passenger arriving (boarding) volume at station i, time t, scenario w", "domain": "R_>=0", "source_symbol": "passenger_time_board[i][t][w]"},
+        {"name": "alpha_itw", "meaning": "cumulative alighting-passenger volume at station i up to time t in scenario w (from data files)", "domain": "R_>=0", "source_symbol": "passenger_time_alight[i][t][w]"},
+        {"name": "train_esist_position", "meaning": "fixed station indices at which existing trains (and backup candidates) originate", "domain": "subset of stations", "source_symbol": "train_esist_position[train_exist]", "value": "{0,2,5,6,8,10,14,16,18,22} (src/Two-stage-integer-model.cpp:46)"}
+      ],
+      "decision_variables": [
+        {"name": "z_i", "type": "binary", "meaning": "first stage: 1 if a backup train is allocated/positioned at station i", "source_symbol": "backup_train_position[i]"},
+        {"name": "g_{iw}^t (g_{nw})", "type": "binary", "meaning": "second stage: 1 if the backup train at station i (space-time node n=i*T_stamp+t) is injected into the network at that node in scenario w (dummy-origin entry of backup train)", "source_symbol": "backuptrain_spatial_dummy_origin[w][n]"},
+        {"name": "x_{aw}", "type": "binary", "meaning": "second stage: 1 if space-time arc a is selected (a train traverses arc a) in scenario w; defines the rescheduled timetable. Arc index 0 is a dummy fixed to 0", "source_symbol": "Arc_selection[w][a]"},
+        {"name": "f_{aw}", "type": "continuous", "domain": "[0, inf)", "meaning": "second stage: passenger flow on space-time arc a in scenario w", "source_symbol": "Passenger_flow_variable[w][a]"},
+        {"name": "y_{itw} (alight)", "type": "continuous", "domain": "[0, inf)", "meaning": "second stage: number of passengers alighting at station i, time t, scenario w", "source_symbol": "passenger_alighting[w][i][t]"},
+        {"name": "u_{itw} (board)", "type": "continuous", "domain": "[0, inf)", "meaning": "passenger boarding variable at station i, time t, scenario w (declared; used implicitly via flow definitions)", "source_symbol": "passenger_boarding[w][i][t]"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min \\; \\sum_{i \\in I} c\\, z_i \\;+\\; \\sum_{w \\in W} p_w \\Big[ \\sum_{i \\in I} \\rho\\, T\\, \\big(\\alpha_{i,T-2,w} - \\sum_{t=1}^{T-2} y_{itw}\\big) \\;+\\; \\sum_{i \\in I}\\sum_{t=0}^{T-2} t\\, y_{itw} \\Big]",
+        "expression_plain": "minimize investment cost of allocated backup trains (sum_i investment_cost * z_i) plus expected second-stage cost over scenarios: a penalty (penlty * T_stamp) on passengers not alighted by the end of the horizon, plus total weighted passenger travel/wait time (sum over i,t of t * passenger_alighting). Investment term added at cpp:1934-1937; penalty term at cpp:1918; travel-time term at cpp:1923-1932.",
+        "source_files": ["src/Two-stage-integer-model.cpp:1905-1939"]
+      },
+      "constraints": [
+        {
+          "name": "backup_train_injection_link",
+          "indexed_over": "i in I, w in W",
+          "expression_latex": "\\sum_{t \\in T} g_{i\\cdot T_{stamp}+t,\\,w} = z_i",
+          "expression_plain": "in each scenario, a backup train is injected into the space-time network at exactly one time at station i iff it was allocated there (links first-stage z to second-stage dummy-origin entry).",
+          "source_files": ["src/Two-stage-integer-model.cpp:1824-1832"]
+        },
+        {
+          "name": "dummy_arc_zero",
+          "indexed_over": "w in W",
+          "expression_latex": "x_{0,w} = 0,\\quad f_{0,w} = 0",
+          "expression_plain": "reserved dummy arc (index 0) carries no train and no passenger flow.",
+          "source_files": ["src/Two-stage-integer-model.cpp:1837-1838"]
+        },
+        {
+          "name": "flow_balance_origin_nodes",
+          "indexed_over": "n in D_orig (existing/backup origin nodes), w in W",
+          "expression_latex": "x_{a^{out,trav}_n,w} + x_{a^{out,wait}_n,w} = x_{a^{in,trav}_n,w} + x_{a^{in,wait}_n,w} + 1 + g_{n,w}",
+          "expression_plain": "train conservation at origin/depot nodes: outflow equals inflow plus one existing entering train plus any injected backup train.",
+          "source_files": ["src/Two-stage-integer-model.cpp:1844-1850"]
+        },
+        {
+          "name": "flow_balance_transshipment_nodes",
+          "indexed_over": "n in V not in D_orig and n < (station-1)*T_stamp, w in W",
+          "expression_latex": "x_{a^{in,trav}_n,w} + x_{a^{in,wait}_n,w} + g_{n,w} = x_{a^{out,trav}_n,w} + x_{a^{out,wait}_n,w}",
+          "expression_plain": "train flow conservation at interior space-time nodes (inflow plus any backup injection equals outflow).",
+          "source_files": ["src/Two-stage-integer-model.cpp:1859-1864"]
+        },
+        {
+          "name": "destination_train_count",
+          "indexed_over": "w in W",
+          "expression_latex": "\\sum_{n \\,:\\, n \\geq (station-1)\\cdot T_{stamp}} \\big(x_{a^{in,trav}_n,w} + x_{a^{in,wait}_n,w}\\big) = train\\_exist + \\sum_{i \\in I} z_i",
+          "expression_plain": "total train flow reaching destination (last-station) nodes equals existing trains plus number of allocated backup trains.",
+          "source_files": ["src/Two-stage-integer-model.cpp:1852-1858", "src/Two-stage-integer-model.cpp:1866"]
+        },
+        {
+          "name": "headway",
+          "indexed_over": "i in I, j in {h_min-1..T_stamp-1}, w in W",
+          "expression_latex": "\\sum_{t=0}^{h_{min}-1} x_{a^{in,trav}_{i\\cdot T_{stamp}+j-h_{min}-1+t},\\,w} \\leq 1",
+          "expression_plain": "minimum-headway constraint: at most one train may enter a station's travel arc within any window of h_min consecutive time stamps.",
+          "source_files": ["src/Two-stage-integer-model.cpp:1868-1879"]
+        },
+        {
+          "name": "train_capacity_on_travel_arcs",
+          "indexed_over": "a in A_trav, w in W",
+          "expression_latex": "f_{a,w} \\leq train\\_capacity \\cdot x_{a,w}",
+          "expression_plain": "passenger flow on a travel arc cannot exceed train capacity, and is zero unless a train traverses the arc.",
+          "source_files": ["src/Two-stage-integer-model.cpp:1882-1885"]
+        },
+        {
+          "name": "passenger_flow_origin_injection",
+          "indexed_over": "i in I, t=0, w in W",
+          "expression_latex": "f_{a^{out,trav}_{n},w} + f_{a^{out,wait}_{n},w} = O_{iw},\\quad y_{i,0,w} = 0 \\quad (n=i\\cdot T_{stamp})",
+          "expression_plain": "all origin passengers at station i enter the network at the first time stamp; no alighting at t=0.",
+          "source_files": ["src/Two-stage-integer-model.cpp:1893-1897"]
+        },
+        {
+          "name": "passenger_flow_balance_alighting_def",
+          "indexed_over": "i in I, t in {1..T_stamp-2}, w in W",
+          "expression_latex": "y_{itw} = b_{itw} + \\big(f_{a^{in,trav}_{n},w}+f_{a^{in,wait}_{n},w}\\big) - \\big(f_{a^{out,trav}_{n},w}+f_{a^{out,wait}_{n},w}\\big) \\quad (n=i\\cdot T_{stamp}+t)",
+          "expression_plain": "alighting passengers at (i,t,w) equal boarding arrivals plus net passenger flow into the node (inflow minus outflow).",
+          "source_files": ["src/Two-stage-integer-model.cpp:1898-1901"]
+        },
+        {
+          "name": "alighting_requires_train_bigM",
+          "indexed_over": "i in I, t in {1..T_stamp-2}, w in W",
+          "expression_latex": "y_{itw} \\leq big\\_M \\cdot x_{a^{in,trav}_{n},w} \\quad (n=i\\cdot T_{stamp}+t)",
+          "expression_plain": "passengers can only alight at a node if a train serves the incoming travel arc (big-M linking).",
+          "source_files": ["src/Two-stage-integer-model.cpp:1901"]
+        },
+        {
+          "name": "cumulative_alighting_demand_cap",
+          "indexed_over": "i in I, j in {1..T_stamp-2}, w in W",
+          "expression_latex": "\\sum_{t=0}^{j} y_{itw} \\leq \\alpha_{ijw}",
+          "expression_plain": "cumulative number of passengers alighted at station i up to time j cannot exceed the cumulative alighting demand (data) for that scenario.",
+          "source_files": ["src/Two-stage-integer-model.cpp:1905-1917"]
+        }
+      ],
+      "instances": [
+        {"name": "Output_Passenger_Board.csv", "path": "data/R10-1440-720/, data/R20-1440-720/, data/R25-1440-720/, data/R30-1440-720/, data/R35-1440-720/", "format": "csv", "size": "5 instance groups R{10,20,25,30,35}-1440-720 (capacity 1440, T_stamp 720); board files 1.4-4.6 MB each. First row: investment cost, number of time units, instance type; second row: station indices 1..26; following rows: per-scenario blocks of dynamic passenger arrival rates per station per time unit (e.g. rows 4-723 = scenario 0).", "license": "MIT"},
+        {"name": "Output_Passenger_Alight.csv", "path": "data/R10-1440-720/, data/R20-1440-720/, data/R25-1440-720/, data/R30-1440-720/, data/R35-1440-720/", "format": "csv", "size": "5 instance groups; alight files 1.8-6.3 MB each; same block layout as board file, each element = cumulative alighting volume alpha_{itw}.", "license": "MIT"},
+        {"name": "Output.csv (results)", "path": "results/R10-1440-720/, results/R20-1440-720/, results/R25-1440-720/, results/R30-1440-720/, results/R35-1440-720/", "format": "csv", "size": "5 result files (~4 KB each): fleet size, ATT (seconds), objective value, CPU time, optimality gap for methods NO BRS / Randomly / LSM / ILM (paper Table 11). Not model input.", "license": "MIT"}
+      ],
+      "notes": "All numeric parameter values are compile-time constants in src/stdafx.h:13-42, not read from data files (only passenger demand b_itw and alpha_itw are loaded). The space-time network (nodes V, arcs A, travel/waiting arc topology) is built procedurally in Space_Time_Network() (cpp:208-240) and the in/out travel/waiting arc lookups in_travel_arc_find/in_waiting_arc_find/out_travel_arc_find/out_waiting_arc_find (cpp:241-294); a travel arc connects station i at time t to station i+1 at time t+t_running/t_interval, a waiting arc connects (i,t) to (i,t+1). The canonical formulation above is the time-dependent multi-scenario extensive form (cpp:1766-2016). The repo contains several other builders of the SAME formulation: (a) solver_space_time_backup_integer_multi_scenario_new (cpp:296-535) - non-time-dependent extensive form using O/Dst totals and a destination-demand cap instead of cumulative-alighting caps, objective penalty weight 1; (b) single-scenario integer subproblem solver_space_time_backup_integer_single_scenario_revised (cpp:539-778); (c) LP relaxation solver_space_time_backup_linear_single_scenario_revised (cpp:780-1010); (d) time-dependent single-scenario LP/MIP variants ..._revised_1 (cpp:1270-1516, continuous arc vars) and ..._revised_2 (cpp:1519-1764, integer arc vars) used as Benders/L-shaped subproblems; (e) the Benders master problem master_problem() (cpp:2018-2102) over first-stage z_i with optimality cuts theta >= sum_x*(Qx - LB) + Qx, fixing z[5]=z[17]=z[20]=0. Decomposition drivers benders_decomposition() (cpp:2104-2188, parallel) and L_METHOD_benders_decomposition() (cpp:2191-2247) and entry _tmain() (cpp:2249-2393, currently calling benders_decomposition()) are algorithmic, not part of the MILP. These are recorded as variants of one formulation rather than separate models[] entries because they share identical decision variables and constraint families. Passenger demand is randomized in stochastic_parameter_setting() (cpp:121-206) via rand()%p_volume_para in addition to the CSV inputs."
+    }
+  ],
+  "extraction_confidence": "medium",
+  "extraction_notes": "The repository ships NO written mathematical formulation (the README describes only requirements, data layout and how to run); the README points to the paper (doi 10.1287/ijoc.2022.1233) and an ongoing-development repo (JerryYINJIATENG/TARP) for the model. Therefore the math symbols (z_i, x_{aw}, f_{aw}, y_{itw}, g_{nw}, etc.) were ASSIGNED during extraction to map the C++ identifiers; they are NOT taken from in-repo notation, and exact equation numbering from the paper could NOT be byte-verified in-repo. The paper DOI (10.1287/ijoc.2022.1233) and software DOI (10.1287/ijoc.2022.1233.cd) are taken from README.md:9,19,29 - INFERRED to be the correct formulation reference but not independently verified against the paper text. Constraint and objective line refs are all real and point at model.add(...) / expr += ... in time_dependent_solver_space_time_backup_integer_multi_scenario_new(). Several objective/constraint blocks in other functions are commented out (e.g. investment term in the LP relaxation, alternative destination caps); only active code in the canonical function is transcribed. The 'boarding' variable passenger_boarding is declared and bounded but appears unused in active constraints (the time-variant b_itw enters via the parameter passenger_time_board), recorded with low certainty. Network node/arc cardinalities (Space_Time_Arc_Num, space_time_travel_arc) are computed at runtime in _tmain (cpp:2269-2289) and were NOT executed (no run/build per rules), so |A| is left symbolic. Data files reference Beijing metro (per data/README.md). All constants in src/stdafx.h. JSON validated to parse."
+}
