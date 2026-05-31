@@ -1,0 +1,177 @@
+{
+  "meta": {
+    "timestamp": "2026-05-31T22:07:52",
+    "python": "3.12.3",
+    "gurobi": "13.0.2",
+    "highs": "1.14.0",
+    "pulp_cbc": "3.3.2",
+    "determinism": "single-thread, OutputFlag=0; no custom heuristics"
+  },
+  "experiments": {
+    "1_reference_and_cross_solver": {
+      "description": "Reference optima + cross-solver on portable MPS (#9 timtab1)",
+      "source_file": "/home/joern/milp_sources/IBM__cplex-samples/Timetabling-problem/timtab1.mps",
+      "time_limit_s": 180,
+      "proven_optima": [
+        764772.0,
+        784722.0
+      ],
+      "note": "timtab1 (MIPLIB cyclic timetable, 171 int vars) is hard; open-source solvers may hit the time limit.",
+      "results": [
+        {
+          "solver": "gurobi-13.0",
+          "status": "optimal",
+          "objective": 764771.99999978,
+          "best_bound": 764722.6171,
+          "mip_gap": 6.5e-05,
+          "runtime_s": 127.5069,
+          "n_vars": 397,
+          "n_constrs": 171,
+          "n_int": 171
+        },
+        {
+          "solver": "highs-1.14.0",
+          "status": "optimal",
+          "objective": 764771.999999776,
+          "runtime_s": 169.652,
+          "n_vars": 397,
+          "n_constrs": 171
+        },
+        {
+          "solver": "cbc-pulp-3.3.2",
+          "status": "optimal",
+          "objective": 784721.9999998099,
+          "runtime_s": 180.6623,
+          "n_vars": 397,
+          "n_constrs": 171
+        }
+      ]
+    },
+    "2_roundtrip_translation": {
+      "description": "Round-trip: Gurobi re-emits timtab1 to .lp/.mps; re-solved by independent solvers",
+      "reemitted_files": [
+        "/home/joern/lp2graph/corpus/validation/results/exports/timtab1_reemit.mps",
+        "/home/joern/lp2graph/corpus/validation/results/exports/timtab1_reemit.lp"
+      ],
+      "proven_optima_lp": [
+        764772.0
+      ],
+      "proven_optima_mps": [
+        764772.0,
+        784722.0
+      ],
+      "results_reemit_lp": [
+        {
+          "solver": "gurobi-13.0",
+          "status": "optimal",
+          "objective": 764771.99999978,
+          "best_bound": 764717.0478,
+          "mip_gap": 7.2e-05,
+          "runtime_s": 107.5525,
+          "n_vars": 397,
+          "n_constrs": 171,
+          "n_int": 171
+        },
+        {
+          "solver": "highs-1.14.0",
+          "status": "optimal",
+          "objective": 764771.9999998801,
+          "runtime_s": 105.4472,
+          "n_vars": 397,
+          "n_constrs": 171
+        }
+      ],
+      "results_reemit_mps": [
+        {
+          "solver": "gurobi-13.0",
+          "status": "optimal",
+          "objective": 764771.99999978,
+          "best_bound": 764722.6171,
+          "mip_gap": 6.5e-05,
+          "runtime_s": 124.1221,
+          "n_vars": 397,
+          "n_constrs": 171,
+          "n_int": 171
+        },
+        {
+          "solver": "highs-1.14.0",
+          "status": "optimal",
+          "objective": 764771.999999776,
+          "runtime_s": 174.3639,
+          "n_vars": 397,
+          "n_constrs": 171
+        },
+        {
+          "solver": "cbc-pulp-3.3.2",
+          "status": "optimal",
+          "objective": 784721.9999998099,
+          "runtime_s": 180.4134,
+          "n_vars": 397,
+          "n_constrs": 171
+        }
+      ]
+    },
+    "3_from_repo_bigM_caveat": {
+      "description": "From-repo gurobipy model (#8 marcotallone) \u2014 big-M tolerance caveat + cross-solver agreement",
+      "instance": "/home/joern/milp_sources/railway-scheduling/datasets/railway_N10_T10_J10_P1000_K3.json",
+      "big_m_value": "M=min(sum phi + 1, 1e5)",
+      "native_default_tol": {
+        "solver": "gurobi-13.0 (gurobipy, from repo code)",
+        "tolerances": "default (feas/int=1e-6)",
+        "status": "optimal",
+        "objective": 3067.0263,
+        "obj_constant": -715484.7144,
+        "runtime_s": 0.3204,
+        "n_vars": 4600,
+        "n_constrs": 9755,
+        "n_int": 3250
+      },
+      "native_tight_tol": {
+        "solver": "gurobi-13.0 (gurobipy, from repo code)",
+        "tolerances": "tight (MIPGap=0, feas/int=1e-9)",
+        "status": "optimal",
+        "objective": 3913.4655,
+        "obj_constant": -715484.7144,
+        "runtime_s": 2.3688,
+        "n_vars": 4600,
+        "n_constrs": 9755,
+        "n_int": 3250
+      },
+      "exported_files": [
+        "/home/joern/lp2graph/corpus/validation/results/exports/marcotallone_N10T10J10.mps",
+        "/home/joern/lp2graph/corpus/validation/results/exports/marcotallone_N10T10J10.lp"
+      ],
+      "results_exported_mps_tight": [
+        {
+          "solver": "gurobi-13.0",
+          "status": "optimal",
+          "objective": 3913.4656301628565,
+          "best_bound": 3913.4656,
+          "mip_gap": 0.0,
+          "runtime_s": 0.0494,
+          "n_vars": 4600,
+          "n_constrs": 9755,
+          "n_int": 3250
+        },
+        {
+          "solver": "highs-1.14.0",
+          "status": "optimal",
+          "objective": 3913.465630016119,
+          "runtime_s": 0.1685,
+          "n_vars": 4600,
+          "n_constrs": 9755
+        },
+        {
+          "solver": "cbc",
+          "status": "error",
+          "objective": null,
+          "error": "KeyError: 'OBJ'"
+        }
+      ],
+      "true_optimum_agreed": [
+        3913.47
+      ],
+      "finding": "Default feasibility tolerance (1e-6) with big-M (1e5) yields a spurious lower 'optimum' (3067.0263); at tight tolerance native, re-read, and all solvers agree on the true optimum [3913.47]."
+    }
+  }
+}
