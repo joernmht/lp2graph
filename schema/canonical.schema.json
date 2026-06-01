@@ -298,6 +298,17 @@
         "domain_class": {
           "enum": ["assignment_covering", "flow_conservation", "capacity_resource", "precedence_ordering", "headway_separation", "timing_window", "coupling_linking_definition", "periodic_modulo_pesp", "subtour_connectivity", "variable_bound_fix", "objective_defining", "unclassified"],
           "description": "Optional domain-facet tag (additive). Independent of the structural 'kind'."
+        },
+        "indicator": {
+          "type": ["object", "null"],
+          "default": null,
+          "additionalProperties": false,
+          "required": ["binary", "active_value"],
+          "properties": {
+            "binary": { "$ref": "#/$defs/identifier", "description": "Binary variable that gates this constraint." },
+            "active_value": { "enum": [0, 1], "default": 1, "description": "The constraint body (lhs ⋄ rhs) is enforced only when binary == active_value." }
+          },
+          "description": "Optional logical gating. When set, this constraint is an indicator constraint; a back-end emits either a native indicator constraint or a tightened big-M linearization (see lp2graph.transform.bigm)."
         }
       }
     },

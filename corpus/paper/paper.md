@@ -189,6 +189,18 @@ the default-tolerance solution into the re-read model: under tight tolerances it
 is rejected. This finding is precisely what `lp2graph`'s structural `has_big_m`
 flag (set on 39 of the 224 constraints in the corpus) is intended to surface.
 
+To remove the hazard by design, `lp2graph` now carries an optional `indicator`
+gate on constraints and a deterministic, solver-free transform
+(`lp2graph.transform.bigm`) that emits either a **native indicator constraint**
+(Gurobi/CPLEX — exact, no `M`) or a **big-M linearization with the tightest
+valid `M` computed from variable bounds** (HiGHS/CBC and older tools). A finite
+tight `M` exists whenever the gated expression is bounded; otherwise the
+transform refuses to guess and requires an explicit `M`. A demonstration
+(`validation/results/indicator_demo.json`) confirms the native-indicator
+encoding (Gurobi) and the tight big-M encoding (HiGHS *and* CBC, neither of
+which supports native indicators) return the identical optimum — one logical
+source of truth, served correctly to every solver class.
+
 A second, tooling-level finding: PuLP's MPS reader fails (`KeyError: 'OBJ'`) on
 the objective-row name Gurobi writes, so CBC could not read the exported
 marcotallone model. Such interchange-reader incompatibilities are exactly the

@@ -299,6 +299,16 @@ ConstraintDomainClass = Literal[
 ]
 
 
+class IndicatorTrigger(_Frozen):
+    """Logical gate for an indicator constraint: the body is enforced only
+    when ``binary`` equals ``active_value``. A back-end deterministically
+    emits either a native indicator constraint or a tightened big-M
+    linearization (see :mod:`lp2graph.transform.bigm`)."""
+
+    binary: Identifier
+    active_value: Literal[0, 1] = 1
+
+
 class ConstraintTemplate(_Frozen):
     """A quantified constraint template.
 
@@ -317,6 +327,7 @@ class ConstraintTemplate(_Frozen):
     rhs: tuple[Term, ...]
     kind: ConstraintKind = "linear"
     domain_class: ConstraintDomainClass | None = None
+    indicator: IndicatorTrigger | None = None
 
 
 ObjectiveSense = Literal["min", "max"]
