@@ -1,0 +1,179 @@
+{
+  "repo": "marcotallone/railway-scheduling",
+  "url": "https://github.com/marcotallone/railway-scheduling",
+  "license": "MIT",
+  "language": "Python (gurobipy)",
+  "solver": "Gurobi",
+  "area": "railway-timetabling",
+  "paper_reference": "10.1016/j.cor.2024.106580",
+  "models": [
+    {
+      "model_id": "maintenance-scheduling-milp",
+      "source_files": [
+        "src/railway/railway.py:250-265",
+        "src/railway/railway.py:478-744",
+        "src/railway/railway.py:861-895"
+      ],
+      "description": "Schedules railway maintenance jobs on network arcs over a discrete time horizon to minimize total passenger delay, while honoring alternative-service capacity during event requests. Reimplementation of de Weert et al. (2024).",
+      "sets_indices": [
+        {"name": "N", "meaning": "set of stations (nodes)", "source_symbol": "N"},
+        {"name": "A", "meaning": "set of arcs a=(i,j), i<j: bidirectional direct lines", "source_symbol": "self.A"},
+        {"name": "T", "meaning": "discrete time horizon {1,...,T_end}", "source_symbol": "self.T"},
+        {"name": "J", "meaning": "set of maintenance jobs", "source_symbol": "self.J"},
+        {"name": "OD", "meaning": "origin-destination pairs (o,d) in N x N, o != d", "source_symbol": "self.OD"},
+        {"name": "K_idx", "meaning": "route-option index i in {1,...,K}", "source_symbol": "range(1, self.K+1)"},
+        {"name": "A_j", "meaning": "arcs on which job j must be performed (subset of A)", "source_symbol": "self.Aj"},
+        {"name": "J_a", "meaning": "jobs scheduled on arc a", "source_symbol": "self.Ja"},
+        {"name": "C", "meaning": "combinations of arcs that cannot be simultaneously unavailable", "source_symbol": "self.C"},
+        {"name": "E_t", "meaning": "event requests at time t, each a set of track segments s (sets of consecutive arcs)", "source_symbol": "self.E"},
+        {"name": "R_{odi}", "meaning": "arcs of the i-th of K shortest/preferred routes for pair (o,d)", "source_symbol": "self.R"}
+      ],
+      "parameters": [
+        {"name": "T_end", "meaning": "length of time horizon", "domain": "Z_>=1", "source_symbol": "self.Tend"},
+        {"name": "K", "meaning": "number of alternative route options per OD pair", "domain": "Z_>=1", "source_symbol": "self.K"},
+        {"name": "pi_j", "meaning": "processing time (duration) of job j", "domain": "Z_>=1", "source_symbol": "self.pi"},
+        {"name": "tau_a", "meaning": "minimum interval required between two consecutive jobs on arc a", "domain": "Z_>=0", "source_symbol": "self.tau"},
+        {"name": "omega^e_a", "meaning": "travel time by train on arc a (Euclidean distance)", "domain": "R_>=0", "source_symbol": "self.omega_e"},
+        {"name": "omega^j_a", "meaning": "travel time by alternative service on arc a (= 1.35 * omega^e_a)", "domain": "R_>=0", "source_symbol": "self.omega_j"},
+        {"name": "Omega_{od}", "meaning": "average (nominal) travel time by train from o to d", "domain": "R_>=0", "source_symbol": "self.Omega"},
+        {"name": "phi_{odt}", "meaning": "passenger demand for pair (o,d) at time t", "domain": "R_>=0", "source_symbol": "self.phi"},
+        {"name": "beta_{odt}", "meaning": "share of passengers travelling in the peak moment of period t for (o,d)", "domain": "[0,1]", "source_symbol": "self.beta"},
+        {"name": "Lambda_{at}", "meaning": "capacity of alternative services on arc a at time t", "domain": "R_>=0", "source_symbol": "self.Lambd"},
+        {"name": "M", "meaning": "big-M for unlimited train capacity / constraint deactivation", "domain": "R_>=0", "source_symbol": "self.M", "value": "min(sum_{o,d,t} phi_{odt} + 1, 1e5); see railway.py:470-476"}
+      ],
+      "decision_variables": [
+        {"name": "y_{jt}", "type": "binary", "meaning": "1 if job j starts at time t", "source_symbol": "self.y[j,t]"},
+        {"name": "x_{at}", "type": "binary", "meaning": "1 if arc a is available (served by train) at time t", "source_symbol": "self.x[a,t]"},
+        {"name": "h_{odti}", "type": "binary", "meaning": "1 if route option i is used for (o,d) at time t", "source_symbol": "self.h[o,d,t,i]"},
+        {"name": "w_{at}", "type": "continuous", "domain": "[0, inf)", "meaning": "travel time traversing arc a at time t", "source_symbol": "self.w[a,t]"},
+        {"name": "v_{odt}", "type": "continuous", "domain": "[0, inf)", "meaning": "travel time from o to d at time t", "source_symbol": "self.v[o,d,t]"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min \\sum_{(o,d) \\in OD} \\sum_{t \\in T} \\phi_{odt} (v_{odt} - \\Omega_{od})",
+        "expression_plain": "minimize total passenger delay (excess travel time over the nominal/average travel time, weighted by demand)",
+        "source_files": ["src/railway/railway.py:737-744"]
+      },
+      "constraints": [
+        {
+          "name": "job_scheduled_once",
+          "indexed_over": "j in J",
+          "expression_latex": "\\sum_{t=1}^{T_{end}-\\pi_j+1} y_{jt} = 1",
+          "expression_plain": "each job starts exactly once and completes within the horizon (eq. 2)",
+          "source_files": ["src/railway/railway.py:486-493"]
+        },
+        {
+          "name": "arc_availability_vs_jobs",
+          "indexed_over": "a in A, t in T, j in J_a",
+          "expression_latex": "x_{at} + \\sum_{t'=\\max(1,t-\\pi_j+1)}^{\\min(T_{end},t)} y_{jt'} \\leq 1",
+          "expression_plain": "if a job occupies arc a around time t the arc is unavailable (eq. 3)",
+          "source_files": ["src/railway/railway.py:496-509"]
+        },
+        {
+          "name": "arc_travel_time_def",
+          "indexed_over": "a in A, t in T",
+          "expression_latex": "w_{at} = \\omega^e_a x_{at} + \\omega^j_a (1 - x_{at})",
+          "expression_plain": "arc travel time is train time if available, else alternative-service time (eq. 4)",
+          "source_files": ["src/railway/railway.py:512-521"]
+        },
+        {
+          "name": "arc_availability_balance",
+          "indexed_over": "a in A",
+          "expression_latex": "\\sum_{t \\in T} x_{at} = T_{end} - \\sum_{j \\in J_a} \\pi_j",
+          "expression_plain": "total available time on arc a equals horizon minus total processing time on a (eq. 5)",
+          "source_files": ["src/railway/railway.py:524-531"]
+        },
+        {
+          "name": "mutually_exclusive_arc_outage",
+          "indexed_over": "c in C, t in T (added only if C nonempty)",
+          "expression_latex": "\\sum_{a \\in c} (1 - x_{at}) \\leq 1",
+          "expression_plain": "arc combinations in C cannot be simultaneously unavailable (eq. 6)",
+          "source_files": ["src/railway/railway.py:535-545"]
+        },
+        {
+          "name": "non_overlapping_jobs",
+          "indexed_over": "a in A, t in T",
+          "expression_latex": "\\sum_{j \\in J_a} \\sum_{t'=\\max(1,t-\\pi_j-\\tau_a+1)}^{t} y_{jt'} \\leq 1",
+          "expression_plain": "jobs on the same arc may not overlap, respecting the inter-job interval tau_a (eq. 7)",
+          "source_files": ["src/railway/railway.py:548-562"]
+        },
+        {
+          "name": "event_segment_capacity",
+          "indexed_over": "t in T, s in E_t (added only if E nonempty)",
+          "expression_latex": "\\sum_{a \\in s} \\sum_{(o,d)} \\sum_{i=1, a \\in R_{odi}}^{K} h_{odti} \\beta_{odt} \\phi_{odt} \\leq \\Lambda_{st} + M \\sum_{a \\in s} x_{at}",
+          "expression_plain": "peak passenger flow on an event track segment must fit alternative-service capacity unless an arc is train-served (big-M relaxation) (eq. 8)",
+          "source_files": ["src/railway/railway.py:566-587"]
+        },
+        {
+          "name": "route_choice_unit",
+          "indexed_over": "(o,d) in OD, t in T",
+          "expression_latex": "\\sum_{i=1}^{K} h_{odti} = 1",
+          "expression_plain": "exactly one of the K route options serves each OD flow at each time (eq. 9)",
+          "source_files": ["src/railway/railway.py:590-597"]
+        },
+        {
+          "name": "travel_time_lower_bound",
+          "indexed_over": "(o,d) in OD, t in T, i in {1..K}",
+          "expression_latex": "v_{odt} \\geq \\sum_{a \\in R_{odi}} w_{at} - M (1 - h_{odti})",
+          "expression_plain": "OD travel time bounded below by chosen route's arc-time sum (big-M activated by h) (eq. 10)",
+          "source_files": ["src/railway/railway.py:600-611"]
+        },
+        {
+          "name": "travel_time_upper_bound",
+          "indexed_over": "(o,d) in OD, t in T, i in {1..K}",
+          "expression_latex": "v_{odt} \\leq \\sum_{a \\in R_{odi}} w_{at}",
+          "expression_plain": "OD travel time bounded above by each route's arc-time sum (eq. 11)",
+          "source_files": ["src/railway/railway.py:614-624"]
+        },
+        {
+          "name": "jobless_arc_always_available",
+          "indexed_over": "a in A with J_a = empty, t in T",
+          "expression_latex": "x_{at} = 1",
+          "expression_plain": "arcs never used by any job are always train-available (search-space reduction) (eq. 12)",
+          "source_files": ["src/railway/railway.py:627-635"]
+        },
+        {
+          "name": "jobless_arc_traveltime",
+          "indexed_over": "a in A with J_a = empty, t in T",
+          "expression_latex": "w_{at} = \\omega^e_a",
+          "expression_plain": "travel time on jobless arcs fixed to train time (search-space reduction) (eq. 13)",
+          "source_files": ["src/railway/railway.py:638-645"]
+        },
+        {
+          "name": "forced_availability_event_overload",
+          "indexed_over": "(a,t) where a lies in an event segment, a in all K routes of some (o,d), and beta*phi > segment capacity (added only if E nonempty)",
+          "expression_latex": "x_{at} = 1",
+          "expression_plain": "force train availability on arcs whose event-time demand exceeds alternative capacity on every route (eq. 14)",
+          "source_files": ["src/railway/railway.py:650-665"]
+        },
+        {
+          "name": "never_used_route_elimination",
+          "indexed_over": "(o,d,i) in precomputed never_used_routes, t in T",
+          "expression_latex": "h_{odti} = 0",
+          "expression_plain": "dominated route options (min time of i exceeds max time of another option) are disabled (eq. 15)",
+          "source_files": ["src/railway/railway.py:667-711"]
+        },
+        {
+          "name": "valid_ineq_sousa_wolsey",
+          "indexed_over": "a in A, j in J_a, t in T, delta in {2..Delta_max}",
+          "expression_latex": "\\sum_{t' \\in Q_j} y_{jt'} + \\sum_{j' \\in J_a, j' \\neq j} \\sum_{t' \\in Q'_{j'}} y_{j't'} \\leq 1",
+          "expression_plain": "Sousa-Wolsey single-machine-scheduling valid inequality, added optionally to tighten the LP relaxation (eq. B1)",
+          "source_files": ["src/railway/railway.py:861-880"]
+        },
+        {
+          "name": "valid_ineq_pairwise_nonoverlap",
+          "indexed_over": "a in A, j,j' in J_a (j!=j'), t in T, t' in (t-pi_{j'}-tau_a, t+pi_j+tau_a)",
+          "expression_latex": "y_{jt} + y_{j't'} \\leq 1",
+          "expression_plain": "pairwise non-overlap valid inequality on a shared arc, added optionally (eq. B2)",
+          "source_files": ["src/railway/railway.py:882-895"]
+        }
+      ],
+      "instances": [
+        {"name": "railway_N{N}_T{T}_J{J}_P{P}_K{K}.json", "path": "datasets/", "format": "json", "size": "27 instances; encoded in filename: N in {10,20,40} stations, T in {10,50,100} periods, J in {10,40,80} jobs, P=1000 passengers, K=3 routes", "license": "MIT"}
+      ],
+      "notes": "Big-M (M) is data-dependent: M = min(sum of all phi_{odt} + 1, 1e5), capped to avoid numerical issues (railway.py:470-476). Constraints 6, 8, 14 are conditionally added only when their underlying sets (C, E) are nonempty. Constraints 12-15 and B1/B2 are search-space reductions / valid inequalities, not part of the core feasibility model. The repo also implements a simulated-annealing meta-heuristic and cutting planes (not part of the MILP itself). Four Jupyter notebooks (notebooks/model0-2.ipynb, model_formulation.ipynb) demonstrate the same model."
+    }
+  ],
+  "extraction_confidence": "high",
+  "extraction_notes": "README 'Model Description' (lines 223-484) provides the full mathematical formulation (eqs. 1-15, B1-B2) which maps one-to-one onto gurobipy code in src/railway/railway.py via the inline '(n)' comment tags. Symbols taken from the README; code identifiers recorded in source_symbol. Paper reference (de Weert et al., Computers & Operations Research 165, 2024) confirmed in README. Nothing was inferred beyond the documented model; valid inequalities Q_j/Q'_{j'}/Delta_max helper ranges are defined in railway.py around lines 840-895."
+}

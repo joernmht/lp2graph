@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lp2graph"
-version = "0.2.0"
+version = "0.3.0"
 description = "Typed-graph representation of LP, MIP, and MILP formulations."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -33,11 +33,14 @@ networkx = ["networkx>=3.0"]
 pyg = ["torch>=2.0", "torch_geometric>=2.4"]
 dgl = ["dgl>=2.0", "torch>=2.0"]
 pyomo = ["pyomo>=6.7"]
+solver = ["pulp>=2.8", "highspy>=1.7"]
 all = [
     "networkx>=3.0",
     "torch>=2.0",
     "torch_geometric>=2.4",
     "pyomo>=6.7",
+    "pulp>=2.8",
+    "highspy>=1.7",
 ]
 dev = [
     "pytest>=8.0",

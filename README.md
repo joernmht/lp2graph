@@ -62,6 +62,41 @@ lp2graph metrics  formulations/constraints/mip_2_4_time_indexed.json
 lp2graph export   formulations/constraints/mip_2_8_pesp.json --format latex
 ```
 
+## Text ⇄ graph, and solving (deterministic, no LLM)
+
+Beyond the views, lp2graph offers a **bidirectional, deterministic**
+interface between a formulation's *text* and its *graph*, plus a real
+solver back-end:
+
+```bash
+# graph -> paper-style LaTeX (\mathcal sets, \sum, \forall, big-M) and back
+lp2graph latex   formulations/constraints/pesp_solvable.json --output pesp.tex
+lp2graph parse   pesp.tex                         # LaTeX -> canonical JSON
+
+# ground with instance data and solve the MILP (CBC / HiGHS / Gurobi)
+lp2graph solve   formulations/constraints/assignment.json \
+                 --instance corpus/validation/codec_pipeline/instances/assignment_4x4.json
+
+# graph -> natural-language problem description (+ data tables)
+lp2graph describe formulations/constraints/pesp_solvable.json --instance ...
+```
+
+```python
+from lp2graph import load, to_canonical_latex, from_canonical_latex, describe
+from lp2graph.solve import Instance, solve
+
+f = load("formulations/constraints/assignment.json")
+g = from_canonical_latex(to_canonical_latex(f))   # text round-trips the graph
+print(solve(g, Instance(cardinalities={"W": 4, "J": 4},
+                        parameters={"c": [[9, 2, 7, 8], ...]})).objective)
+```
+
+The codec is a tested fixed point and the solvable content round-trips
+exactly; an [end-to-end suite](corpus/validation/codec_pipeline/) confirms
+the JSON→LaTeX→parse→ground→solve loop reproduces independently-known
+optima across CBC/HiGHS/Gurobi. See
+[`docs/text-graph-interface.md`](docs/text-graph-interface.md).
+
 ## What goes in, what comes out
 
 A **formulation** is a JSON document validated against

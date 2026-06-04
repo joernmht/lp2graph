@@ -1,0 +1,14 @@
+experiment,model,solver,status,objective,mip_gap,runtime_s,tolerances,note
+1_reference,timtab1.mps,gurobi-13.0,optimal,764771.99999978,6.5e-05,127.5069,,
+1_reference,timtab1.mps,highs-1.14.0,optimal,764771.999999776,,169.652,,
+1_reference,timtab1.mps,cbc-pulp-3.3.2,optimal,784721.9999998099,,180.6623,,CBC value is a 180s time-limited incumbent mislabeled 'optimal' by PuLP
+2_roundtrip,timtab1_reemit.lp,gurobi-13.0,optimal,764771.99999978,7.2e-05,107.5525,,
+2_roundtrip,timtab1_reemit.lp,highs-1.14.0,optimal,764771.9999998801,,105.4472,,
+2_roundtrip,timtab1_reemit.mps,gurobi-13.0,optimal,764771.99999978,6.5e-05,124.1221,,
+2_roundtrip,timtab1_reemit.mps,highs-1.14.0,optimal,764771.999999776,,174.3639,,
+2_roundtrip,timtab1_reemit.mps,cbc-pulp-3.3.2,optimal,784721.9999998099,,180.4134,,CBC time-limited incumbent
+3_from_repo,marcotallone(native),"gurobi-13.0 (gurobipy, from repo code)",optimal,3067.0263,,0.3204,default (feas/int=1e-6),big-M artifact at default tol
+3_from_repo,marcotallone(native),"gurobi-13.0 (gurobipy, from repo code)",optimal,3913.4655,,2.3688,"tight (MIPGap=0, feas/int=1e-9)",true optimum at tight tol
+3_from_repo,marcotallone_export.mps,gurobi-13.0,optimal,3913.4656301628565,0.0,0.0494,,
+3_from_repo,marcotallone_export.mps,highs-1.14.0,optimal,3913.465630016119,,0.1685,,
+3_from_repo,marcotallone_export.mps,cbc,error,,,,,PuLP MPS reader fails on Gurobi obj-row name

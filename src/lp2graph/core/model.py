@@ -55,6 +55,19 @@ class Index(_Frozen):
     cyclic: bool = False
 
 
+# Domain facet (additive): semantic class of a parameter, independent of 'kind'.
+ParameterDomainClass = Literal[
+    "cost_weight",
+    "time_duration",
+    "capacity",
+    "demand",
+    "network_structure",
+    "penalty_bigM",
+    "count_limit",
+    "unclassified",
+]
+
+
 class Parameter(_Frozen):
     """A constant input to the formulation.
 
@@ -68,6 +81,7 @@ class Parameter(_Frozen):
     description: str = ""
     shape: tuple[Identifier, ...] = ()
     kind: Literal["scalar", "vector", "matrix", "big_m", "tolerance"] = "scalar"
+    domain_class: ParameterDomainClass | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +91,16 @@ class Parameter(_Frozen):
 
 VariableDomain = Literal["continuous", "non_negative", "integer", "binary"]
 VariableRole = Literal["primary", "auxiliary", "slack", "indicator"]
+# Domain facet (additive): semantic role, independent of the structural 'role'.
+VariableDomainRole = Literal[
+    "selection_assignment",
+    "ordering_precedence",
+    "routing_path_column",
+    "timing",
+    "flow_quantity",
+    "auxiliary_linearization",
+    "unclassified",
+]
 
 
 class VariableTemplate(_Frozen):
@@ -95,6 +119,7 @@ class VariableTemplate(_Frozen):
     lower: float | None = None
     upper: float | None = None
     role: VariableRole = "primary"
+    domain_role: VariableDomainRole | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -257,6 +282,31 @@ ConstraintKind = Literal[
     "moving_block",
     "dwell",
 ]
+# Domain facet (additive): semantic function, independent of structural 'kind'.
+ConstraintDomainClass = Literal[
+    "assignment_covering",
+    "flow_conservation",
+    "capacity_resource",
+    "precedence_ordering",
+    "headway_separation",
+    "timing_window",
+    "coupling_linking_definition",
+    "periodic_modulo_pesp",
+    "subtour_connectivity",
+    "variable_bound_fix",
+    "objective_defining",
+    "unclassified",
+]
+
+
+class IndicatorTrigger(_Frozen):
+    """Logical gate for an indicator constraint: the body is enforced only
+    when ``binary`` equals ``active_value``. A back-end deterministically
+    emits either a native indicator constraint or a tightened big-M
+    linearization (see :mod:`lp2graph.transform.bigm`)."""
+
+    binary: Identifier
+    active_value: Literal[0, 1] = 1
 
 
 class ConstraintTemplate(_Frozen):
@@ -276,6 +326,8 @@ class ConstraintTemplate(_Frozen):
     lhs: tuple[Term, ...]
     rhs: tuple[Term, ...]
     kind: ConstraintKind = "linear"
+    domain_class: ConstraintDomainClass | None = None
+    indicator: IndicatorTrigger | None = None
 
 
 ObjectiveSense = Literal["min", "max"]

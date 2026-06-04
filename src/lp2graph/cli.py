@@ -76,6 +76,31 @@ def main(argv: list[str] | None = None) -> int:
     p_export.add_argument("--card", action="append", default=[])
     p_export.add_argument("--output", type=Path, default=None)
 
+    p_latex = sub.add_parser(
+        "latex", help="Emit reversible, paper-style canonical LaTeX (graph -> text)."
+    )
+    p_latex.add_argument("path", type=Path)
+    p_latex.add_argument("--output", type=Path, default=None)
+
+    p_parse = sub.add_parser(
+        "parse", help="Parse a canonical-LaTeX document back to JSON (text -> graph)."
+    )
+    p_parse.add_argument("path", type=Path, help="A .tex file produced by `lp2graph latex`.")
+    p_parse.add_argument("--output", type=Path, default=None)
+
+    p_describe = sub.add_parser(
+        "describe",
+        help="Generate a natural-language problem description (graph -> text).",
+    )
+    p_describe.add_argument("path", type=Path)
+    p_describe.add_argument("--instance", type=Path, default=None)
+    p_describe.add_argument("--output", type=Path, default=None)
+
+    p_solve = sub.add_parser("solve", help="Ground with instance data and solve the MILP.")
+    p_solve.add_argument("path", type=Path)
+    p_solve.add_argument("--instance", type=Path, required=True)
+    p_solve.add_argument("--solver", choices=("cbc", "highs", "gurobi"), default="cbc")
+
     args = parser.parse_args(argv)
 
     if args.cmd == "validate":
@@ -138,7 +163,59 @@ def main(argv: list[str] | None = None) -> int:
             print(out)
         return 0
 
+    if args.cmd == "latex":
+        from lp2graph.codec import to_canonical_latex
+
+        out = to_canonical_latex(load(args.path))
+        _emit(out, args.output)
+        return 0
+
+    if args.cmd == "parse":
+        from lp2graph.codec import from_canonical_latex
+
+        text = args.path.read_text(encoding="utf-8")
+        f = from_canonical_latex(text)
+        _emit(f.model_dump_json(indent=2, exclude_defaults=True), args.output)
+        return 0
+
+    if args.cmd == "describe":
+        from lp2graph.nl import describe
+
+        inst = None
+        if args.instance is not None:
+            from lp2graph.solve import Instance
+
+            inst = Instance.load(args.instance)
+        out = describe(load(args.path), inst)
+        _emit(out, args.output)
+        return 0
+
+    if args.cmd == "solve":
+        import pulp
+
+        from lp2graph.solve import Instance, solve
+
+        solver = {
+            "cbc": lambda: pulp.PULP_CBC_CMD(msg=0, threads=1),
+            "highs": lambda: pulp.HiGHS(msg=False),
+            "gurobi": lambda: pulp.GUROBI(msg=0),
+        }[args.solver]()
+        res = solve(load(args.path), Instance.load(args.instance), solver=solver)
+        print(json.dumps(
+            {"status": res.status, "objective": res.objective,
+             "n_vars": res.n_vars, "n_constraints": res.n_constraints,
+             "solver": res.solver}, indent=2))
+        return 0
+
     return 0
+
+
+def _emit(text: str, output: Path | None) -> None:
+    if output is not None:
+        output.write_text(text, encoding="utf-8")
+        print(f"wrote {output}")
+    else:
+        print(text)
 
 
 def _derive(

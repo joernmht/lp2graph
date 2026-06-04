@@ -1,0 +1,5905 @@
+{
+  "repos": [
+    {
+      "repo": "Gurobi/modeling-examples",
+      "file": "Gurobi__modeling-examples.json",
+      "models": [
+        {
+          "model_id": "railway-dispatching-mip",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "t_{i,r}",
+              "algebraic_type": "continuous",
+              "domain_role": "timing"
+            },
+            {
+              "name": "t^F_i",
+              "algebraic_type": "continuous",
+              "domain_role": "timing"
+            },
+            {
+              "name": "y_{i,j,r}",
+              "algebraic_type": "binary",
+              "domain_role": "ordering_precedence"
+            },
+            {
+              "name": "x_{i,j,r}",
+              "algebraic_type": "binary",
+              "domain_role": "ordering_precedence"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "precedence_consecutive_resources",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "capacity_resource",
+              "domain_secondary": [
+                "assignment_covering",
+                "capacity_resource",
+                "precedence_ordering",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            },
+            {
+              "name": "finish_time_link",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "definitional"
+                ]
+              },
+              "domain_primary": "capacity_resource",
+              "domain_secondary": [
+                "capacity_resource",
+                "coupling_linking_definition",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            },
+            {
+              "name": "starting_position_fixed",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "capacity_resource",
+              "domain_secondary": [
+                "assignment_covering",
+                "capacity_resource",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            },
+            {
+              "name": "conflict_i_precedes_j",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "headway_separation",
+              "domain_secondary": [
+                "assignment_covering",
+                "capacity_resource",
+                "headway_separation",
+                "precedence_ordering",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "ordering_precedence",
+                "timing"
+              ]
+            },
+            {
+              "name": "conflict_j_precedes_i",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "headway_separation",
+              "domain_secondary": [
+                "assignment_covering",
+                "capacity_resource",
+                "headway_separation",
+                "precedence_ordering",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "ordering_precedence",
+                "timing"
+              ]
+            },
+            {
+              "name": "conflict_meet_pair",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "headway_separation",
+              "domain_secondary": [
+                "assignment_covering",
+                "capacity_resource",
+                "headway_separation",
+                "precedence_ordering",
+                "timing_window",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "ordering_precedence",
+                "timing"
+              ]
+            },
+            {
+              "name": "conflict_exactly_one_situation",
+              "structural": {
+                "relation": "equality",
+                "flags": []
+              },
+              "domain_primary": "headway_separation",
+              "domain_secondary": [
+                "assignment_covering",
+                "capacity_resource",
+                "headway_separation",
+                "precedence_ordering"
+              ],
+              "linked_variable_roles": [
+                "ordering_precedence"
+              ]
+            },
+            {
+              "name": "resource_capacity_hotspot",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "capacity_resource",
+              "domain_secondary": [
+                "assignment_covering",
+                "capacity_resource"
+              ],
+              "linked_variable_roles": [
+                "ordering_precedence"
+              ]
+            },
+            {
+              "name": "resource_capacity_unit_no_overlap",
+              "structural": {
+                "relation": "equality",
+                "flags": []
+              },
+              "domain_primary": "capacity_resource",
+              "domain_secondary": [
+                "capacity_resource",
+                "precedence_ordering",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "ordering_precedence"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "dur_r",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "c_r",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "capacity"
+            },
+            {
+              "name": "M",
+              "structural_kind": "big_m",
+              "domain_class": "penalty_bigM"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "IBMDecisionOptimization/Decision-Optimization-with-CPLEX-samples",
+      "file": "IBMDecisionOptimization__Decision-Optimization-with-CPLEX-samples.json",
+      "models": [
+        {
+          "model_id": "timtab1-cyclic-timetabling-milp",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "x_j (j=1..226)",
+              "algebraic_type": "continuous",
+              "domain_role": "unclassified"
+            },
+            {
+              "name": "x_j (j=227..397)",
+              "algebraic_type": "integer",
+              "domain_role": "unclassified"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "equality_rows_c1_c171",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum",
+                  "periodic_modulo"
+                ]
+              },
+              "domain_primary": "periodic_modulo_pesp",
+              "domain_secondary": [
+                "coupling_linking_definition",
+                "headway_separation",
+                "periodic_modulo_pesp",
+                "precedence_ordering",
+                "subtour_connectivity"
+              ],
+              "linked_variable_roles": []
+            }
+          ],
+          "parameters": [
+            {
+              "name": "obj_coeff(x_j)",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "a(c_i, x_j)",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "rhs(c_i)",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            },
+            {
+              "name": "ub(x_j)",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            },
+            {
+              "name": "T_cycle",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "INFORMSJoC/2021.0094",
+      "file": "INFORMSJoC__2021.0094.json",
+      "models": [
+        {
+          "model_id": "backup-rolling-stock-allocation-timetable-rescheduling-2stage-stochastic",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "z_i",
+              "algebraic_type": "binary",
+              "domain_role": "selection_assignment"
+            },
+            {
+              "name": "g_{iw}^t (g_{nw})",
+              "algebraic_type": "binary",
+              "domain_role": "timing"
+            },
+            {
+              "name": "x_{aw}",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "f_{aw}",
+              "algebraic_type": "continuous",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "y_{itw} (alight)",
+              "algebraic_type": "continuous",
+              "domain_role": "timing"
+            },
+            {
+              "name": "u_{itw} (board)",
+              "algebraic_type": "continuous",
+              "domain_role": "timing"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "backup_train_injection_link",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "coupling_linking_definition"
+              ],
+              "linked_variable_roles": [
+                "selection_assignment",
+                "timing"
+              ]
+            },
+            {
+              "name": "dummy_arc_zero",
+              "structural": {
+                "relation": "equality",
+                "flags": []
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "flow_balance_origin_nodes",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "definitional"
+                ]
+              },
+              "domain_primary": "flow_conservation",
+              "domain_secondary": [
+                "coupling_linking_definition",
+                "flow_conservation"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column",
+                "timing"
+              ]
+            },
+            {
+              "name": "flow_balance_transshipment_nodes",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "definitional"
+                ]
+              },
+              "domain_primary": "flow_conservation",
+              "domain_secondary": [
+                "coupling_linking_definition",
+                "flow_conservation"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column",
+                "timing"
+              ]
+            },
+            {
+              "name": "destination_train_count",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "coupling_linking_definition",
+              "domain_secondary": [
+                "coupling_linking_definition"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column",
+                "selection_assignment"
+              ]
+            },
+            {
+              "name": "headway",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_min",
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "headway_separation",
+              "domain_secondary": [
+                "assignment_covering",
+                "headway_separation",
+                "objective_defining"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "train_capacity_on_travel_arcs",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "capacity_resource",
+              "domain_secondary": [
+                "capacity_resource"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "passenger_flow_origin_injection",
+              "structural": {
+                "relation": "equality",
+                "flags": []
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column",
+                "timing"
+              ]
+            },
+            {
+              "name": "passenger_flow_balance_alighting_def",
+              "structural": {
+                "relation": "equality",
+                "flags": []
+              },
+              "domain_primary": "flow_conservation",
+              "domain_secondary": [
+                "flow_conservation",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column",
+                "timing"
+              ]
+            },
+            {
+              "name": "alighting_requires_train_bigM",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "coupling_linking_definition",
+              "domain_secondary": [
+                "coupling_linking_definition"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column",
+                "timing"
+              ]
+            },
+            {
+              "name": "cumulative_alighting_demand_cap",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "train_exist",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "count_limit"
+            },
+            {
+              "name": "station",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "network_structure"
+            },
+            {
+              "name": "T_stamp",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "num_scenario",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "demand"
+            },
+            {
+              "name": "h_min",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "t_running",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "t_interval",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "train_capacity",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "investment_cost",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "investment_cost_depot",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "penlty",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "penalty_bigM"
+            },
+            {
+              "name": "w_l",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "big_M",
+              "structural_kind": "big_m",
+              "domain_class": "penalty_bigM"
+            },
+            {
+              "name": "p_w",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            },
+            {
+              "name": "O_iw",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "demand"
+            },
+            {
+              "name": "Dst_iw",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "demand"
+            },
+            {
+              "name": "b_itw",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "alpha_itw",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "train_esist_position",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "network_structure"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "INFORMSJoC/2023.0014",
+      "file": "INFORMSJoC__2023.0014.json",
+      "models": [
+        {
+          "model_id": "p-path-odmts-adoption-aware-design",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "z_a",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "g_r",
+              "algebraic_type": "continuous",
+              "domain_role": "unclassified"
+            },
+            {
+              "name": "x_{r,a}",
+              "algebraic_type": "continuous",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "y_{r,e}",
+              "algebraic_type": "continuous",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "lambda_{r,pi}",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "f_{r,pi}",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "dummy_only_adopt",
+              "algebraic_type": "binary",
+              "domain_role": "auxiliary_linearization"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "hub_weak_connectivity",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum",
+                  "definitional"
+                ]
+              },
+              "domain_primary": "subtour_connectivity",
+              "domain_secondary": [
+                "coupling_linking_definition",
+                "subtour_connectivity"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "arc_fixed_open",
+              "structural": {
+                "relation": "equality",
+                "flags": []
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "trip_cost_definition",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum",
+                  "definitional"
+                ]
+              },
+              "domain_primary": "coupling_linking_definition",
+              "domain_secondary": [
+                "coupling_linking_definition",
+                "objective_defining"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "trip_cost_upper_bound",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": []
+            },
+            {
+              "name": "flow_conservation_x_y",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "subtour_connectivity",
+              "domain_secondary": [
+                "flow_conservation",
+                "subtour_connectivity"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "x_linked_to_design",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "path_feasible_lower",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "path_feasible_upper",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "served_cost_le_path_bigM",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "adopt_requires_feasible",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "adopt_excludes_offpath_arcs",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "adopt_forces_onpath_flow",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum",
+                  "indicator"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "coupling_linking_definition"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "only_adopt_constant_anchor",
+              "structural": {
+                "relation": "equality",
+                "flags": []
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "beta_a",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "c^r_r",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "tau_a",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "gamma_e",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "g_ub_r",
+              "structural_kind": "big_m",
+              "domain_class": "penalty_bigM"
+            },
+            {
+              "name": "g_path_pi",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "theta",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "p",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "epsilon_num",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            }
+          ]
+        },
+        {
+          "model_id": "c-path-odmts-adoption-aware-design",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "z_a",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "g_r",
+              "algebraic_type": "continuous",
+              "domain_role": "unclassified"
+            },
+            {
+              "name": "x_{r,a}",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "y_{r,e}",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "m_r",
+              "algebraic_type": "continuous",
+              "domain_role": "auxiliary_linearization"
+            },
+            {
+              "name": "lambda_{r,pi}",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "f_{r,pi}",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "dummy_only_adopt",
+              "algebraic_type": "binary",
+              "domain_role": "auxiliary_linearization"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "hub_weak_connectivity",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "subtour_connectivity",
+              "domain_secondary": [
+                "subtour_connectivity"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "arc_fixed_open",
+              "structural": {
+                "relation": "equality",
+                "flags": []
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "core_trip_cost_definition",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum",
+                  "definitional"
+                ]
+              },
+              "domain_primary": "coupling_linking_definition",
+              "domain_secondary": [
+                "coupling_linking_definition"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "core_trip_cost_upper_bound",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": []
+            },
+            {
+              "name": "flow_conservation_x_y",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "flow_conservation",
+              "domain_secondary": [
+                "flow_conservation"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "x_linked_to_design",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "path_feasible_lower",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "path_feasible_upper",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "m_le_path_cost_bigM",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "path_cost_le_m_bigM",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "exactly_one_path_selected",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "only_adopt_constant_anchor",
+              "structural": {
+                "relation": "equality",
+                "flags": []
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "beta_a",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "c^r_r",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "tau_a",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "gamma_e",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "g_ub_r",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "g_path_pi",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "theta",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "p",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "M",
+              "structural_kind": "big_m",
+              "domain_class": "penalty_bigM"
+            },
+            {
+              "name": "epsilon_num",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "INFORMSJoC/2023.0391",
+      "file": "INFORMSJoC__2023.0391.json",
+      "models": [
+        {
+          "model_id": "erst-event-based-rsto-milp",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "z_e",
+              "algebraic_type": "binary",
+              "domain_role": "selection_assignment"
+            },
+            {
+              "name": "t_e",
+              "algebraic_type": "integer",
+              "domain_role": "timing"
+            },
+            {
+              "name": "delta_e",
+              "algebraic_type": "binary",
+              "domain_role": "auxiliary_linearization"
+            },
+            {
+              "name": "m_{e,e'}^{d}",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "in_{e}^{d}",
+              "algebraic_type": "binary",
+              "domain_role": "selection_assignment"
+            },
+            {
+              "name": "out_{e}^{d}",
+              "algebraic_type": "binary",
+              "domain_role": "selection_assignment"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "delay_lower_bound_active_event",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "selection_assignment",
+                "timing"
+              ]
+            },
+            {
+              "name": "delay_upper_bound",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            },
+            {
+              "name": "precedence_running_time",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "precedence_ordering",
+              "domain_secondary": [
+                "precedence_ordering",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            },
+            {
+              "name": "rolling_stock_count_per_station",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum",
+                  "definitional",
+                  "indicator"
+                ]
+              },
+              "domain_primary": "flow_conservation",
+              "domain_secondary": [
+                "capacity_resource",
+                "coupling_linking_definition",
+                "flow_conservation"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "selection_assignment"
+              ]
+            },
+            {
+              "name": "event_continuity_interior",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "indicator"
+                ]
+              },
+              "domain_primary": "flow_conservation",
+              "domain_secondary": [
+                "coupling_linking_definition",
+                "flow_conservation"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "selection_assignment"
+              ]
+            },
+            {
+              "name": "event_continuity_depot_boundary",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum",
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "flow_conservation",
+              "domain_secondary": [
+                "assignment_covering",
+                "flow_conservation",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "routing_path_column",
+                "selection_assignment"
+              ]
+            },
+            {
+              "name": "depot_out_connection_balance",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum",
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "flow_conservation",
+              "domain_secondary": [
+                "assignment_covering",
+                "flow_conservation"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column",
+                "selection_assignment"
+              ]
+            },
+            {
+              "name": "depot_in_connection_balance",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum",
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "flow_conservation",
+              "domain_secondary": [
+                "assignment_covering",
+                "flow_conservation"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column",
+                "selection_assignment"
+              ]
+            },
+            {
+              "name": "turnaround_timing",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "headway_separation",
+              "domain_secondary": [
+                "assignment_covering",
+                "headway_separation",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column",
+                "selection_assignment",
+                "timing"
+              ]
+            },
+            {
+              "name": "infeasible_turnaround_forbidden",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column",
+                "selection_assignment"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "c^{cancel}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "penalty_bigM"
+            },
+            {
+              "name": "c^{delay}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "penalty_bigM"
+            },
+            {
+              "name": "a_e",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "M^{dur}",
+              "structural_kind": "big_m",
+              "domain_class": "penalty_bigM"
+            },
+            {
+              "name": "M^{big}",
+              "structural_kind": "big_m",
+              "domain_class": "penalty_bigM"
+            },
+            {
+              "name": "epsilon",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "h",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "T^{turn}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "n_i",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "network_structure"
+            },
+            {
+              "name": "d_{e,e'}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            }
+          ]
+        },
+        {
+          "model_id": "prst-path-based-set-partitioning-master",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "x_p",
+              "algebraic_type": "continuous",
+              "domain_role": "routing_path_column"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "train_cover",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "event_set_cover",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "headway",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "headway_separation",
+              "domain_secondary": [
+                "assignment_covering",
+                "headway_separation",
+                "objective_defining"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "depot_balance",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum",
+                  "definitional"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "coupling_linking_definition"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "c_p",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "a_{ep}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "network_structure"
+            },
+            {
+              "name": "h",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "tau_{ep}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "g_{dp}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            },
+            {
+              "name": "N_d",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "count_limit"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "INFORMSJoC/2023.0404",
+      "file": "INFORMSJoC__2023.0404.json",
+      "models": [
+        {
+          "model_id": "mevrsptw-set-partitioning-master-lp",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "x_r",
+              "algebraic_type": "continuous",
+              "domain_role": "routing_path_column"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "visit_customer_partition",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "charger_capacity_per_period",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum",
+                  "periodic_modulo"
+                ]
+              },
+              "domain_primary": "periodic_modulo_pesp",
+              "domain_secondary": [
+                "capacity_resource",
+                "periodic_modulo_pesp"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "rounded_capacity_inequality",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_min",
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "capacity_resource",
+              "domain_secondary": [
+                "capacity_resource"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "subset_row_cut",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "branching_number_of_vehicles",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "capacity_resource",
+              "domain_secondary": [
+                "capacity_resource"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "branching_charging_time",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "coupling_linking_definition",
+              "domain_secondary": [
+                "coupling_linking_definition",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "c_r",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "a_{ir}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "b_{tr}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "B",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "capacity"
+            },
+            {
+              "name": "Kmin",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "capacity"
+            },
+            {
+              "name": "Q",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "capacity"
+            },
+            {
+              "name": "q_i",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "demand"
+            },
+            {
+              "name": "alpha_{rS}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "INFORMSJoC/2024.0698",
+      "file": "INFORMSJoC__2024.0698.json",
+      "models": [
+        {
+          "model_id": "mdvsp-ts-arc-flow-time-expanded",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "x_{d,a}",
+              "algebraic_type": "integer",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "x_{d,a} (LP relaxation)",
+              "algebraic_type": "continuous",
+              "domain_role": "routing_path_column"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "flow_conservation",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum",
+                  "definitional"
+                ]
+              },
+              "domain_primary": "flow_conservation",
+              "domain_secondary": [
+                "capacity_resource",
+                "coupling_linking_definition",
+                "flow_conservation"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "trip_cover",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "assignment_covering",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "depot_outflow_cap",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "flow_conservation",
+              "domain_secondary": [
+                "capacity_resource",
+                "flow_conservation",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "arc_domain_trip_binary",
+              "structural": {
+                "relation": "unknown",
+                "flags": []
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "arc_domain_other_integer",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "timing_window",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "c_{d,a}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "FIXED_COST",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "VARIABLE_COST",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "maxDeviation",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "tau_{ij}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "maxVehicles",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "capacity"
+            }
+          ]
+        },
+        {
+          "model_id": "mdvsp-ts-set-partitioning-master",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "lambda_r",
+              "algebraic_type": "continuous",
+              "domain_role": "routing_path_column"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "trip_cover_partitioning",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "lambda_nonnegativity",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "pricing_reduced_cost (column-generation oracle, not a master row)",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "capacity_resource",
+              "domain_secondary": [
+                "assignment_covering",
+                "capacity_resource"
+              ],
+              "linked_variable_roles": []
+            },
+            {
+              "name": "branching (color / inter-task / arc) \u2014 enforces integrality",
+              "structural": {
+                "relation": "unknown",
+                "flags": []
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": []
+            }
+          ],
+          "parameters": [
+            {
+              "name": "c_r",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "a_{t,r}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "FIXED_COST",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "VARIABLE_COST",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "maxDeviation",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            }
+          ]
+        },
+        {
+          "model_id": "duty-deviation-conversion-lp",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "pi_t",
+              "algebraic_type": "continuous",
+              "domain_role": "timing"
+            },
+            {
+              "name": "delta^+_t",
+              "algebraic_type": "integer",
+              "domain_role": "timing"
+            },
+            {
+              "name": "delta^-_t",
+              "algebraic_type": "integer",
+              "domain_role": "timing"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "time_window_link",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "definitional"
+                ]
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "coupling_linking_definition",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            },
+            {
+              "name": "travel_time_precedence",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "precedence_ordering",
+              "domain_secondary": [
+                "precedence_ordering"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            },
+            {
+              "name": "shift_bounds",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "s_t",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "p_t",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "d_{t,t'}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "maxDeviation",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            },
+            {
+              "name": "[startHorizon, endHorizon+1000]",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "Yinwenxu-1212/crewScheduling",
+      "file": "Yinwenxu-1212__crewScheduling.json",
+      "models": [
+        {
+          "model_id": "crew-pairing-set-covering-master",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "x_r",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "u_f",
+              "algebraic_type": "binary",
+              "domain_role": "auxiliary_linearization"
+            },
+            {
+              "name": "z_g",
+              "algebraic_type": "binary",
+              "domain_role": "auxiliary_linearization"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "crew_at_most_one_roster",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "flight_cover",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "ground_duty_cover",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "routing_path_column"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "c_r",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "penalty_bigM"
+            },
+            {
+              "name": "P_F",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "penalty_bigM"
+            },
+            {
+              "name": "P_G",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "penalty_bigM"
+            },
+            {
+              "name": "a_{rf}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            },
+            {
+              "name": "b_{rg}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "cda-tum/mtct",
+      "file": "cda-tum__mtct.json",
+      "models": [
+        {
+          "model_id": "vss-generation-timetable-milp",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "v_{tr,t}",
+              "algebraic_type": "continuous",
+              "domain_role": "timing"
+            },
+            {
+              "name": "x_{tr,t,e}",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "x_sec_{tr,t,s}",
+              "algebraic_type": "binary",
+              "domain_role": "timing"
+            },
+            {
+              "name": "y_sec_fwd_{t,i}",
+              "algebraic_type": "binary",
+              "domain_role": "timing"
+            },
+            {
+              "name": "y_sec_bwd_{t,i}",
+              "algebraic_type": "binary",
+              "domain_role": "timing"
+            },
+            {
+              "name": "b_{i}",
+              "algebraic_type": "binary",
+              "domain_role": "ordering_precedence"
+            },
+            {
+              "name": "b_used_{e,vss}",
+              "algebraic_type": "binary",
+              "domain_role": "ordering_precedence"
+            },
+            {
+              "name": "b_pos_{e,vss}",
+              "algebraic_type": "continuous",
+              "domain_role": "ordering_precedence"
+            },
+            {
+              "name": "b_front_{tr,t,e,vss}",
+              "algebraic_type": "binary",
+              "domain_role": "ordering_precedence"
+            },
+            {
+              "name": "b_rear_{tr,t,e,vss}",
+              "algebraic_type": "binary",
+              "domain_role": "ordering_precedence"
+            },
+            {
+              "name": "num_vss_segments_{e}",
+              "algebraic_type": "integer",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "edge_type_{e,k}",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "type_num_vss_segments_{e,k,vss}",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "frac_vss_segments / frac_type",
+              "algebraic_type": "continuous",
+              "domain_role": "auxiliary_linearization"
+            },
+            {
+              "name": "brakelen_{tr,t}",
+              "algebraic_type": "continuous",
+              "domain_role": "timing"
+            },
+            {
+              "name": "mu_{tr,t}",
+              "algebraic_type": "continuous",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "lda_{tr,t}",
+              "algebraic_type": "continuous",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "x_mu_{tr,t,e}, x_lda_{tr,t,e}",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "e_mu_{tr,t,e}, e_lda_{tr,t,e}, overlap_{tr,t,e}, x_v_{tr,t,v}, len_in/len_out/x_in/x_out_{tr,t}",
+              "algebraic_type": "binary",
+              "domain_role": "auxiliary_linearization"
+            },
+            {
+              "name": "stopped_{tr,t}, b_tight_{tr,t,e,vss}, e_tight_{tr,t,e}",
+              "algebraic_type": "binary",
+              "domain_role": "auxiliary_linearization"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "vss_separation_discretized",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "headway_separation",
+              "domain_secondary": [
+                "assignment_covering",
+                "headway_separation",
+                "precedence_ordering"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "ordering_precedence",
+                "routing_path_column",
+                "timing"
+              ]
+            },
+            {
+              "name": "unbreakable_section_occupation",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "coupling_linking_definition"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "schedule_station_constraints",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "assignment_covering",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "routing_path_column",
+                "timing"
+              ]
+            },
+            {
+              "name": "speed_acceleration_limits",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            },
+            {
+              "name": "edge_max_speed",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "routing_path_column",
+                "timing"
+              ]
+            },
+            {
+              "name": "boundary_speed",
+              "structural": {
+                "relation": "equality",
+                "flags": []
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            },
+            {
+              "name": "reverse_occupation_one_direction",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "coupling_linking_definition",
+              "domain_secondary": [
+                "assignment_covering",
+                "coupling_linking_definition",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "routing_path_column",
+                "timing"
+              ]
+            },
+            {
+              "name": "brakelen_quadratic_or_pwl",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_max",
+                  "definitional"
+                ]
+              },
+              "domain_primary": "coupling_linking_definition",
+              "domain_secondary": [
+                "coupling_linking_definition"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "timing"
+              ]
+            },
+            {
+              "name": "continuous_vss_used_position_link",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "headway_separation",
+              "domain_secondary": [
+                "headway_separation",
+                "objective_defining",
+                "precedence_ordering"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "ordering_precedence"
+              ]
+            },
+            {
+              "name": "border_front_rear_consistency",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "precedence_ordering",
+              "domain_secondary": [
+                "assignment_covering",
+                "coupling_linking_definition",
+                "precedence_ordering"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "ordering_precedence",
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "inferred_fraction_pwl_constraints",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "headway_separation",
+              "domain_secondary": [
+                "assignment_covering",
+                "headway_separation",
+                "precedence_ordering"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "ordering_precedence",
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "inferred_alt_fraction_constraints",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "headway_separation",
+              "domain_secondary": [
+                "assignment_covering",
+                "headway_separation",
+                "precedence_ordering"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "ordering_precedence",
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "fixed_routes_position_dynamics",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "coupling_linking_definition",
+              "domain_secondary": [
+                "coupling_linking_definition",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column",
+                "timing"
+              ]
+            },
+            {
+              "name": "fixed_routes_boundary",
+              "structural": {
+                "relation": "equality",
+                "flags": []
+              },
+              "domain_primary": "precedence_ordering",
+              "domain_secondary": [
+                "precedence_ordering",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column",
+                "timing"
+              ]
+            },
+            {
+              "name": "fixed_routes_edge_occupation",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "has_big_m",
+                  "indicator"
+                ]
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "fixed_routes_station_position",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "timing_window",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "fixed_routes_impossibility_cuts",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_max"
+                ]
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "fixed_routes_common_entry_exit",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "precedence_ordering",
+              "domain_secondary": [
+                "precedence_ordering",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "fixed_routes_nondiscretized_border_position",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "precedence_ordering",
+              "domain_secondary": [
+                "coupling_linking_definition",
+                "precedence_ordering",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "ordering_precedence",
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "free_routes_position_and_routing",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "precedence_ordering",
+              "domain_secondary": [
+                "assignment_covering",
+                "precedence_ordering"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "routing_path_column",
+                "timing"
+              ]
+            },
+            {
+              "name": "only_stop_at_vss_constraints",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum",
+                  "indicator"
+                ]
+              },
+              "domain_primary": "precedence_ordering",
+              "domain_secondary": [
+                "precedence_ordering"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "ordering_precedence",
+                "routing_path_column",
+                "timing"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "delta_t",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "len_tr",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            },
+            {
+              "name": "vmax_tr",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            },
+            {
+              "name": "a_tr",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            },
+            {
+              "name": "d_tr",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            },
+            {
+              "name": "len_e",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "network_structure"
+            },
+            {
+              "name": "vmax_e",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "network_structure"
+            },
+            {
+              "name": "minblk_e",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "network_structure"
+            },
+            {
+              "name": "r_len_tr",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "network_structure"
+            },
+            {
+              "name": "v0_tr",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            },
+            {
+              "name": "vn_tr",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            },
+            {
+              "name": "V_MIN",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            },
+            {
+              "name": "STOP_TOLERANCE",
+              "structural_kind": "tolerance",
+              "domain_class": "network_structure"
+            },
+            {
+              "name": "ABS_PWL_ERROR",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            }
+          ]
+        },
+        {
+          "model_id": "gen-po-moving-block-routing-milp",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "t_front_arrival_{tr,v}",
+              "algebraic_type": "continuous",
+              "domain_role": "timing"
+            },
+            {
+              "name": "t_front_departure_{tr,v}",
+              "algebraic_type": "continuous",
+              "domain_role": "timing"
+            },
+            {
+              "name": "t_rear_departure_{tr,v}",
+              "algebraic_type": "continuous",
+              "domain_role": "timing"
+            },
+            {
+              "name": "t_ttd_departure_{tr,s}",
+              "algebraic_type": "continuous",
+              "domain_role": "timing"
+            },
+            {
+              "name": "x_{tr,e}",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "x_ttd_{tr,s}",
+              "algebraic_type": "binary",
+              "domain_role": "selection_assignment"
+            },
+            {
+              "name": "y_{tr,e,i,j}",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "order_{tr1,tr2,e}",
+              "algebraic_type": "binary",
+              "domain_role": "ordering_precedence"
+            },
+            {
+              "name": "order_ttd_{tr1,tr2,s}",
+              "algebraic_type": "binary",
+              "domain_role": "ordering_precedence"
+            },
+            {
+              "name": "reverse_order_{tr1,tr2,idx}",
+              "algebraic_type": "binary",
+              "domain_role": "ordering_precedence"
+            },
+            {
+              "name": "stop_{tr,k,v}",
+              "algebraic_type": "binary",
+              "domain_role": "selection_assignment"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "edge_velocity_extension_aggregation",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "path_entry_exit_flow",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "velocity_extension_flow_conservation",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "flow_conservation",
+              "domain_secondary": [
+                "flow_conservation"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "illegal_path_elimination",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "subtour_connectivity",
+              "domain_secondary": [
+                "subtour_connectivity"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "edge_travel_time_bounds",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_max",
+                  "aggregation_min",
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "objective_defining",
+                "timing_window",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column",
+                "timing"
+              ]
+            },
+            {
+              "name": "departure_after_arrival_and_stop_logic",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "precedence_ordering",
+              "domain_secondary": [
+                "coupling_linking_definition",
+                "precedence_ordering",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            },
+            {
+              "name": "basic_edge_order",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "indicator"
+                ]
+              },
+              "domain_primary": "precedence_ordering",
+              "domain_secondary": [
+                "assignment_covering",
+                "precedence_ordering"
+              ],
+              "linked_variable_roles": [
+                "ordering_precedence",
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "train_rear_departure_definition",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_min",
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "coupling_linking_definition",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            },
+            {
+              "name": "stopping_constraints",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_max",
+                  "aggregation_min",
+                  "aggregation_sum",
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "assignment_covering",
+                "objective_defining",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "selection_assignment",
+                "timing"
+              ]
+            },
+            {
+              "name": "initial_final_time_windows",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_max",
+                  "aggregation_min"
+                ]
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            },
+            {
+              "name": "headway_constraints_moving_block",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum",
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "headway_separation",
+              "domain_secondary": [
+                "coupling_linking_definition",
+                "headway_separation",
+                "precedence_ordering"
+              ],
+              "linked_variable_roles": [
+                "ordering_precedence",
+                "routing_path_column",
+                "timing"
+              ]
+            },
+            {
+              "name": "simplified_headway_constraints",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_max",
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "headway_separation",
+              "domain_secondary": [
+                "headway_separation"
+              ],
+              "linked_variable_roles": [
+                "ordering_precedence",
+                "timing"
+              ]
+            },
+            {
+              "name": "basic_ttd_constraints",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum",
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "precedence_ordering",
+              "domain_secondary": [
+                "precedence_ordering",
+                "timing_window",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "ordering_precedence",
+                "routing_path_column",
+                "timing"
+              ]
+            },
+            {
+              "name": "reverse_edge_constraints",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "precedence_ordering",
+              "domain_secondary": [
+                "assignment_covering",
+                "precedence_ordering",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "ordering_precedence",
+                "routing_path_column",
+                "timing"
+              ]
+            },
+            {
+              "name": "vertex_headway_constraints",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_max",
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "headway_separation",
+              "domain_secondary": [
+                "headway_separation",
+                "precedence_ordering"
+              ],
+              "linked_variable_roles": [
+                "ordering_precedence",
+                "timing"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "w_tr",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "tmin_n_tr",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "tmax_n_tr",
+              "structural_kind": "big_m",
+              "domain_class": "penalty_bigM"
+            },
+            {
+              "name": "t0_range_tr",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "len_tr, vmax_tr, a_tr, d_tr",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "count_limit"
+            },
+            {
+              "name": "len_e, vmax_e",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "network_structure"
+            },
+            {
+              "name": "max_velocity_delta",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            },
+            {
+              "name": "min_t_arc / max_t_arc",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "abs_mip_gap",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            },
+            {
+              "name": "V_MIN, EPS, GRB_EPS",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "iitis/quantum-stochastic-optimization-railways",
+      "file": "iitis__quantum-stochastic-optimization-railways.json",
+      "models": [
+        {
+          "model_id": "light-rail-rescheduling-ilp",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "t_{s,j}",
+              "algebraic_type": "integer",
+              "domain_role": "timing"
+            },
+            {
+              "name": "y_{s,j,jp}",
+              "algebraic_type": "binary",
+              "domain_role": "auxiliary_linearization"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "headway_order_disjunct_1",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "headway_separation",
+              "domain_secondary": [
+                "assignment_covering",
+                "headway_separation",
+                "precedence_ordering",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "timing"
+              ]
+            },
+            {
+              "name": "headway_order_disjunct_2",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "headway_separation",
+              "domain_secondary": [
+                "assignment_covering",
+                "headway_separation",
+                "precedence_ordering"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "timing"
+              ]
+            },
+            {
+              "name": "minimum_passing_time",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "objective_defining",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            },
+            {
+              "name": "rolling_stock_circulation",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "precedence_ordering",
+              "domain_secondary": [
+                "precedence_ordering",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            },
+            {
+              "name": "variable_bounds_and_integrality",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_max"
+                ]
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "timing"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "a_{s,j}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "p",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "stay",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "tau_{s,sp}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "prep",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "dmax",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "d_j",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            },
+            {
+              "name": "delta",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "M",
+              "structural_kind": "big_m",
+              "domain_class": "penalty_bigM"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "iitis/railways_HOBO",
+      "file": "iitis__railways_HOBO.json",
+      "models": [
+        {
+          "model_id": "single-track-dispatching-qubo-hobo",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "x_{j,s,d}",
+              "algebraic_type": "binary",
+              "domain_role": "timing"
+            },
+            {
+              "name": "y_{(j,j1,s,d,d1)}",
+              "algebraic_type": "binary",
+              "domain_role": "auxiliary_linearization"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "sum_to_one",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_max",
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "headway_separation",
+              "domain_secondary": [
+                "assignment_covering",
+                "headway_separation"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            },
+            {
+              "name": "minimal_headway",
+              "structural": {
+                "relation": "equality",
+                "flags": []
+              },
+              "domain_primary": "headway_separation",
+              "domain_secondary": [
+                "headway_separation",
+                "objective_defining"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            },
+            {
+              "name": "single_track_line",
+              "structural": {
+                "relation": "equality",
+                "flags": []
+              },
+              "domain_primary": "headway_separation",
+              "domain_secondary": [
+                "headway_separation"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            },
+            {
+              "name": "minimal_stay",
+              "structural": {
+                "relation": "equality",
+                "flags": []
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "objective_defining",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            },
+            {
+              "name": "rolling_stock_circulation",
+              "structural": {
+                "relation": "equality",
+                "flags": []
+              },
+              "domain_primary": "headway_separation",
+              "domain_secondary": [
+                "headway_separation",
+                "precedence_ordering"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            },
+            {
+              "name": "switch_occupation",
+              "structural": {
+                "relation": "equality",
+                "flags": []
+              },
+              "domain_primary": "headway_separation",
+              "domain_secondary": [
+                "headway_separation"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            },
+            {
+              "name": "track_occupation",
+              "structural": {
+                "relation": "unknown",
+                "flags": []
+              },
+              "domain_primary": "capacity_resource",
+              "domain_secondary": [
+                "capacity_resource",
+                "precedence_ordering"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "timing"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "d_max",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            },
+            {
+              "name": "tau^{pass}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "tau^{headway}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "tau^{stop}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "tau^{prep}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "tau^{res}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "t^{(min)}_{j,s}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "w_{j,s}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "penalty_bigM"
+            },
+            {
+              "name": "p_sum",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "penalty_bigM"
+            },
+            {
+              "name": "p_pair",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "penalty_bigM"
+            },
+            {
+              "name": "p_qubic",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "penalty_bigM"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "lintim/openlintim",
+      "file": "lintim__openlintim.json",
+      "models": [
+        {
+          "model_id": "line-planning-cost-model",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "f_l",
+              "algebraic_type": "integer",
+              "domain_role": "flow_quantity"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "edge_lower_frequency_bound",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_min",
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "flow_quantity"
+              ]
+            },
+            {
+              "name": "edge_upper_frequency_bound",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_max",
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "flow_quantity"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "cost_l",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "f^min_e",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "network_structure"
+            },
+            {
+              "name": "f^max_e",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "network_structure"
+            }
+          ]
+        },
+        {
+          "model_id": "line-planning-direct-travelers",
+          "objective_sense": "max",
+          "variables": [
+            {
+              "name": "d_{ijl}",
+              "algebraic_type": "integer",
+              "domain_role": "flow_quantity"
+            },
+            {
+              "name": "f_l",
+              "algebraic_type": "integer",
+              "domain_role": "flow_quantity"
+            },
+            {
+              "name": "g_l",
+              "algebraic_type": "integer",
+              "domain_role": "auxiliary_linearization"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "od_demand_bound",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "flow_conservation",
+              "domain_secondary": [
+                "flow_conservation"
+              ],
+              "linked_variable_roles": [
+                "flow_quantity"
+              ]
+            },
+            {
+              "name": "system_frequency_multiplicity",
+              "structural": {
+                "relation": "equality",
+                "flags": []
+              },
+              "domain_primary": "coupling_linking_definition",
+              "domain_secondary": [
+                "coupling_linking_definition",
+                "flow_conservation"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "flow_quantity"
+              ]
+            },
+            {
+              "name": "line_edge_capacity",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "capacity_resource",
+              "domain_secondary": [
+                "capacity_resource"
+              ],
+              "linked_variable_roles": [
+                "flow_quantity"
+              ]
+            },
+            {
+              "name": "edge_upper_frequency_bound",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_max",
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "flow_quantity"
+              ]
+            },
+            {
+              "name": "edge_lower_frequency_bound",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_min",
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "flow_quantity"
+              ]
+            },
+            {
+              "name": "cost_budget",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "flow_conservation",
+              "domain_secondary": [
+                "flow_conservation"
+              ],
+              "linked_variable_roles": [
+                "flow_quantity"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "C_{ij}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "demand"
+            },
+            {
+              "name": "cost_l",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "cap",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "capacity"
+            },
+            {
+              "name": "directFactor",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "costFactor",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "g_div",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            },
+            {
+              "name": "budget",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "f^min_e",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "network_structure"
+            },
+            {
+              "name": "f^max_e",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "network_structure"
+            }
+          ]
+        },
+        {
+          "model_id": "periodic-timetabling-pesp-ip",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "pi_i",
+              "algebraic_type": "integer",
+              "domain_role": "timing"
+            },
+            {
+              "name": "z_a",
+              "algebraic_type": "integer",
+              "domain_role": "auxiliary_linearization"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "activity_duration_lower_bound",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "periodic_modulo"
+                ]
+              },
+              "domain_primary": "periodic_modulo_pesp",
+              "domain_secondary": [
+                "periodic_modulo_pesp",
+                "timing_window",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "timing"
+              ]
+            },
+            {
+              "name": "activity_duration_upper_bound",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "periodic_modulo"
+                ]
+              },
+              "domain_primary": "periodic_modulo_pesp",
+              "domain_secondary": [
+                "periodic_modulo_pesp",
+                "timing_window",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "timing"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "T",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "l_a",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "u_a",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "w_a",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "p_change",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "penalty_bigM"
+            }
+          ]
+        },
+        {
+          "model_id": "delay-management-dm2-ip",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "y_e",
+              "algebraic_type": "continuous",
+              "domain_role": "timing"
+            },
+            {
+              "name": "z_a",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "g_k",
+              "algebraic_type": "binary",
+              "domain_role": "ordering_precedence"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "nice_activity_propagation",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "timing_window",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            },
+            {
+              "name": "change_activity_propagation",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "assignment_covering",
+                "timing_window",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column",
+                "timing"
+              ]
+            },
+            {
+              "name": "headway_order_forward",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "headway_separation",
+              "domain_secondary": [
+                "headway_separation",
+                "precedence_ordering",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "ordering_precedence",
+                "timing"
+              ]
+            },
+            {
+              "name": "headway_order_reverse",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "headway_separation",
+              "domain_secondary": [
+                "assignment_covering",
+                "headway_separation",
+                "precedence_ordering"
+              ],
+              "linked_variable_roles": [
+                "ordering_precedence",
+                "timing"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "M",
+              "structural_kind": "big_m",
+              "domain_class": "penalty_bigM"
+            },
+            {
+              "name": "w_e",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "d_e",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            },
+            {
+              "name": "L_a",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "pi_e",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "w_a",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "penalty_bigM"
+            },
+            {
+              "name": "T",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "penalty_bigM"
+            },
+            {
+              "name": "freq_a",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "penalty_bigM"
+            }
+          ]
+        },
+        {
+          "model_id": "vehicle-scheduling-ip",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "v_a",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "incoming_degree",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "outgoing_degree",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "c_a",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "marcotallone/railway-scheduling",
+      "file": "marcotallone__railway-scheduling.json",
+      "models": [
+        {
+          "model_id": "maintenance-scheduling-milp",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "y_{jt}",
+              "algebraic_type": "binary",
+              "domain_role": "timing"
+            },
+            {
+              "name": "x_{at}",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "h_{odti}",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "w_{at}",
+              "algebraic_type": "continuous",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "v_{odt}",
+              "algebraic_type": "continuous",
+              "domain_role": "timing"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "job_scheduled_once",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            },
+            {
+              "name": "arc_availability_vs_jobs",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_max",
+                  "aggregation_min",
+                  "aggregation_sum",
+                  "indicator"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column",
+                "timing"
+              ]
+            },
+            {
+              "name": "arc_travel_time_def",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "definitional"
+                ]
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "arc_availability_balance",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum",
+                  "definitional"
+                ]
+              },
+              "domain_primary": "coupling_linking_definition",
+              "domain_secondary": [
+                "coupling_linking_definition"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "mutually_exclusive_arc_outage",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "subtour_connectivity",
+              "domain_secondary": [
+                "subtour_connectivity"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "non_overlapping_jobs",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_max",
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "precedence_ordering",
+              "domain_secondary": [
+                "precedence_ordering"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            },
+            {
+              "name": "event_segment_capacity",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum",
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "capacity_resource",
+              "domain_secondary": [
+                "capacity_resource",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "route_choice_unit",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "travel_time_lower_bound",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum",
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "timing_window",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column",
+                "timing"
+              ]
+            },
+            {
+              "name": "travel_time_upper_bound",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "timing_window",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column",
+                "timing"
+              ]
+            },
+            {
+              "name": "jobless_arc_always_available",
+              "structural": {
+                "relation": "equality",
+                "flags": []
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "jobless_arc_traveltime",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "definitional"
+                ]
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "timing_window",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "forced_availability_event_overload",
+              "structural": {
+                "relation": "equality",
+                "flags": []
+              },
+              "domain_primary": "capacity_resource",
+              "domain_secondary": [
+                "capacity_resource"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "never_used_route_elimination",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_max",
+                  "aggregation_min"
+                ]
+              },
+              "domain_primary": "subtour_connectivity",
+              "domain_secondary": [
+                "headway_separation",
+                "subtour_connectivity"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "valid_ineq_sousa_wolsey",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            },
+            {
+              "name": "valid_ineq_pairwise_nonoverlap",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "precedence_ordering",
+              "domain_secondary": [
+                "precedence_ordering"
+              ],
+              "linked_variable_roles": [
+                "timing"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "T_end",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "K",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "network_structure"
+            },
+            {
+              "name": "pi_j",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "tau_a",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "omega^e_a",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "omega^j_a",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "Omega_{od}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "phi_{odt}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "beta_{odt}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "Lambda_{at}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "M",
+              "structural_kind": "big_m",
+              "domain_class": "penalty_bigM"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "mesenrj/transit-network-optimization",
+      "file": "mesenrj__transit-network-optimization.json",
+      "models": [
+        {
+          "model_id": "transit-line-config-passenger-assignment-milp",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "x_r",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "y_wr",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "z_wk",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "coupling_path_edges_covered_by_routes",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "coupling_linking_definition"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "no_empty_path",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "coupling_assignment_requires_selected_route",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "coupling_linking_definition"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "assignment_one_path_per_od",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "max_routes_per_passenger",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "domain_x_binary",
+              "structural": {
+                "relation": "unknown",
+                "flags": []
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "domain_y_binary",
+              "structural": {
+                "relation": "unknown",
+                "flags": []
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "domain_z_binary",
+              "structural": {
+                "relation": "unknown",
+                "flags": []
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "fix_infeasible_route_assignments",
+              "structural": {
+                "relation": "equality",
+                "flags": []
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "alpha",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "beta",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "gamma",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "a_bal",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "b_bal",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "c_bal",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "route_length_r",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "network_structure"
+            },
+            {
+              "name": "route_frequency_r",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "capacity"
+            },
+            {
+              "name": "demand_w",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "demand"
+            },
+            {
+              "name": "path_length_wk",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "count_limit"
+            },
+            {
+              "name": "edge_length_e",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "network_structure"
+            },
+            {
+              "name": "edge_time_e",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "edge_capacity_e",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "capacity"
+            },
+            {
+              "name": "DELTA",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "network_structure"
+            },
+            {
+              "name": "delta",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "network_structure"
+            },
+            {
+              "name": "yf_OD, yf_R",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "MAX_ROUTES",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "MIN_LENGTH",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            },
+            {
+              "name": "MAX_LENGTH",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "michieluithetbroek/A-MDVRP",
+      "file": "michieluithetbroek__A-MDVRP.json",
+      "models": [
+        {
+          "model_id": "amdvrp-branch-and-cut-2index",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "x_{ij}",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "s_d",
+              "algebraic_type": "continuous",
+              "domain_role": "auxiliary_linearization"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "depot_out_degree_at_most_one",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "depot_in_degree_at_most_one",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "depot_open_linking",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "coupling_linking_definition",
+              "domain_secondary": [
+                "assignment_covering",
+                "coupling_linking_definition"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "flow_conservation",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum",
+                  "definitional"
+                ]
+              },
+              "domain_primary": "flow_conservation",
+              "domain_secondary": [
+                "coupling_linking_definition",
+                "flow_conservation"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "visit_each_customer",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "no_self_loops",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "subtour_elim_size_2",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "subtour_connectivity",
+              "domain_secondary": [
+                "subtour_connectivity"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "depot_customer_size_2_elim",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "no_inter_depot_arcs",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "static_subtour_elim_size_3",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "subtour_connectivity",
+              "domain_secondary": [
+                "capacity_resource",
+                "subtour_connectivity"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "static_subtour_elim_size_4",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "subtour_connectivity",
+              "domain_secondary": [
+                "capacity_resource",
+                "subtour_connectivity"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "c_{ij}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "q_i",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "demand"
+            },
+            {
+              "name": "Q",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "capacity"
+            },
+            {
+              "name": "f_d",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "k(S)",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "network_structure"
+            }
+          ]
+        },
+        {
+          "model_id": "amdvrp-compact-flow-mtz",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "x_{ij}",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "z_{ij}",
+              "algebraic_type": "continuous",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "u_i",
+              "algebraic_type": "continuous",
+              "domain_role": "ordering_precedence"
+            },
+            {
+              "name": "y_i",
+              "algebraic_type": "continuous",
+              "domain_role": "flow_quantity"
+            },
+            {
+              "name": "s_d",
+              "algebraic_type": "continuous",
+              "domain_role": "auxiliary_linearization"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "neighbourhood_arc_fixing",
+              "structural": {
+                "relation": "equality",
+                "flags": []
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "depot_out_degree_at_most_one",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "depot_in_degree_at_most_one",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "depot_open_linking",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "coupling_linking_definition",
+              "domain_secondary": [
+                "assignment_covering",
+                "coupling_linking_definition"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "flow_conservation_arcs",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum",
+                  "definitional"
+                ]
+              },
+              "domain_primary": "flow_conservation",
+              "domain_secondary": [
+                "coupling_linking_definition",
+                "flow_conservation"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "visit_each_customer",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "no_self_loops",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "no_inter_depot_arcs",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "flow_demand_balance",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum",
+                  "definitional"
+                ]
+              },
+              "domain_primary": "subtour_connectivity",
+              "domain_secondary": [
+                "coupling_linking_definition",
+                "subtour_connectivity"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "total_flow_from_depots",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum",
+                  "definitional"
+                ]
+              },
+              "domain_primary": "coupling_linking_definition",
+              "domain_secondary": [
+                "coupling_linking_definition"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "flow_capacity_coupling",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "capacity_resource",
+              "domain_secondary": [
+                "capacity_resource",
+                "coupling_linking_definition",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "min_tour_load_mdamtsp",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "depot_assign_lb_in",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "ordering_precedence",
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "depot_assign_lb_out",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "ordering_precedence",
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "depot_assign_ub_in",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "ordering_precedence",
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "depot_assign_ub_out",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "ordering_precedence",
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "mtz_depot_consistency",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "subtour_connectivity",
+              "domain_secondary": [
+                "assignment_covering",
+                "coupling_linking_definition",
+                "subtour_connectivity"
+              ],
+              "linked_variable_roles": [
+                "ordering_precedence",
+                "routing_path_column"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "c_{ij}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "q_i",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "demand"
+            },
+            {
+              "name": "Q",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "capacity"
+            },
+            {
+              "name": "M",
+              "structural_kind": "big_m",
+              "domain_class": "penalty_bigM"
+            },
+            {
+              "name": "delta",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "capacity"
+            },
+            {
+              "name": "f_d",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "tourMin",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "unclassified"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "romain-montagne/vrpy",
+      "file": "romain-montagne__vrpy.json",
+      "models": [
+        {
+          "model_id": "vrp-set-covering-master",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "y_r (lambda_r)",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "drop_v",
+              "algebraic_type": "binary",
+              "domain_role": "auxiliary_linearization"
+            },
+            {
+              "name": "periodic_v",
+              "algebraic_type": "continuous",
+              "domain_role": "auxiliary_linearization"
+            },
+            {
+              "name": "artificial_bound_k",
+              "algebraic_type": "continuous",
+              "domain_role": "auxiliary_linearization"
+            },
+            {
+              "name": "makespan",
+              "algebraic_type": "continuous",
+              "domain_role": "auxiliary_linearization"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "set_covering_visit_node",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": []
+            },
+            {
+              "name": "vehicle_count_bound",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": []
+            },
+            {
+              "name": "route_selection_domain",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": []
+            },
+            {
+              "name": "makespan_definition",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "coupling_linking_definition",
+                "objective_defining",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "c_r",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "f_v",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "U_k",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "count_limit"
+            },
+            {
+              "name": "p",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "penalty_bigM"
+            }
+          ]
+        },
+        {
+          "model_id": "vrp-pricing-subproblem-lp",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "x_{uv}",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "t_v",
+              "algebraic_type": "continuous",
+              "domain_role": "timing"
+            },
+            {
+              "name": "y_v (rank)",
+              "algebraic_type": "integer",
+              "domain_role": "ordering_precedence"
+            },
+            {
+              "name": "load_v / load_{uv}",
+              "algebraic_type": "continuous",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "unload_{uv}",
+              "algebraic_type": "continuous",
+              "domain_role": "routing_path_column"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "flow_balance",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "flow_conservation",
+              "domain_secondary": [
+                "flow_conservation"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "start_at_source",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "end_at_sink",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "at_least_one_stop",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "time_windows",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "subtour_connectivity",
+              "domain_secondary": [
+                "subtour_connectivity",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column",
+                "timing"
+              ]
+            },
+            {
+              "name": "max_stops",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "variable_bound_fix",
+              "domain_secondary": [
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "max_load_capacity",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "capacity_resource",
+              "domain_secondary": [
+                "assignment_covering",
+                "capacity_resource"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "max_duration",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "objective_defining",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column",
+                "timing"
+              ]
+            },
+            {
+              "name": "elementarity_mtz",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering"
+              ],
+              "linked_variable_roles": [
+                "ordering_precedence",
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "pickup_delivery_pairing_and_load",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum",
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "capacity_resource",
+              "domain_secondary": [
+                "assignment_covering",
+                "capacity_resource",
+                "precedence_ordering"
+              ],
+              "linked_variable_roles": [
+                "ordering_precedence",
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "distribution_collection",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "subtour_connectivity",
+              "domain_secondary": [
+                "capacity_resource",
+                "subtour_connectivity"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "w_{uv}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "c_{uv}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "d_v",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "demand"
+            },
+            {
+              "name": "Q",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "capacity"
+            },
+            {
+              "name": "S",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "capacity"
+            },
+            {
+              "name": "D",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "s_v",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "t_{uv}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "[l_v, u_v]",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "M_tw",
+              "structural_kind": "big_m",
+              "domain_class": "penalty_bigM"
+            },
+            {
+              "name": "M_el",
+              "structural_kind": "big_m",
+              "domain_class": "penalty_bigM"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "repo": "sma-software/openviriato.algorithm-platform.showcase.spot",
+      "file": "sma-software__openviriato.algorithm-platform.showcase.spot.json",
+      "models": [
+        {
+          "model_id": "spot-pesp-passenger-timetabling",
+          "objective_sense": "min",
+          "variables": [
+            {
+              "name": "dep_{l,n}",
+              "algebraic_type": "continuous",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "arr_{l,n}",
+              "algebraic_type": "continuous",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "k_{i,j}",
+              "algebraic_type": "binary",
+              "domain_role": "auxiliary_linearization"
+            },
+            {
+              "name": "addrun_{l,n}",
+              "algebraic_type": "continuous",
+              "domain_role": "auxiliary_linearization"
+            },
+            {
+              "name": "rpd_{rp}",
+              "algebraic_type": "continuous",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "ptd_{x}",
+              "algebraic_type": "continuous",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "trd_{tr}",
+              "algebraic_type": "continuous",
+              "domain_role": "routing_path_column"
+            },
+            {
+              "name": "srd_r",
+              "algebraic_type": "continuous",
+              "domain_role": "timing"
+            },
+            {
+              "name": "rsd_{tr}",
+              "algebraic_type": "binary",
+              "domain_role": "routing_path_column"
+            }
+          ],
+          "constraints": [
+            {
+              "name": "stop_time_with_dwell",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "periodic_modulo"
+                ]
+              },
+              "domain_primary": "periodic_modulo_pesp",
+              "domain_secondary": [
+                "objective_defining",
+                "periodic_modulo_pesp",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "stop_time_without_dwell",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "definitional"
+                ]
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "coupling_linking_definition",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "running_time_equality",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "definitional",
+                  "periodic_modulo"
+                ]
+              },
+              "domain_primary": "periodic_modulo_pesp",
+              "domain_secondary": [
+                "coupling_linking_definition",
+                "objective_defining",
+                "periodic_modulo_pesp",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "additional_running_time_bound",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "objective_defining",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization"
+              ]
+            },
+            {
+              "name": "route_part_duration_def",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum",
+                  "definitional",
+                  "periodic_modulo"
+                ]
+              },
+              "domain_primary": "periodic_modulo_pesp",
+              "domain_secondary": [
+                "coupling_linking_definition",
+                "periodic_modulo_pesp",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "transfer_duration_def",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "definitional",
+                  "periodic_modulo"
+                ]
+              },
+              "domain_primary": "periodic_modulo_pesp",
+              "domain_secondary": [
+                "coupling_linking_definition",
+                "periodic_modulo_pesp",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "auxiliary_linearization",
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "required_minimum_transfer_duration",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "objective_defining",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "travel_route_total_duration",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum",
+                  "definitional"
+                ]
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "coupling_linking_definition",
+                "timing_window"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            },
+            {
+              "name": "selected_duration_upper_bound",
+              "structural": {
+                "relation": "inequality",
+                "flags": []
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "assignment_covering",
+                "coupling_linking_definition",
+                "objective_defining",
+                "timing_window",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column",
+                "timing"
+              ]
+            },
+            {
+              "name": "selected_duration_lower_bound_linking",
+              "structural": {
+                "relation": "inequality",
+                "flags": [
+                  "has_big_m"
+                ]
+              },
+              "domain_primary": "timing_window",
+              "domain_secondary": [
+                "assignment_covering",
+                "objective_defining",
+                "timing_window",
+                "variable_bound_fix"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column",
+                "timing"
+              ]
+            },
+            {
+              "name": "select_exactly_one_route",
+              "structural": {
+                "relation": "equality",
+                "flags": [
+                  "aggregation_sum"
+                ]
+              },
+              "domain_primary": "assignment_covering",
+              "domain_secondary": [
+                "assignment_covering",
+                "coupling_linking_definition"
+              ],
+              "linked_variable_roles": [
+                "routing_path_column"
+              ]
+            }
+          ],
+          "parameters": [
+            {
+              "name": "T",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "TimeStep",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "l^stop_n",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "l^run_n",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "alpha",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "l^trans_{a,d}",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "time_duration"
+            },
+            {
+              "name": "phi_r",
+              "structural_kind": "scalar_or_indexed",
+              "domain_class": "cost_weight"
+            },
+            {
+              "name": "TransferMax",
+              "structural_kind": "big_m",
+              "domain_class": "penalty_bigM"
+            },
+            {
+              "name": "M_{r,tr}",
+              "structural_kind": "big_m",
+              "domain_class": "penalty_bigM"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

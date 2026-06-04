@@ -1,0 +1,306 @@
+{
+  "repo": "lintim/openlintim",
+  "url": "https://gitlab.com/lintim/openlintim",
+  "license": "MIT",
+  "language": "Java / Python / C++ (Gurobi, CPLEX, XPRESS solver bindings)",
+  "solver": "Gurobi, CPLEX, XPRESS (+ OSS fallback)",
+  "area": "railway-timetabling",
+  "paper_reference": null,
+  "models": [
+    {
+      "model_id": "line-planning-cost-model",
+      "source_files": [
+        "src/line-planning/cost-model/src/net/lintim/algorithm/lineplanning/CostGurobi.java:20-90",
+        "src/line-planning/cost-model/python/src/cost_model.py"
+      ],
+      "description": "Cost model of line planning: choose an integer frequency for each candidate line in a given line pool so that the total operating cost is minimized while every edge of the public transportation network (PTN) carries a number of line frequencies within its lower and upper frequency bounds. Pure integer program over line frequencies.",
+      "sets_indices": [
+        {"name": "L", "meaning": "set of candidate lines in the line pool", "source_symbol": "linePool.getLines()"},
+        {"name": "E", "meaning": "set of edges (links) of the PTN", "source_symbol": "ptn.getEdges()"}
+      ],
+      "parameters": [
+        {"name": "cost_l", "meaning": "operating cost of line l (used as objective coefficient on its frequency)", "domain": "R_>=0", "source_symbol": "line.getCost()"},
+        {"name": "f^min_e", "meaning": "lower frequency bound on edge e", "domain": "Z_>=0", "source_symbol": "link.getLowerFrequencyBound()"},
+        {"name": "f^max_e", "meaning": "upper frequency bound on edge e", "domain": "Z_>=0", "source_symbol": "link.getUpperFrequencyBound()"}
+      ],
+      "decision_variables": [
+        {"name": "f_l", "type": "integer", "domain": "[0, inf)", "meaning": "frequency of line l (number of times line l is operated per period)", "source_symbol": "frequencies.get(line.getId()) / f_\" + line.getId()"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min \\sum_{l \\in L} \\mathrm{cost}_l \\, f_l",
+        "expression_plain": "minimize total operating cost = sum over lines of (line cost * line frequency)",
+        "source_files": ["src/line-planning/cost-model/src/net/lintim/algorithm/lineplanning/CostGurobi.java:26,33"]
+      },
+      "constraints": [
+        {
+          "name": "edge_lower_frequency_bound",
+          "indexed_over": "e in E",
+          "expression_latex": "\\sum_{l \\in L : e \\in l} f_l \\geq f^{min}_e",
+          "expression_plain": "for each PTN edge, the sum of frequencies of lines passing over that edge is at least the edge lower frequency bound",
+          "source_files": ["src/line-planning/cost-model/src/net/lintim/algorithm/lineplanning/CostGurobi.java:40-48"]
+        },
+        {
+          "name": "edge_upper_frequency_bound",
+          "indexed_over": "e in E",
+          "expression_latex": "\\sum_{l \\in L : e \\in l} f_l \\leq f^{max}_e",
+          "expression_plain": "for each PTN edge, the sum of frequencies of lines passing over that edge is at most the edge upper frequency bound",
+          "source_files": ["src/line-planning/cost-model/src/net/lintim/algorithm/lineplanning/CostGurobi.java:40-51"]
+        }
+      ],
+      "instances": [
+        {"name": "LinTim standard datasets (Line / Pool / PTN inputs)", "path": "datasets/", "format": "LinTim CSV (.giv/.lin/.csv)", "size": "20 dataset folders (athens, helsinki, lowersaxony, mandl, sioux_falls, grid, ring, toy, goevb, BOMHarbour, ...); datasets/ is ~5 MB total", "license": "MIT"}
+      ],
+      "notes": "Membership 'e in l' is tested via line.getLinePath().getEdges().contains(link) (CostGurobi.java:43). Frequencies are declared GRB.INTEGER with the cost coefficient supplied directly in addVar (line 33), so the objective is implicit in the variable definition; ModelSense=MINIMIZE set at line 26. Equivalent Gurobi/XPRESS/solver-agnostic implementations exist: CostXpress.java, CostSolverAgnostic.java, and a Python implementation in python/src/cost_model.py. Variants in sibling folders (cost-model-extended, cost-model-restricting-frequencies) extend this base formulation and were not separately transcribed."
+    },
+    {
+      "model_id": "line-planning-direct-travelers",
+      "source_files": [
+        "src/line-planning/direct-travelers/src/net/lintim/algorithm/lineplanning/DirectGurobi.java:50-191"
+      ],
+      "description": "Direct-travelers model of line planning: select line frequencies (subject to a cost budget and edge frequency bounds) and assign passengers to lines so as to maximize the number of direct travelers (passengers who can reach their destination without changing lines), penalized by line cost. Notation follows Prof. Schoebel's public-transportation lecture script (constraint numbers 3.6-3.8 referenced in code comments).",
+      "sets_indices": [
+        {"name": "V", "meaning": "set of stops (nodes) of the PTN; origins i and destinations j range over V", "source_symbol": "ptn.getNodes()"},
+        {"name": "E", "meaning": "set of edges (links) of the PTN", "source_symbol": "ptn.getEdges()"},
+        {"name": "L", "meaning": "set of candidate lines in the line pool", "source_symbol": "linePool.getLines()"},
+        {"name": "OD", "meaning": "origin-destination pairs (i,j) with i != j and positive demand", "source_symbol": "od.getValue(i,j) > 0"},
+        {"name": "L_{ij}", "meaning": "lines acceptable (directly usable on a preferable path) for OD pair (i,j)", "source_symbol": "acceptableLineIds.get(Pair(i,j)).keySet()"}
+      ],
+      "parameters": [
+        {"name": "C_{ij}", "meaning": "passenger demand from i to j", "domain": "Z_>=0", "source_symbol": "od.getValue(origin,destination)"},
+        {"name": "cost_l", "meaning": "operating cost of line l", "domain": "R_>=0", "source_symbol": "line.getCost()"},
+        {"name": "cap", "meaning": "passenger capacity per line operation (per frequency unit)", "domain": "Z_>=1", "source_symbol": "parameters.getCapacity()"},
+        {"name": "directFactor", "meaning": "objective weight on each directly served passenger", "domain": "R", "source_symbol": "parameters.getDirectFactor()"},
+        {"name": "costFactor", "meaning": "objective weight on line cost (entered with negative sign for the maximization)", "domain": "R", "source_symbol": "parameters.getCostFactor()"},
+        {"name": "g_div", "meaning": "common (system) frequency divisor that all line frequencies must be a multiple of", "domain": "Z_>=1", "source_symbol": "parameters.getCommonFrequencyDivisor()"},
+        {"name": "budget", "meaning": "maximum allowed total cost of the line concept", "domain": "R_>=0", "source_symbol": "parameters.getBudget()"},
+        {"name": "f^min_e", "meaning": "lower frequency bound on edge e", "domain": "Z_>=0", "source_symbol": "link.getLowerFrequencyBound()"},
+        {"name": "f^max_e", "meaning": "upper frequency bound on edge e", "domain": "Z_>=0", "source_symbol": "link.getUpperFrequencyBound()"}
+      ],
+      "decision_variables": [
+        {"name": "d_{ijl}", "type": "integer", "domain": "[0, C_{ij}]", "meaning": "number of passengers travelling directly from i to j using line l", "source_symbol": "d.get(i).get(j).get(lineId) / d_i_j_l"},
+        {"name": "f_l", "type": "integer", "domain": "[0, inf)", "meaning": "frequency of line l", "source_symbol": "f.get(line.getId()) / f_l"},
+        {"name": "g_l", "type": "integer", "domain": "[0, inf)", "meaning": "auxiliary multiplier linking f_l to the common frequency divisor (f_l = g_div * g_l)", "source_symbol": "systemFrequencyDivisor / g_l"}
+      ],
+      "objective": {
+        "sense": "max",
+        "expression_latex": "\\max \\; \\mathrm{directFactor} \\sum_{(i,j) \\in OD} \\sum_{l \\in L_{ij}} d_{ijl} \\; - \\; \\mathrm{costFactor} \\sum_{l \\in L} \\mathrm{cost}_l \\, f_l",
+        "expression_plain": "maximize weighted number of direct travelers minus weighted line cost (cost coefficient entered as -costFactor*cost_l on f_l; ModelSense=MAXIMIZE)",
+        "source_files": ["src/line-planning/direct-travelers/src/net/lintim/algorithm/lineplanning/DirectGurobi.java:78-79,92,159"]
+      },
+      "constraints": [
+        {
+          "name": "od_demand_bound",
+          "indexed_over": "(i,j) in OD",
+          "expression_latex": "\\sum_{l \\in L_{ij}} d_{ijl} \\leq C_{ij}",
+          "expression_plain": "the number of passengers travelling directly on any line for an OD pair cannot exceed that pair's demand (constraint 3.6)",
+          "source_files": ["src/line-planning/direct-travelers/src/net/lintim/algorithm/lineplanning/DirectGurobi.java:84-86"]
+        },
+        {
+          "name": "system_frequency_multiplicity",
+          "indexed_over": "l in L",
+          "expression_latex": "f_l = g_{div} \\, g_l",
+          "expression_plain": "each line frequency must be an integer multiple of the common system frequency divisor",
+          "source_files": ["src/line-planning/direct-travelers/src/net/lintim/algorithm/lineplanning/DirectGurobi.java:94-98"]
+        },
+        {
+          "name": "line_edge_capacity",
+          "indexed_over": "e in E, l in L with e in l",
+          "expression_latex": "\\sum_{(i,j) \\in OD : e \\in p_{ijl}} d_{ijl} \\leq \\mathrm{cap} \\cdot f_l",
+          "expression_plain": "for each line and each edge it uses, the direct travelers routed over that edge on that line cannot exceed the line capacity (cap * frequency) (constraint 3.7)",
+          "source_files": ["src/line-planning/direct-travelers/src/net/lintim/algorithm/lineplanning/DirectGurobi.java:103-134"]
+        },
+        {
+          "name": "edge_upper_frequency_bound",
+          "indexed_over": "e in E",
+          "expression_latex": "\\sum_{l \\in L : e \\in l} f_l \\leq f^{max}_e",
+          "expression_plain": "sum of frequencies of lines over an edge is at most the edge upper frequency bound (constraint 3.8)",
+          "source_files": ["src/line-planning/direct-travelers/src/net/lintim/algorithm/lineplanning/DirectGurobi.java:138-146"]
+        },
+        {
+          "name": "edge_lower_frequency_bound",
+          "indexed_over": "e in E",
+          "expression_latex": "\\sum_{l \\in L : e \\in l} f_l \\geq f^{min}_e",
+          "expression_plain": "sum of frequencies of lines over an edge is at least the edge lower frequency bound (constraint 3.8)",
+          "source_files": ["src/line-planning/direct-travelers/src/net/lintim/algorithm/lineplanning/DirectGurobi.java:138-148"]
+        },
+        {
+          "name": "cost_budget",
+          "indexed_over": "global",
+          "expression_latex": "\\sum_{l \\in L} \\mathrm{cost}_l \\, f_l \\leq \\mathrm{budget}",
+          "expression_plain": "total cost of the line concept must not exceed the budget",
+          "source_files": ["src/line-planning/direct-travelers/src/net/lintim/algorithm/lineplanning/DirectGurobi.java:153-158"]
+        }
+      ],
+      "instances": [
+        {"name": "LinTim standard datasets (PTN, Pool, OD demand inputs)", "path": "datasets/", "format": "LinTim CSV", "size": "20 dataset folders; datasets/ ~5 MB total", "license": "MIT"}
+      ],
+      "notes": "The condition 'e in p_{ijl}' (edge e lies on the acceptable path for (i,j) on line l) is realized via acceptableLineIds.get(odPair).get(lineId).contains(link) (DirectGurobi.java:118). The acceptable lines / preferable paths are precomputed (computeAcceptableLineIds / computeShortestPaths). A second method preprocessPassengersForFixedLines (lines 194-295) solves a related restricted assignment LP for fixed lines (max direct travelers subject to demand and fixed-line capacity) and is a preprocessing variant, not transcribed separately. Sibling folders direct-travelers-restricting-frequencies and direct-travelers-relaxation hold further variants."
+    },
+    {
+      "model_id": "periodic-timetabling-pesp-ip",
+      "source_files": [
+        "src/timetabling/periodic/ip/src/net/lintim/algorithm/timetabling/periodic/PespIpGurobi.java:20-118"
+      ],
+      "description": "Periodic Event Scheduling Problem (PESP) integer program for periodic timetabling. Assigns a periodic time (modulo the period length T) to each event of the periodic event-activity network (EAN) so that all activity duration (slack) bounds hold modulo T, minimizing total weighted passenger travel/waiting time (plus change penalties).",
+      "sets_indices": [
+        {"name": "V", "meaning": "set of periodic events (nodes of the EAN)", "source_symbol": "ean.getNodes()"},
+        {"name": "A", "meaning": "set of periodic activities (edges of the EAN); each activity a=(i,j) has source event i and target event j", "source_symbol": "ean.getEdges()"},
+        {"name": "A_change", "meaning": "subset of activities of type CHANGE (transfer/change activities, which receive an additional change penalty)", "source_symbol": "activity.getType() == ActivityType.CHANGE"}
+      ],
+      "parameters": [
+        {"name": "T", "meaning": "period length (cycle time)", "domain": "Z_>=1", "source_symbol": "parameters.getPeriodLength()"},
+        {"name": "l_a", "meaning": "lower bound (minimum duration) of activity a", "domain": "Z_>=0", "source_symbol": "activity.getLowerBound()"},
+        {"name": "u_a", "meaning": "upper bound (maximum duration) of activity a", "domain": "Z_>=0", "source_symbol": "activity.getUpperBound()"},
+        {"name": "w_a", "meaning": "number of passengers (weight) on activity a", "domain": "Z_>=0", "source_symbol": "activity.getNumberOfPassengers()"},
+        {"name": "p_change", "meaning": "fixed change penalty added to the duration of each change activity in the objective", "domain": "R_>=0", "source_symbol": "parameters.getChangePenalty()"}
+      ],
+      "decision_variables": [
+        {"name": "pi_i", "type": "integer", "domain": "[0, T-1]", "meaning": "periodic time (potential) assigned to event i", "source_symbol": "eventVar / pi_\" + event.getId()"},
+        {"name": "z_a", "type": "integer", "domain": "[0, inf)", "meaning": "modulo (periodic offset) variable for activity a, enforcing the period-modulo arithmetic", "source_symbol": "moduloVariable / z_\" + activity.getId()"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min \\sum_{a=(i,j) \\in A} w_a \\left( \\pi_j - \\pi_i + T z_a + [a \\in A_{change}] \\, p_{change} \\right)",
+        "expression_plain": "minimize total weighted activity duration: for each activity, passengers times its realized (modulo) duration, with a change penalty added to change activities",
+        "source_files": ["src/timetabling/periodic/ip/src/net/lintim/algorithm/timetabling/periodic/PespIpGurobi.java:47-70"]
+      },
+      "constraints": [
+        {
+          "name": "activity_duration_lower_bound",
+          "indexed_over": "a=(i,j) in A",
+          "expression_latex": "\\pi_j - \\pi_i + T z_a \\geq l_a",
+          "expression_plain": "the modulo duration of each activity (target time minus source time plus T times the modulo variable) is at least its lower bound",
+          "source_files": ["src/timetabling/periodic/ip/src/net/lintim/algorithm/timetabling/periodic/PespIpGurobi.java:55-60"]
+        },
+        {
+          "name": "activity_duration_upper_bound",
+          "indexed_over": "a=(i,j) in A",
+          "expression_latex": "\\pi_j - \\pi_i + T z_a \\leq u_a",
+          "expression_plain": "the modulo duration of each activity is at most its upper bound",
+          "source_files": ["src/timetabling/periodic/ip/src/net/lintim/algorithm/timetabling/periodic/PespIpGurobi.java:55-61"]
+        }
+      ],
+      "instances": [
+        {"name": "LinTim standard datasets (periodic EAN inputs)", "path": "datasets/", "format": "LinTim CSV (Events-periodic / Activities-periodic)", "size": "20 dataset folders; datasets/ ~5 MB total", "license": "MIT"}
+      ],
+      "notes": "The classic PESP constraint l_a <= (pi_j - pi_i) mod T <= u_a is linearized with the integer modulo variable z_a (term T*z_a + pi_j - pi_i, see addTerm at lines 56-58); event potentials are bounded to [0, T-1] at addVar (line 42). The change penalty p_change is folded into the activity term (lines 62-64) only for change-type activities before being weighted by w_a into the objective. An equivalent XPRESS implementation is in PespIpXpress.java; shared logic/parameters in PespIpCore.java and Parameters.java. Other periodic timetabling approaches in sibling folders (modulo-simplex, cycle-base, constraint-prop, rptts, matching) are heuristics or alternative solvers for the same PESP and were not transcribed as separate IP formulations."
+    },
+    {
+      "model_id": "delay-management-dm2-ip",
+      "source_files": [
+        "src/delay-management/ip-based/GUROBI/Solve.java:19-267",
+        "src/delay-management/ip-based/Solve/DM.java:52-115"
+      ],
+      "description": "Delay management integer program (model DM2, no passenger rerouting) on a non-periodic (aperiodic, rolled-out) event-activity network. Given source delays, decides for each connection (change) activity whether the connecting train waits or departs, and resolves headway (priority) order between conflicting trains, to minimize total weighted passenger delay subject to delay-propagation constraints.",
+      "sets_indices": [
+        {"name": "E", "meaning": "set of non-periodic events", "source_symbol": "Net.getEvents()"},
+        {"name": "A_nice", "meaning": "set of 'nice' (driving/waiting/non-change, non-headway) activities", "source_symbol": "Net.getNiceActivities()"},
+        {"name": "A_change", "meaning": "set of changing (transfer/connection) activities", "source_symbol": "Net.getChangingActivities()"},
+        {"name": "A_head", "meaning": "set of headway activities (paired, one per direction of each train conflict)", "source_symbol": "Net.getHeadwayActivities()"}
+      ],
+      "parameters": [
+        {"name": "M", "meaning": "big-M constant deactivating a constraint when the corresponding binary is set; optionally also used as event delay upper bound", "domain": "R_>=0", "source_symbol": "int M (method argument)"},
+        {"name": "w_e", "meaning": "weight (number of passengers ending their journey) of event e; objective coefficient on y_e", "domain": "R_>=0", "source_symbol": "e.getWeight()"},
+        {"name": "d_e", "meaning": "source (exogenous) delay of event e (lower bound on y_e)", "domain": "Z_>=0", "source_symbol": "e.getSourceDelay()"},
+        {"name": "L_a", "meaning": "lower bound (minimum duration) of activity a", "domain": "Z_>=0", "source_symbol": "a.getLowerBound()"},
+        {"name": "pi_e", "meaning": "planned (scheduled) time of event e", "domain": "Z", "source_symbol": "e.getTime() / source.getTime() / target.getTime()"},
+        {"name": "w_a", "meaning": "weight (passengers) on change activity a, used in the wait-decision penalty", "domain": "R_>=0", "source_symbol": "a.getWeight()"},
+        {"name": "T", "meaning": "period length (used to scale missed-connection penalty by period / activity frequency)", "domain": "Z_>=1", "source_symbol": "Net.getPeriod()"},
+        {"name": "freq_a", "meaning": "frequency of change activity a (divides the period in the missed-connection penalty)", "domain": "Z_>=1", "source_symbol": "frequencies.get(a)"}
+      ],
+      "decision_variables": [
+        {"name": "y_e", "type": "continuous", "domain": "[d_e, e.getTime()+M] or [d_e, inf)", "meaning": "delay of event e relative to its planned time", "source_symbol": "y[i] / y\" + i"},
+        {"name": "z_a", "type": "binary", "meaning": "1 if change (connection) activity a is dropped/not maintained (passengers miss the connection); 0 if the connection is kept", "source_symbol": "z[i] / z\" + a.getID()"},
+        {"name": "g_k", "type": "binary", "meaning": "priority/ordering decision for headway pair k: fixes which of two conflicting trains goes first", "source_symbol": "g[k] / g\" + k"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min \\sum_{e \\in E} w_e \\, y_e \\; + \\sum_{a \\in A_{change}} w_a \\frac{T}{\\mathrm{freq}_a} z_a",
+        "expression_plain": "minimize total weighted event delay plus, for each missed connection, the passenger weight times the period-scaled missed-connection penalty",
+        "source_files": ["src/delay-management/ip-based/GUROBI/Solve.java:57,81"]
+      },
+      "constraints": [
+        {
+          "name": "nice_activity_propagation",
+          "indexed_over": "a=(i,j) in A_nice",
+          "expression_latex": "y_j - y_i \\geq L_a + d_a + \\pi_i - \\pi_j",
+          "expression_plain": "delay propagation along driving/waiting activities: the delay of the target event is at least that of the source plus the activity slack deficit (lower bound minus available planned buffer plus any activity source delay)",
+          "source_files": ["src/delay-management/ip-based/GUROBI/Solve.java:64-72"]
+        },
+        {
+          "name": "change_activity_propagation",
+          "indexed_over": "a=(i,j) in A_change",
+          "expression_latex": "M z_a + y_j - y_i \\geq L_a + d_a + \\pi_i - \\pi_j",
+          "expression_plain": "if a connection is maintained (z_a=0) the connecting train must wait (delay propagates); if dropped (z_a=1) the big-M term relaxes the constraint",
+          "source_files": ["src/delay-management/ip-based/GUROBI/Solve.java:84-94"]
+        },
+        {
+          "name": "headway_order_forward",
+          "indexed_over": "headway pair k = (a1,a2), a1=(i,j)",
+          "expression_latex": "M g_k + y_j - y_i \\geq L_{a1} + \\pi_i - \\pi_j",
+          "expression_plain": "first headway constraint of the conflicting pair; active when g_k=0 (the corresponding train ordering is chosen)",
+          "source_files": ["src/delay-management/ip-based/GUROBI/Solve.java:117-121"]
+        },
+        {
+          "name": "headway_order_reverse",
+          "indexed_over": "headway pair k = (a1,a2), reverse direction (j,i)",
+          "expression_latex": "M - M g_k + y_i - y_j \\geq L_{a2} + \\pi_j - \\pi_i",
+          "expression_plain": "second headway constraint of the conflicting pair; active when g_k=1, enforcing the opposite train order so exactly one ordering holds",
+          "source_files": ["src/delay-management/ip-based/GUROBI/Solve.java:122-127"]
+        }
+      ],
+      "instances": [
+        {"name": "LinTim standard datasets (aperiodic EAN, delays, weights)", "path": "datasets/", "format": "LinTim CSV (Events-expanded / Activities-expanded / Delays)", "size": "20 dataset folders; datasets/ ~5 MB total", "license": "MIT"}
+      ],
+      "notes": "This is model DM2 (delay management without passenger rerouting); the model-selection code (DM.java, optMethod 'DM2') confirms the variant. DM1 (with passenger paths) is declared but NOT implemented in the Gurobi backend (Solve.java:269-277 throws RuntimeException). The event-delay upper bound y_e <= pi_e + M is applied only when MAsUpperBound is true (justified by Schachtebeck's dissertation, Theorem 3.1, valid only for optimal solutions); otherwise the upper bound is infinity (Solve.java:52-57). Headway activities are processed in pairs (one binary g per pair, Solve.java:99-129). After the main solve, a SECOND LP (Solve.java:183-267) re-minimizes the sum of all delays with the binary wait/priority decisions FIXED, to make every event take place as early as possible; this is a post-processing time-minimization LP over the same y variables, not a distinct combinatorial model, so it is not listed as a separate models[] entry. The per-term right-hand side a.getLowerBound()+a.getSourceDelay()+source.getTime()-target.getTime() is captured above as L_a + d_a + pi_i - pi_j. An XPRESS backend (src/delay-management/ip-based/XPRESS/) provides an equivalent formulation."
+    },
+    {
+      "model_id": "vehicle-scheduling-ip",
+      "source_files": [
+        "src/vehicle-scheduling/ip-model/src/net/lintim/algorithm/vehiclescheduling/IPModelGurobi.java:27-118"
+      ],
+      "description": "Vehicle scheduling problem (VSP) as a minimum-cost flow / assignment IP on a trip-connection graph. Each trip node must be entered and left exactly once via selected connections (including deadhead/depot connections); minimizes total connection cost. Equivalent to an integer min-cost circulation covering all trips.",
+      "sets_indices": [
+        {"name": "N", "meaning": "set of trip nodes of the trip graph (each non-depot node is one scheduled trip); depot nodes are excluded from the degree constraints", "source_symbol": "tripGraph.getNodes() (skipping tripNode.isDepot())"},
+        {"name": "A", "meaning": "set of trip connections (edges of the trip graph), including deadhead and depot connections", "source_symbol": "tripGraph.getEdges()"},
+        {"name": "delta^-(n)", "meaning": "incoming connections of trip node n", "source_symbol": "tripGraph.getIncomingEdges(tripNode)"},
+        {"name": "delta^+(n)", "meaning": "outgoing connections of trip node n", "source_symbol": "tripGraph.getOutgoingEdges(tripNode)"}
+      ],
+      "parameters": [
+        {"name": "c_a", "meaning": "cost of using trip connection a (objective coefficient)", "domain": "R_>=0", "source_symbol": "connection.getCost()"}
+      ],
+      "decision_variables": [
+        {"name": "v_a", "type": "binary", "domain": "[0,1] integer", "meaning": "1 if trip connection a is used in the vehicle schedule, 0 otherwise", "source_symbol": "edgeVariables.get(connection.getId()) / v_\" + connection.getId()"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min \\sum_{a \\in A} c_a \\, v_a",
+        "expression_plain": "minimize total cost of the selected trip connections",
+        "source_files": ["src/vehicle-scheduling/ip-model/src/net/lintim/algorithm/vehiclescheduling/IPModelGurobi.java:33,40"]
+      },
+      "constraints": [
+        {
+          "name": "incoming_degree",
+          "indexed_over": "n in N (non-depot trip nodes)",
+          "expression_latex": "\\sum_{a \\in \\delta^-(n)} v_a = 1",
+          "expression_plain": "each (non-depot) trip is served by exactly one incoming connection",
+          "source_files": ["src/vehicle-scheduling/ip-model/src/net/lintim/algorithm/vehiclescheduling/IPModelGurobi.java:48-60"]
+        },
+        {
+          "name": "outgoing_degree",
+          "indexed_over": "n in N (non-depot trip nodes)",
+          "expression_latex": "\\sum_{a \\in \\delta^+(n)} v_a = 1",
+          "expression_plain": "each (non-depot) trip is left by exactly one outgoing connection",
+          "source_files": ["src/vehicle-scheduling/ip-model/src/net/lintim/algorithm/vehiclescheduling/IPModelGurobi.java:48-61"]
+        }
+      ],
+      "instances": [
+        {"name": "LinTim standard datasets (trips / trip-connection graph inputs)", "path": "datasets/", "format": "LinTim CSV (Trips / Vehicle-* files)", "size": "20 dataset folders; datasets/ ~5 MB total", "license": "MIT"}
+      ],
+      "notes": "Variables are declared GRB.INTEGER with bounds [0,1] (effectively binary) and the cost coefficient supplied at addVar (line 40); ModelSense=MINIMIZE at line 33. Depot nodes are skipped in the degree constraints (line 49) so they act as flow sources/sinks, making the model an assignment/flow formulation whose solution decomposes into vehicle rotations (computeSchedule, line 106). Sibling vehicle-scheduling approaches (canal-model, simple, Line-Based) are alternative non-IP algorithms and are not transcribed as IP formulations."
+    }
+  ],
+  "extraction_confidence": "high",
+  "extraction_notes": "OpenLinTim is a multi-stage railway-planning toolbox; five distinct IP/LP formulations were located and transcribed from their Gurobi solver implementations (the canonical backend; equivalent XPRESS/CPLEX/solver-agnostic/Python siblings exist for several modules and are noted per-model). Models extracted: (1) line-planning cost model, (2) line-planning direct-travelers model, (3) periodic timetabling PESP IP, (4) delay management DM2 IP, (5) vehicle scheduling IP. All objectives and constraint families carry real source line references and were transcribed directly from code (not summarized away). Symbols: PESP and delay-management use standard LinTim/Schoebel notation (pi for event potentials, z modulo/wait binaries, g headway binaries, y delays); line-planning direct-travelers cites Schoebel-script constraint numbers 3.6-3.8 in the code comments. The repository documentation is a single 6.2 MB binary PDF (doc/documentation.pdf) which was NOT parsed (binary); identifiers and code comments were sufficient for high-confidence transcription, so no math was inferred from prose. paper_reference left null: no DOI is asserted in the cloned tree (the LinTim project has associated publications, e.g. Goerigk/Schoebel et al., but none is stated in-repo, so flagging a DOI would be a guess). NOT transcribed as separate entries (deliberate, to avoid duplicate/heuristic noise): line-planning variant folders (cost-model-extended, *-restricting-frequencies, traveling-time, min-changes, game), alternative periodic-timetabling solvers (modulo-simplex, cycle-base, constraint-prop, rptts, matching) which are heuristics/alternative methods for the same PESP, aperiodic timetabling (network-simplex/robust), integrated_models, stop-location, tariff, rideconcept/ridepool, and the DM online/heuristic variants. The delay-management DM2 post-processing time-minimization LP (Solve.java:183-267) is documented inside that model's notes rather than as a separate model since it shares variables and fixes the DM2 binaries. Instances are LinTim standard datasets referenced by path (datasets/, ~5 MB, 20 dataset folders) and never inlined."
+}

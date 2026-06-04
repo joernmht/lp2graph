@@ -1,0 +1,299 @@
+{
+  "repo": "michieluithetbroek/A-MDVRP",
+  "url": "https://github.com/michieluithetbroek/A-MDVRP",
+  "license": "MIT",
+  "language": "C++ (CPLEX Concert + Gurobi C++)",
+  "solver": "CPLEX (branch-and-cut, model A) and Gurobi (compact, model C)",
+  "area": "transport-operations",
+  "paper_reference": "10.1287/opre.2020.2033",
+  "models": [
+    {
+      "model_id": "amdvrp-branch-and-cut-2index",
+      "source_files": [
+        "cpp/modelA/modelA.h:33-115",
+        "cpp/modelA/createVariables.cc:1-25",
+        "cpp/modelA/createObjective.cc:1-17",
+        "cpp/modelA/createConstraints.cc:1-170",
+        "cpp/modelA/addOwnLazyConstraints.cc:12-171",
+        "cpp/modelA/solve.cc:88-253"
+      ],
+      "description": "Two-index arc formulation of the asymmetric multi-depot vehicle routing problem (and its MDATSP / MDAmTSP / ACLRP variants), solved by branch-and-cut with CPLEX Concert. The base model declared in createConstraints.cc holds only degree/flow/visit constraints plus small fixed subtour eliminations; the exponential family of capacitated subtour-elimination constraints and the paper's valid inequalities are separated dynamically inside the lazy- and user-cut callbacks (solve.cc) and via addOwnLazyConstraints.cc. This is the implementation accompanying Uit het Broek et al. (2020), Operations Research.",
+      "sets_indices": [
+        {"name": "V", "meaning": "all nodes (depots + customers); index i,j", "source_symbol": "d_iNodes"},
+        {"name": "V_d", "meaning": "set of depot nodes (indices 0..nDepots-1)", "source_symbol": "d_iDepots"},
+        {"name": "V_c", "meaning": "set of customer nodes", "source_symbol": "d_iCustomers"},
+        {"name": "A", "meaning": "arc set, all ordered pairs (i,j) over V x V", "source_symbol": "implicit double loop over d_iNodes"},
+        {"name": "S", "meaning": "node subset used in separated subtour/capacity cuts", "source_symbol": "cc_nodes / List / s_cut_our (cut classes)"}
+      ],
+      "parameters": [
+        {"name": "c_{ij}", "meaning": "cost (asymmetric distance) of traversing arc (i,j)", "domain": "R_>=0", "source_symbol": "d_cost[i][j]"},
+        {"name": "q_i", "meaning": "demand of node i (0 for depots)", "domain": "Z_>=0", "source_symbol": "d_demands[i]"},
+        {"name": "Q", "meaning": "vehicle capacity", "domain": "Z_>=1", "source_symbol": "d_vehicleCap"},
+        {"name": "f_d", "meaning": "fixed opening cost of depot d (ACLRP variant only, when g_depotCost)", "domain": "R_>=0", "source_symbol": "d_data.d_depotCost[d]"},
+        {"name": "k(S)", "meaning": "minimum number of vehicles needed to serve node set S = ceil(sum_{i in S} q_i / Q)", "domain": "Z_>=1", "source_symbol": "ceil(cap / d_vehicleCap)"}
+      ],
+      "decision_variables": [
+        {"name": "x_{ij}", "type": "binary", "meaning": "1 if arc (i,j) is traversed", "source_symbol": "d_x[i][j]"},
+        {"name": "s_d", "type": "continuous", "domain": "[0,1]", "meaning": "depot-open indicator for depot d (ACLRP variant only, when g_depotCost; relaxed to continuous but pushed to {0,1} by linking constraints)", "source_symbol": "d_loc[d]"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min \\sum_{i \\in V} \\sum_{j \\in V} c_{ij} x_{ij} + \\sum_{d \\in V_d} f_d s_d",
+        "expression_plain": "minimize total arc (routing) cost; the depot-cost term is added only in the ACLRP variant (g_depotCost == true)",
+        "source_files": ["cpp/modelA/createObjective.cc:5-16"]
+      },
+      "constraints": [
+        {
+          "name": "depot_out_degree_at_most_one",
+          "indexed_over": "d in V_d (only if g_atMostOneTour)",
+          "expression_latex": "\\sum_{j \\in V} x_{dj} \\leq 1",
+          "expression_plain": "each depot is left at most once (single tour per depot; santos/MDATSP setting)",
+          "source_files": ["cpp/modelA/createConstraints.cc:13-23"]
+        },
+        {
+          "name": "depot_in_degree_at_most_one",
+          "indexed_over": "d in V_d (only if g_atMostOneTour)",
+          "expression_latex": "\\sum_{j \\in V} x_{jd} \\leq 1",
+          "expression_plain": "each depot is entered at most once",
+          "source_files": ["cpp/modelA/createConstraints.cc:25-34"]
+        },
+        {
+          "name": "depot_open_linking",
+          "indexed_over": "d in V_d, j in V_c (only if g_depotCost / ACLRP)",
+          "expression_latex": "x_{dj} - s_d \\leq 0",
+          "expression_plain": "an arc may leave depot d only if depot d is opened",
+          "source_files": ["cpp/modelA/createConstraints.cc:44-57"]
+        },
+        {
+          "name": "flow_conservation",
+          "indexed_over": "i in V",
+          "expression_latex": "\\sum_{j \\in V} x_{ij} - \\sum_{j \\in V} x_{ji} = 0",
+          "expression_plain": "in-degree equals out-degree at every node",
+          "source_files": ["cpp/modelA/createConstraints.cc:65-74"]
+        },
+        {
+          "name": "visit_each_customer",
+          "indexed_over": "i in V_c",
+          "expression_latex": "\\sum_{j \\in V, j \\neq i} x_{ij} = 1",
+          "expression_plain": "each customer has exactly one outgoing arc (is visited exactly once)",
+          "source_files": ["cpp/modelA/createConstraints.cc:82-92"]
+        },
+        {
+          "name": "no_self_loops",
+          "indexed_over": "all i in V (single aggregated equality)",
+          "expression_latex": "\\sum_{i \\in V} x_{ii} = 0",
+          "expression_plain": "no self-loop arcs are used",
+          "source_files": ["cpp/modelA/createConstraints.cc:100-106"]
+        },
+        {
+          "name": "subtour_elim_size_2",
+          "indexed_over": "i,j in V_c, i < j",
+          "expression_latex": "x_{ij} + x_{ji} \\leq 1",
+          "expression_plain": "eliminate 2-node subtours between two customers (statically added; comment marks it as mandatory)",
+          "source_files": ["cpp/modelA/createConstraints.cc:116-129"]
+        },
+        {
+          "name": "depot_customer_size_2_elim",
+          "indexed_over": "d in V_d, j in V_c (only if P_TYPE == MDAMTSP)",
+          "expression_latex": "x_{dj} + x_{jd} \\leq 1",
+          "expression_plain": "forbid a depot-customer-depot 2-node tour in the MDAmTSP variant",
+          "source_files": ["cpp/modelA/createConstraints.cc:134-155"]
+        },
+        {
+          "name": "no_inter_depot_arcs",
+          "indexed_over": "i,j in V_d (single aggregated equality)",
+          "expression_latex": "\\sum_{i \\in V_d} \\sum_{j \\in V_d} x_{ij} = 0",
+          "expression_plain": "no arc may connect two depots",
+          "source_files": ["cpp/modelA/createConstraints.cc:161-168"]
+        },
+        {
+          "name": "static_subtour_elim_size_3",
+          "indexed_over": "i in V_c, and the 5 cheapest (j,k) triangles per i; added once before solve only if |V_c| <= 250",
+          "expression_latex": "x_{ij}+x_{ik}+x_{ji}+x_{jk}+x_{ki}+x_{kj} \\leq 3 - \\lceil (q_i+q_j+q_k)/Q \\rceil",
+          "expression_plain": "rounded-capacity subtour elimination over the cheapest 3-node sets, registered as CPLEX lazy constraints up front",
+          "source_files": ["cpp/modelA/addOwnLazyConstraints.cc:37-93"]
+        },
+        {
+          "name": "static_subtour_elim_size_4",
+          "indexed_over": "i in V_c, and the 5 cheapest (j,k,l) 4-cliques per i; added once before solve only if |V_c| <= 100",
+          "expression_latex": "\\sum_{a,b \\in \\{i,j,k,l\\}, a \\neq b} x_{ab} \\leq 4 - \\lceil (q_i+q_j+q_k+q_l)/Q \\rceil",
+          "expression_plain": "rounded-capacity subtour elimination over the cheapest 4-node sets, registered as CPLEX lazy constraints up front",
+          "source_files": ["cpp/modelA/addOwnLazyConstraints.cc:106-170"]
+        }
+      ],
+      "instances": [
+        {"name": "Santos benchmark (bgs-*.mdvrp)", "path": "cpp/instances/instances_santos/", "format": "custom .mdvrp (node_coord / demand / depots blocks)", "size": "10 files, ~2 KB-195 KB; encoded in filename bgs-{nCustomers}-{nDepots}-{idx}[a]: 100/20, 200/40, 300/60", "license": "MIT (repository license; original benchmark by Bektas/Gouveia/Santos)"},
+        {"name": "Own generated instances", "path": "cpp/instances/own/", "format": "custom; subfolders per problem type/asymmetry class", "size": "13 entries: ACLRP-{A,B,CRC}, MDACVRP-{A,B,CRC}, MDAmTSP-{A,B,CRC}, plus all_instances.zip", "license": "MIT"}
+      ],
+      "notes": "BRANCH-AND-CUT: the base model in createConstraints.cc is intentionally weak; the routing is enforced by cuts separated dynamically. Cut families live in cpp/cuts/ and are dispatched from the CPLEX lazy callback CALLBACK_LAZY and user-cut callback CALLBACK_USER (cpp/modelA/solve.cc:88-253) through Cut::getCuts (cpp/cuts/getCuts.cc) and Cut::createIloRange (cpp/cuts/create_IloRange.cc:9-29, every cut emitted as expr <= rhs). Separated families (cpp/cuts/, registered in cpp/functions/make_cut_vector.cc:35-171): (1) Rounded-capacity / generalized-subtour cuts 'cap' (Cut_cap, lazy+user) using CVRPSEP CAPSEP_SeparateCapCuts; form x(S:S) <= |S| - k(S) i.e. sum_{i,j in S} x_{ij} <= |S| - ceil(sum_{i in S} q_i / Q) (cpp/cuts/Cut_cap/findCuts.cc:26-83). (2) Multi-depot subtour-elimination 'Laporte' / 'Lap (single)' via min-cut/Preflow over a per-component depot-augmented graph (cpp/cuts/laporte/findCuts.cc, cpp/cuts/laporte_single_customer/findCuts.cc); the single-customer case yields x_{d1,i}+x_{i,d2} <= 1. (3) The paper's signature valid inequalities D_k+/D_k- and their depot/length variants: 'DK+','DK-','DK_depot+','DK_depot-','DK_length+','DK_length-' (cpp/cuts/DK_plus, DK_min, DK_depot_plus, DK_depot_min, DK_length_plus, DK_length_min). (4) Standard VRP polyhedral cuts: 'comb' (Cut_comb), 'Tcomb' (Cut_Tcomb), 'T1comb' (Cut_T1comb), 'large star' (Cut_gen_large_multistar), 'hom star' (Cut_hom_multistar), 'framed_cap' (Cut_framed_cap), 'hypotour' (Cut_hypotour), 'cat' (Cut_cat). Their detailed lhs coefficient construction is in each family's findCuts.cc; only Cut_cap and the Laporte SECs construct an explicit closed-form expression transcribed above — the DK/comb/star families build coefficients algorithmically (graph/flow based) and were NOT reduced to a single static latex form (would be fabrication). Big-M d_M = 9999 is declared (modelA.h:41) but only used by the compact model C; model A uses no big-M. d_z/MTZ blocks at the bottom of createConstraints.cc (lines 181-430) are COMMENTED OUT and excluded. The same callback file also defines a primal heuristic callback (CALLBACK_HEUR) and an incumbent-logging callback (CALLBACK_INC) which are algorithmic, not part of the formulation."
+    },
+    {
+      "model_id": "amdvrp-compact-flow-mtz",
+      "source_files": [
+        "cpp/modelC/modelC.h:16-85",
+        "cpp/modelC/createVariables.cc:1-52",
+        "cpp/modelC/createObjective.cc:1-7",
+        "cpp/modelC/createConstraints.cc:1-162",
+        "cpp/modelC/constraints_subtours.cc:1-62",
+        "cpp/modelC/constraints_u.cc:1-61"
+      ],
+      "description": "Compact single-commodity-flow plus MTZ-style formulation of the same asymmetric multi-depot VRP, built with the Gurobi C++ API. Adds continuous load-flow variables z_{ij} and ordering/depot-assignment variables u_i (and unused y_i) so the model can be solved monolithically without dynamic cut separation. Used as the compact baseline against model A.",
+      "sets_indices": [
+        {"name": "V", "meaning": "all nodes (depots + customers); index i,j", "source_symbol": "d_iNodes"},
+        {"name": "V_d", "meaning": "depot nodes", "source_symbol": "d_iDepots"},
+        {"name": "V_c", "meaning": "customer nodes", "source_symbol": "d_iCustomers"},
+        {"name": "N_delta(i)", "meaning": "the d_delta cheapest outgoing customer arcs kept for customer i (others fixed to 0)", "source_symbol": "hash sorted by d_cost, threshold d_delta"}
+      ],
+      "parameters": [
+        {"name": "c_{ij}", "meaning": "cost of arc (i,j) (set as objective coefficient on x_{ij})", "domain": "R_>=0", "source_symbol": "d_cost[i][j]"},
+        {"name": "q_i", "meaning": "demand of node i", "domain": "Z_>=0", "source_symbol": "d_demands[i]"},
+        {"name": "Q", "meaning": "vehicle capacity (upper bound on z and y)", "domain": "Z_>=1", "source_symbol": "d_vehicleCap"},
+        {"name": "M", "meaning": "big-M constant (= 9999) for MTZ/ordering linearizations", "domain": "Z_>=1", "source_symbol": "d_M", "value": "9999 (modelC.h:27)"},
+        {"name": "delta", "meaning": "neighbourhood size: number of cheapest customer arcs retained per customer", "domain": "Z_>=1", "source_symbol": "d_delta"},
+        {"name": "f_d", "meaning": "fixed depot opening cost (ACLRP variant, when g_depotCost)", "domain": "R_>=0", "source_symbol": "d_data.d_depotCost[d]"},
+        {"name": "tourMin", "meaning": "minimum tour load (MDAMTSP variant only)", "domain": "Z_>=0", "source_symbol": "d_data.d_tourMin"}
+      ],
+      "decision_variables": [
+        {"name": "x_{ij}", "type": "binary", "meaning": "1 if arc (i,j) is traversed; objective coefficient c_{ij} attached at creation", "source_symbol": "d_x[i][j]"},
+        {"name": "z_{ij}", "type": "continuous", "domain": "[0, Q]", "meaning": "single-commodity flow (vehicle load) carried on arc (i,j)", "source_symbol": "d_z[i][j]"},
+        {"name": "u_i", "type": "continuous", "domain": "[0, nDepots]", "meaning": "depot-assignment / ordering variable used in MTZ-style subtour elimination and depot fixing", "source_symbol": "d_u[i]"},
+        {"name": "y_i", "type": "continuous", "domain": "[q_i, Q]", "meaning": "cumulative-load MTZ variable (declared; not referenced by any active constraint)", "source_symbol": "d_y[i]"},
+        {"name": "s_d", "type": "continuous", "domain": "[0,1]", "meaning": "depot-open indicator (ACLRP variant only, when g_depotCost)", "source_symbol": "d_loc[d]"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min \\sum_{i \\in V} \\sum_{j \\in V} c_{ij} x_{ij} + \\sum_{d \\in V_d} f_d s_d",
+        "expression_plain": "minimize total routing cost (+ depot-opening cost in ACLRP). Implemented implicitly: GRB_MINIMIZE is set in createObjective.cc and the objective coefficients are attached when the x and s variables are created (createVariables.cc:14,26).",
+        "source_files": ["cpp/modelC/createObjective.cc:5-7", "cpp/modelC/createVariables.cc:14", "cpp/modelC/createVariables.cc:26"]
+      },
+      "constraints": [
+        {
+          "name": "neighbourhood_arc_fixing",
+          "indexed_over": "i in V_c, arcs beyond the delta cheapest customer targets",
+          "expression_latex": "x_{ij} = 0 \\quad \\forall j \\notin N_\\delta(i)",
+          "expression_plain": "fix to zero every customer-to-customer arc that is not among the delta cheapest outgoing arcs of i (search-space reduction)",
+          "source_files": ["cpp/modelC/createConstraints.cc:20-34"]
+        },
+        {
+          "name": "depot_out_degree_at_most_one",
+          "indexed_over": "d in V_d (only if g_atMostOneTour)",
+          "expression_latex": "\\sum_{j \\in V} x_{dj} \\leq 1",
+          "expression_plain": "each depot left at most once",
+          "source_files": ["cpp/modelC/createConstraints.cc:47-55"]
+        },
+        {
+          "name": "depot_in_degree_at_most_one",
+          "indexed_over": "d in V_d (only if g_atMostOneTour)",
+          "expression_latex": "\\sum_{j \\in V} x_{jd} \\leq 1",
+          "expression_plain": "each depot entered at most once",
+          "source_files": ["cpp/modelC/createConstraints.cc:57-65"]
+        },
+        {
+          "name": "depot_open_linking",
+          "indexed_over": "i in V_c, d in V_d (only if g_depotCost)",
+          "expression_latex": "x_{di} - s_d \\leq 0",
+          "expression_plain": "arc from depot d allowed only if d opened",
+          "source_files": ["cpp/modelC/createConstraints.cc:68-80"]
+        },
+        {
+          "name": "flow_conservation_arcs",
+          "indexed_over": "i in V",
+          "expression_latex": "\\sum_{j \\in V} x_{ij} - \\sum_{j \\in V} x_{ji} = 0",
+          "expression_plain": "arc in-degree equals out-degree at every node",
+          "source_files": ["cpp/modelC/createConstraints.cc:88-96"]
+        },
+        {
+          "name": "visit_each_customer",
+          "indexed_over": "i in V_c",
+          "expression_latex": "\\sum_{j \\in V, j \\neq i} x_{ij} = 1",
+          "expression_plain": "each customer visited exactly once",
+          "source_files": ["cpp/modelC/createConstraints.cc:104-113"]
+        },
+        {
+          "name": "no_self_loops",
+          "indexed_over": "all i in V (single aggregated equality)",
+          "expression_latex": "\\sum_{i \\in V} x_{ii} = 0",
+          "expression_plain": "no self-loop arcs",
+          "source_files": ["cpp/modelC/createConstraints.cc:121-126"]
+        },
+        {
+          "name": "no_inter_depot_arcs",
+          "indexed_over": "i,j in V_d (single aggregated equality)",
+          "expression_latex": "\\sum_{i \\in V_d} \\sum_{j \\in V_d} x_{ij} = 0",
+          "expression_plain": "no arc between two depots",
+          "source_files": ["cpp/modelC/createConstraints.cc:155-161"]
+        },
+        {
+          "name": "flow_demand_balance",
+          "indexed_over": "j in V_c",
+          "expression_latex": "\\sum_{i \\in V} z_{ij} - \\sum_{i \\in V} z_{ji} = q_j",
+          "expression_plain": "single-commodity flow into customer j minus flow out equals j's demand (ARC1)",
+          "source_files": ["cpp/modelC/constraints_subtours.cc:11-19"]
+        },
+        {
+          "name": "total_flow_from_depots",
+          "indexed_over": "global (single equality)",
+          "expression_latex": "\\sum_{d \\in V_d} \\sum_{j \\in V_c} z_{dj} = \\sum_{j \\in V_c} q_j",
+          "expression_plain": "total flow leaving all depots equals total customer demand (ARC2)",
+          "source_files": ["cpp/modelC/constraints_subtours.cc:22-31"]
+        },
+        {
+          "name": "flow_capacity_coupling",
+          "indexed_over": "i in V, j in V_c",
+          "expression_latex": "z_{ij} \\leq (Q - q_i) x_{ij}",
+          "expression_plain": "flow on arc (i,j) bounded by residual capacity and forced to 0 if arc unused (UB-ARC)",
+          "source_files": ["cpp/modelC/constraints_subtours.cc:34-44"]
+        },
+        {
+          "name": "min_tour_load_mdamtsp",
+          "indexed_over": "d in V_d, j in V_c (only if P_TYPE == MDAMTSP)",
+          "expression_latex": "z_{dj} + M (1 - x_{dj}) \\geq tourMin",
+          "expression_plain": "if depot d serves j, the tour starting there carries at least tourMin (MDAmTSP)",
+          "source_files": ["cpp/modelC/constraints_subtours.cc:50-61"]
+        },
+        {
+          "name": "depot_assign_lb_in",
+          "indexed_over": "i in V_c",
+          "expression_latex": "\\sum_{d \\in V_d} (d+1) x_{di} \\leq u_i",
+          "expression_plain": "u_i bounded below by the index of the depot whose arc enters i (constraint 1h)",
+          "source_files": ["cpp/modelC/constraints_u.cc:6-14"]
+        },
+        {
+          "name": "depot_assign_lb_out",
+          "indexed_over": "i in V_c",
+          "expression_latex": "\\sum_{d \\in V_d} (d+1) x_{id} \\leq u_i",
+          "expression_plain": "u_i bounded below by the index of the depot whose arc leaves i (constraint 1i)",
+          "source_files": ["cpp/modelC/constraints_u.cc:16-24"]
+        },
+        {
+          "name": "depot_assign_ub_in",
+          "indexed_over": "i in V_c",
+          "expression_latex": "u_i - |V_d| - \\sum_{d \\in V_d} (d+1-|V_d|) x_{di} \\leq 0",
+          "expression_plain": "upper-bounds u_i consistent with the depot whose arc enters i (constraint 1j)",
+          "source_files": ["cpp/modelC/constraints_u.cc:28-36"]
+        },
+        {
+          "name": "depot_assign_ub_out",
+          "indexed_over": "i in V_c",
+          "expression_latex": "u_i - |V_d| - \\sum_{d \\in V_d} (d+1-|V_d|) x_{id} \\leq 0",
+          "expression_plain": "upper-bounds u_i consistent with the depot whose arc leaves i (constraint 1k)",
+          "source_files": ["cpp/modelC/constraints_u.cc:38-46"]
+        },
+        {
+          "name": "mtz_depot_consistency",
+          "indexed_over": "i,j in V_c, i != j",
+          "expression_latex": "u_i - u_j - M (1 - x_{ij} - x_{ji}) \\leq 0",
+          "expression_plain": "MTZ-style big-M coupling forcing i and j adjacent on an arc to share a depot assignment (constraint 3.14)",
+          "source_files": ["cpp/modelC/constraints_u.cc:48-60"]
+        }
+      ],
+      "instances": [
+        {"name": "Santos benchmark (bgs-*.mdvrp)", "path": "cpp/instances/instances_santos/", "format": "custom .mdvrp", "size": "10 files; shared with model A", "license": "MIT"},
+        {"name": "Own generated instances", "path": "cpp/instances/own/", "format": "custom", "size": "13 entries; shared with model A", "license": "MIT"}
+      ],
+      "notes": "Compact Gurobi model. The objective is set implicitly: GRB_MINIMIZE in createObjective.cc, with c_{ij} attached as the addVar objective coefficient on x_{ij} (createVariables.cc:14) and f_d on s_d (createVariables.cc:26); z, u, y carry objective coefficient 0. y_i (cumulative-load MTZ variable, bounds [q_i,Q]) is declared (createVariables.cc:35-39) but no active constraint references it (the original MTZ-on-y block is the commented-out code in modelA/createConstraints.cc:248-298); recorded as a declared-but-unused variable rather than dropped. Depot index expression uses (d+1) because depots occupy node indices 0..nDepots-1. Big-M d_M = 9999 (modelC.h:27). The directory cpp/modelC/mycallbackcompact and setInitialSolution.cc provide a warm-start / callback harness, not part of the formulation. NOTE: this is the SAME underlying A-MDVRP problem as model A but a genuinely DIFFERENT formulation (compact flow+MTZ vs. branch-and-cut 2-index), so it is kept as a separate models[] entry per design decision D2."
+    }
+  ],
+  "extraction_confidence": "high",
+  "extraction_notes": "Two distinct formulations of the asymmetric multi-depot VRP from one repo: cpp/modelA (CPLEX Concert branch-and-cut, 2-index arc model with dynamic cut separation) and cpp/modelC (Gurobi C++ compact single-commodity-flow + MTZ). They are kept as separate models[] entries because they are mathematically different formulations, not merely two solver backends of one model. All constraints/objectives carry verified source line refs; code identifiers preserved in source_symbol. Paper DOI 10.1287/opre.2020.2033 is taken verbatim from README.md:3 (NOT inferred) - it is the Operations Research publication 'Asymmetric multi-depot vehicle routing problems: valid inequalities and a branch-and-cut algorithm' by Uit het Broek, Schrotenboer, Jargalsaikhan, Roodbergen, Coelho (2020). LAZY CUTS: model A's exponential subtour-elimination / capacity constraints and the paper's valid inequalities are NOT static; they are separated in the CPLEX lazy/user callbacks (modelA/solve.cc) via the polymorphic Cut hierarchy in cpp/cuts/ (16 families registered in functions/make_cut_vector.cc). Only the two cut families with an explicit closed-form lhs (Cut_cap rounded-capacity SEC, and the Laporte single-customer SEC) were transcribed as latex; the DK*, comb, multistar, hypotour, framed_cap and cat families build their coefficients algorithmically (graph/min-cut based) and were recorded by name + source path in the model-A notes rather than given a fabricated static expression. The fixed size-3/size-4 rounded-capacity subtour eliminations in addOwnLazyConstraints.cc ARE closed-form and are listed as constraints (they are registered up front, before solve). Large commented-out alternative formulations (MTZ/z-flow blocks in modelA/createConstraints.cc:181-430) were excluded as dead code. Instances referenced by path+size only (Santos benchmark .mdvrp files and an 'own' generated set); none inlined. d_y in model C is declared but unused - recorded honestly. No CPLEX/Gurobi build or run was performed."
+}

@@ -1,0 +1,116 @@
+{
+  "repo": "iitis/railways_HOBO",
+  "url": "https://github.com/iitis/railways_HOBO",
+  "license": "Apache-2.0",
+  "language": "Python (dimod / D-Wave Ocean; numpy)",
+  "solver": "D-Wave (quantum annealer / LeapHybridSampler / neal simulated annealer)",
+  "area": "railway-rescheduling",
+  "paper_reference": "10.1007/s11128-022-03670-y",
+  "models": [
+    {
+      "model_id": "single-track-dispatching-qubo-hobo",
+      "source_files": [
+        "railway_solvers/make_qubo.py:13-27",
+        "railway_solvers/make_qubo.py:32-50",
+        "railway_solvers/make_qubo.py:53-334",
+        "railway_solvers/make_qubo.py:339-557",
+        "railway_solvers/make_qubo.py:561-661"
+      ],
+      "description": "Single-track railway rescheduling (dispatching) formulated as a QUBO/HOBO for quantum annealing. The underlying integer-linear delay-assignment problem of Domino, Kundu, Salehi & Krawiec (Quantum Inf. Process. 21:337, 2022) assigns each train a discrete secondary delay at each station so as to minimize a weighted sum of delays subject to operational constraints (sum-to-one, minimal headway, single-track, minimal stay, rolling-stock circulation, switch occupancy, track occupancy). The constraints are not stored as linear (in)equalities; each is converted into a squared/penalty term written directly into a symmetric Q matrix (make_Qubo). The track-occupancy condition is originally cubic (HOBO) and is reduced to quadratic via a Rosenberg decomposition that introduces auxiliary binary variables. NO classical CPLEX/docplex/pulp/gurobipy model is present in this repository.",
+      "sets_indices": [
+        {"name": "J", "meaning": "set of trains", "source_symbol": "trains_paths[\"J\"]"},
+        {"name": "S_j", "meaning": "ordered path (sequence of stations) of train j", "source_symbol": "trains_paths[\"Paths\"][j]"},
+        {"name": "D", "meaning": "set of admissible secondary delays {0,...,d_max}", "source_symbol": "range(d_max + 1)"},
+        {"name": "idx", "meaning": "primary variable index set: triples (j,s,d) with j in J, s in S_j (non-skipped), d in {0,...,d_max}; one binary per triple", "source_symbol": "inds = indexing4qubo(trains_paths, d_max)"},
+        {"name": "idx_z", "meaning": "auxiliary (Rosenberg) variable index set: tuples (j,j1,s,d,d1) over train pairs sharing a track at station s", "source_symbol": "inds_z = z_indices(trains_paths, d_max)"},
+        {"name": "Jd", "meaning": "trains ordered by departure on segment (s -> s_next), used for headway pairs", "source_symbol": "trains_paths[\"Jd\"]"},
+        {"name": "Josingle", "meaning": "train pairs travelling opposite directions on a single-track line between (s,s1)", "source_symbol": "trains_paths[\"Josingle\"]"},
+        {"name": "Jround", "meaning": "rolling-stock circulation (turnaround) train pairs at a station", "source_symbol": "trains_paths[\"Jround\"]"},
+        {"name": "Jtrack", "meaning": "train groups sharing the same track (station) for the track-occupancy condition", "source_symbol": "trains_paths[\"Jtrack\"]"},
+        {"name": "Jswitch", "meaning": "train pairs whose paths share a common switch s", "source_symbol": "trains_paths[\"Jswitch\"]"}
+      ],
+      "parameters": [
+        {"name": "d_max", "meaning": "maximal admissible secondary delay (caps the delay index range)", "domain": "Z_>=0", "source_symbol": "Problem.d_max", "value": "10 in DW_example (inputs/DW_example.py:86)"},
+        {"name": "tau^{pass}", "meaning": "passing (running) time of a train between two stations", "domain": "Z_>=0", "source_symbol": "tau(...,\"pass\",...)"},
+        {"name": "tau^{headway}", "meaning": "minimal headway between two trains on a segment", "domain": "Z_>=0", "source_symbol": "tau(...,\"headway\",...)"},
+        {"name": "tau^{stop}", "meaning": "minimal stop (dwell) time at a station", "domain": "Z_>=0", "source_symbol": "tau(...,\"stop\",...)"},
+        {"name": "tau^{prep}", "meaning": "minimal preparation (turnaround) time before a rolling-stock circulation departure", "domain": "Z_>=0", "source_symbol": "tau(...,\"prep\",...)"},
+        {"name": "tau^{res}", "meaning": "switch reservation/blocking time (resource separation at a switch)", "domain": "Z_>=0", "source_symbol": "tau(...,\"res\")"},
+        {"name": "t^{(min)}_{j,s}", "meaning": "earliest possible departure time of train j from station s (timetable + unavoidable delay)", "domain": "Z_>=0", "source_symbol": "earliest_dep_time(S, trains_timing, j, s)"},
+        {"name": "w_{j,s}", "meaning": "penalty weight for a delay above the unavoidable one for train j at station s (objective coefficient)", "domain": "R_>=0", "source_symbol": "penalty_weights(trains_timing, j, s)"},
+        {"name": "p_sum", "meaning": "Lagrange penalty multiplier for the sum-to-one hard constraint", "domain": "R_>=0", "source_symbol": "Problem.p_sum", "value": "2.5 in DW_example (inputs/DW_example.py:83)"},
+        {"name": "p_pair", "meaning": "Lagrange penalty multiplier for quadratic (pairwise) hard constraints", "domain": "R_>=0", "source_symbol": "Problem.p_pair", "value": "1.25 in DW_example (inputs/DW_example.py:84)"},
+        {"name": "p_qubic", "meaning": "Lagrange penalty multiplier for the Rosenberg decomposition of the cubic track-occupancy term", "domain": "R_>=0", "source_symbol": "Problem.p_qubic", "value": "2.1 in DW_example (inputs/DW_example.py:85)"}
+      ],
+      "decision_variables": [
+        {"name": "x_{j,s,d}", "type": "binary", "meaning": "1 if train j departs station s with secondary delay d (one variable per (j,s,d) triple)", "source_symbol": "Q index k mapped to inds[k] = {\"j\",\"s\",\"d\"}"},
+        {"name": "y_{(j,j1,s,d,d1)}", "type": "binary", "meaning": "auxiliary variable from the Rosenberg quadratization of the cubic track-occupancy (HOBO) term", "source_symbol": "Q index mapped to inds_z = {\"j\",\"j1\",\"s\",\"d\",\"d1\"}"}
+      ],
+      "objective": {
+        "sense": "min",
+        "expression_latex": "\\min \\sum_{(j,s,d)} \\frac{w_{j,s}}{d_{max}}\\, d \\; x_{j,s,d}",
+        "expression_plain": "minimize the weighted total secondary delay: each selected delay d contributes (penalty_weight(j,s)/d_max)*d to the diagonal of Q. Linear in x; encoded as the diagonal of the QUBO Q matrix.",
+        "source_files": ["railway_solvers/make_qubo.py:561-577", "railway_solvers/make_qubo.py:650-652"]
+      },
+      "constraints": [
+        {
+          "name": "sum_to_one",
+          "indexed_over": "j in J, s in S_j",
+          "expression_latex": "\\sum_{d=0}^{d_{max}} x_{j,s,d} = 1",
+          "expression_plain": "each train leaves each station on its path with exactly one delay value (Eq. 41). Encoded as the squared penalty p_sum*(sum_d x - 1)^2 via P_sum, contributing -1 on the diagonal and +1 to off-diagonal pairs within the same (j,s) block.",
+          "source_files": ["railway_solvers/make_qubo.py:32-50", "railway_solvers/make_qubo.py:599"]
+        },
+        {
+          "name": "minimal_headway",
+          "indexed_over": "ordered train pairs (j,j1) sharing segment (s -> s_next) in Jd",
+          "expression_latex": "x_{j,s,d}\\,x_{j_1,s,d_1} = 0 \\quad \\text{if } -\\tau^{h}_{j_1 j} < (t_{j_1,s}+d_1)-(t_{j,s}+d) < \\tau^{h}_{j j_1}",
+          "expression_plain": "two trains departing the same station toward the same next station must respect minimal headway; conflicting (d,d1) delay pairs are forbidden (Eq. 42). Encoded as pairwise quadratic penalty p_pair via P_headway returning 1.0 for conflicting pairs.",
+          "source_files": ["railway_solvers/make_qubo.py:53-109", "railway_solvers/make_qubo.py:601"]
+        },
+        {
+          "name": "single_track_line",
+          "indexed_over": "opposite-direction train pairs (j,j1) on a single track between (s,s1) in Josingle",
+          "expression_latex": "x_{j,s,d}\\,x_{j_1,s_1,d_1} = 0 \\quad \\text{if } t-\\tau^{pass}_{j_1} < t_{j_1,s_1}+d_1 < t+\\tau^{pass}_{j}",
+          "expression_plain": "trains running in opposite directions over a single-track segment may not occupy it simultaneously; conflicting delay pairs are forbidden (Eq. 43). Encoded as a symmetrized pairwise quadratic penalty p_pair via P_single_track_line.",
+          "source_files": ["railway_solvers/make_qubo.py:112-167", "railway_solvers/make_qubo.py:603"]
+        },
+        {
+          "name": "minimal_stay",
+          "indexed_over": "same train j, consecutive stations (sp -> s)",
+          "expression_latex": "x_{j,sp,d}\\,x_{j,s,d_1} = 0 \\quad \\text{if } (t_{j,s}+d_1) < (t_{j,sp}+d) + \\tau^{pass}_{j,sp\\to s} + \\tau^{stop}_{j,s}",
+          "expression_plain": "a train cannot depart a station earlier than its arrival plus running time plus minimal stop; delay pairs violating this are forbidden (Eq. 44). Encoded as a symmetrized pairwise quadratic penalty p_pair via P_minimal_stay.",
+          "source_files": ["railway_solvers/make_qubo.py:170-216", "railway_solvers/make_qubo.py:602"]
+        },
+        {
+          "name": "rolling_stock_circulation",
+          "indexed_over": "turnaround train pairs (j,j1) at station s1 in Jround",
+          "expression_latex": "x_{j,s,d}\\,x_{j_1,s_1,d_1} = 0 \\quad \\text{if } (t_{j,s}+d)+\\tau^{prep}_{j_1,s_1}+\\tau^{pass}_{j,s\\to s_1} > t_{j_1,s_1}+d_1",
+          "expression_plain": "an incoming train must arrive and be prepared before the outgoing train (reusing the same rolling stock) departs; conflicting delay pairs are forbidden (Eq. 45). Encoded as a symmetrized pairwise quadratic penalty p_pair via P_rolling_stock_circulation.",
+          "source_files": ["railway_solvers/make_qubo.py:219-262", "railway_solvers/make_qubo.py:604"]
+        },
+        {
+          "name": "switch_occupation",
+          "indexed_over": "train pairs (jp,jpp) sharing a switch s in Jswitch",
+          "expression_latex": "x_{jp,sp,d}\\,x_{jpp,spp,d_1} = 0 \\quad \\text{if } |t_1 - t| < \\tau^{res}",
+          "expression_plain": "two trains may not occupy a common switch within the reservation time tau^res of each other; conflicting delay pairs are forbidden (Eq. 46). Encoded as a pairwise quadratic penalty p_pair via P_switch_occupation.",
+          "source_files": ["railway_solvers/make_qubo.py:265-334", "railway_solvers/make_qubo.py:605"]
+        },
+        {
+          "name": "track_occupation",
+          "indexed_over": "train pairs (j,j1) sharing a track at station s in Jtrack, delays (d,d1)",
+          "expression_latex": "\\text{(originally cubic, Eq. 53) reduced via Rosenberg: } x_a x_b - 2 y (x_a + x_b) + 3 y \\;\\text{and quadratic part}",
+          "expression_plain": "single track at a station can hold a limited number of trains: a train may only enter once a preceding train has released the track. Originally a cubic (HOBO) condition (Eq. 53); the cubic part is reduced to quadratic via a Rosenberg decomposition (P_Rosenberg_decomposition) introducing auxiliary y variables, plus a quadratic part (P_track_occupation_condition_quadratic_part). Weighted by p_pair (quadratic part) and p_qubic (Rosenberg).",
+          "source_files": ["railway_solvers/make_qubo.py:359-557", "railway_solvers/make_qubo.py:625-626", "railway_solvers/make_qubo.py:657-660"]
+        }
+      ],
+      "instances": [
+        {"name": "DWave_problem (default / rerouted)", "path": "inputs/DW_example.py", "format": "python class (taus, trains_timing, trains_paths, p_sum/p_pair/p_qubic, d_max=10)", "size": "3 trains, 2 stations (S1,S2); default and rerouted variants", "license": "Apache-2.0"},
+        {"name": "DWave_problem_enlarged", "path": "inputs/DW_example.py", "format": "python class", "size": "4 trains, 2 stations", "license": "Apache-2.0"},
+        {"name": "precomputed Q matrices (npz)", "path": "files/", "format": "numpy .npz (key 'Q')", "size": "Qfile.npz, Qfile_r.npz, Qfile_enlarged.npz (test/files/), Qfile_5trains.npz (test/files/, ~930 KB) etc.; symmetric QUBO matrices", "license": "Apache-2.0"}
+      ],
+      "notes": "QUADRATIC/HOBO MODEL, NOT A LINEAR MILP. This repository contains NO classical CPLEX/docplex/pulp/gurobipy linear formulation; requirements.txt lists only D-Wave Ocean / dimod / numpy / scipy (no MILP solver). The model is assembled directly as a symmetric QUBO Q matrix (make_Qubo, make_qubo.py:630-661): the objective is linear (delay minimization, on the Q diagonal) but every operational constraint is realized as a SQUARED penalty term (off-diagonal Q entries), not as a linear (in)equality passed to a solver. The constraint rows above record the genuinely-linear underlying constraints from the cited paper (Eqs. 41-46, 53) that each penalty enforces; the latex shows the forbidden-pair (x_a*x_b=0) penalty form actually present in code, because the source itself never materializes them as linear constraints. The track-occupation condition is originally CUBIC (HOBO, Eq. 53) and is quadratized via a Rosenberg decomposition with auxiliary binary variables (P_Rosenberg_decomposition). Equation numbers (41-46, 53) refer to the cited paper; eq. 18 is also referenced inline (DW_example.py:66). The commented-out imports in Qfile_solve.py:11-14 (generate_ham_ilp, ilp_helpers, generate_ham_edge, edge_helpers) and a stray bytecode test/__pycache__/test_linear_solver_large.cpython-39-pytest-6.2.5.pyc reference an ILP/edge formulation, but NONE of those source modules exist in this repository; the leftover .pyc's strings reference only QUBO functions (make_Q, p_sum, p_pair, energy), so no classical linear model could be extracted."
+    }
+  ],
+  "extraction_confidence": "high",
+  "extraction_notes": "Confidence high for what IS present (the QUBO/HOBO construction in railway_solvers/make_qubo.py, fully read and traced) and for the negative finding that no classical linear/MILP model exists. The mathematical symbols, equation numbers (41-46, 53) and constraint meanings are taken from the docstrings in make_qubo.py which cite the paper (Domino, Kundu, Salehi, Krawiec, 'Quadratic and Higher-Order Unconstrained Binary Optimization of Railway Rescheduling for Quantum Computing', Quantum Information Processing 21:337, 2022, DOI 10.1007/s11128-022-03670-y, confirmed in README.md:131-134; the code also cites arXiv:2107.03234 at make_qubo.py:10). The DOI is taken verbatim from the README and is NOT inferred. The constraints are recorded once each as the underlying linear operational condition, annotated with the squared-penalty/quadratic encoding actually found in code, per the task instruction to capture only what is genuinely linear and to flag quadratic/QUBO nature honestly. No constraint was linearized by invention. Instances are referenced by path (inputs/DW_example.py, files/, test/files/), never inlined. License is Apache-2.0 (LICENSE, copied verbatim to sidecar)."
+}

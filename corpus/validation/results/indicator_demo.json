@@ -1,0 +1,29 @@
+{
+  "deterministic_M": 7.0,
+  "big_m_row_tight": "1*x + 7*y <= 10",
+  "results": {
+    "gurobi_native_indicator": {
+      "encoding": "native indicator (Gurobi)",
+      "obj": 10.0,
+      "x": 10.0,
+      "y": 0.0
+    },
+    "highs_big_m_tight(M=7)": {
+      "obj": 10.0,
+      "x": 10.0,
+      "y": 0.0
+    },
+    "cbc_big_m_tight(M=7)": {
+      "obj": 10.0,
+      "x": 10.0,
+      "y": 0.0
+    },
+    "highs_big_m_loose(M=1e5)": {
+      "obj": 10.0,
+      "x": 10.0,
+      "y": 0.0
+    }
+  },
+  "all_exact_encodings_agree": true,
+  "expected_optimum": 10.0
+}
