@@ -38,7 +38,7 @@ def test_describe_mentions_every_constraint(formulation_files):
 
 
 def test_describe_renders_data_tables():
-    from lp2graph.solve import Instance
+    from lp2graph.solve.instance import Instance  # pulp-free
 
     f = load("formulations/constraints/assignment.json")
     inst = Instance(

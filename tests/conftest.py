@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import pytest
@@ -10,11 +9,12 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 FORMULATIONS = ROOT / "formulations"
 
-# The solver suite (pulp/highspy) is vendored alongside the validation
-# harness; make it importable so the solve/describe tests can run.
-_DEPS = ROOT / "corpus" / "validation" / ".deps"
-if _DEPS.is_dir() and str(_DEPS) not in sys.path:
-    sys.path.insert(0, str(_DEPS))
+# Note: the solver-dependent tests (test_solve.py) use ``importorskip`` and
+# run only where ``pulp`` is importable. They are *not* wired to the
+# Linux/cp312 vendored deps under corpus/validation/.deps, since putting
+# those on sys.path would shadow the installed, ABI-matched pydantic_core on
+# other Python versions. To run them locally:
+#     PYTHONPATH=src:corpus/validation/.deps python3 -m pytest tests/test_solve.py
 
 
 @pytest.fixture(scope="session")

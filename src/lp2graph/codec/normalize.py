@@ -52,7 +52,7 @@ def _norm_term(t: Term, side: str) -> Term:
     sign = t.sign
     if isinstance(coef, (int, float)) and not isinstance(coef, bool) and coef < 0:
         coef = -coef
-        sign = -sign  # type: ignore[assignment]
+        sign = -sign
     update["coefficient"] = coef
     update["sign"] = sign
     if t.ref_kind == "literal":
