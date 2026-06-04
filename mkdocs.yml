@@ -22,6 +22,7 @@ nav:
   - Home: index.md
   - Data model: data-model.md
   - Views: views.md
+  - Text ⇄ graph interface: text-graph-interface.md
   - Metrics: metrics.md
   - Add a formulation: add-a-formulation.md
   - Design context: design-context.md
