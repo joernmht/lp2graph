@@ -259,13 +259,13 @@ def _data_tables(f: Formulation, pvals: Mapping[str, Any]) -> list[str]:
 def _dim(v: Any) -> int:
     if isinstance(v, Mapping):
         keys = [k for k in v]
-        return max((k[0] if isinstance(k, (tuple, list)) else k) for k in keys) + 1
+        return int(max((k[0] if isinstance(k, (tuple, list)) else k) for k in keys)) + 1
     return len(v)
 
 
 def _dim2(v: Any) -> int:
     if isinstance(v, Mapping):
-        return max(k[1] for k in v if isinstance(k, (tuple, list))) + 1
+        return int(max(k[1] for k in v if isinstance(k, (tuple, list)))) + 1
     return len(v[0])
 
 

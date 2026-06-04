@@ -38,6 +38,7 @@ See :mod:`lp2graph.codec` for the round-trip guarantees.
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from lp2graph.core.model import (
     Binding,
@@ -85,9 +86,9 @@ def to_canonical_latex(f: Formulation) -> str:
     if f.tags:
         a(f"%@ tags :: {' | '.join(f.tags)}")
     if f.provenance is not None:
-        p = f.provenance
-        for key, val in (("source", p.source), ("reference", p.reference),
-                         ("author", p.author), ("date", p.date)):
+        prov = f.provenance
+        for key, val in (("source", prov.source), ("reference", prov.reference),
+                         ("author", prov.author), ("date", prov.date)):
             if val:
                 a(f"%@ prov {key} :: {_oneline(val)}")
     for idx in f.indices:
@@ -355,14 +356,14 @@ def from_canonical_latex(text: str) -> Formulation:
         from lp2graph.core.model import Provenance
 
         kwargs["provenance"] = Provenance(**ann["prov"])
-    return Formulation(**kwargs)  # type: ignore[arg-type]
+    return Formulation(**kwargs)
 
 
 # --- annotation parsing ----------------------------------------------------
 
 
-def _parse_annotations(text: str) -> dict:
-    out: dict = {"index": {}, "param": {}, "var": {}, "con": {}}
+def _parse_annotations(text: str) -> dict[str, Any]:
+    out: dict[str, Any] = {"index": {}, "param": {}, "var": {}, "con": {}}
     for raw in text.splitlines():
         line = raw.strip()
         if not line.startswith("%@"):
@@ -485,7 +486,7 @@ def _strip_tag(row: str) -> str:
     return re.sub(r"\\tag\{.*?\}", "", row).strip()
 
 
-def _parse_objective_row(row: str, ann: dict, sym: _SymTab) -> Objective:
+def _parse_objective_row(row: str, ann: dict[str, Any], sym: _SymTab) -> Objective:
     info = ann.get("obj", {})
     body = _strip_tag(row).replace("&", " ")
     body = re.sub(r"\\min\\quad|\\max\\quad|\\min|\\max|\\quad", " ", body).strip()
@@ -500,7 +501,7 @@ def _parse_objective_row(row: str, ann: dict, sym: _SymTab) -> Objective:
 
 
 def _parse_constraint_row(
-    row: str, name: str, ann: dict, sym: _SymTab
+    row: str, name: str, ann: dict[str, Any], sym: _SymTab
 ) -> ConstraintTemplate:
     info = ann["con"].get(name, {})
     body = _strip_tag(row)
@@ -749,7 +750,7 @@ def _parse_quantifiers(qpart: str) -> list[Quantifier]:
         return []
     qpart = qpart.replace(r"\forall", "")
     clauses = [c.strip() for c in _split_clauses(qpart) if c.strip()]
-    quants: dict[str, dict] = {}
+    quants: dict[str, dict[str, Any]] = {}
     order: list[str] = []
     extras: list[str] = []
     for cl in clauses:
@@ -775,7 +776,7 @@ def _parse_quantifiers(qpart: str) -> list[Quantifier]:
     ]
 
 
-def _apply_extra(cl: str, quants: dict[str, dict]) -> None:
+def _apply_extra(cl: str, quants: dict[str, dict[str, Any]]) -> None:
     # where-clause:  sym_{idx} = value
     mw = re.match(r"^(.*?)_\{(\w+)\}\s*=\s*(.+)$", cl)
     if mw and mw.group(1).strip() not in ("",):
@@ -797,7 +798,7 @@ def _apply_extra(cl: str, quants: dict[str, dict]) -> None:
             return
 
 
-def _parse_where_val(s: str):
+def _parse_where_val(s: str) -> bool | int | float | str:
     if s == r"\mathrm{true}":
         return True
     if s == r"\mathrm{false}":

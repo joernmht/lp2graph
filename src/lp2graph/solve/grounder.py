@@ -25,7 +25,7 @@ modulo are expressible as plain linear constraints and ARE supported.
 from __future__ import annotations
 
 import itertools
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -180,7 +180,7 @@ def _objective_expr(ctx: _Ctx, obj: Objective) -> Any:
     return expr
 
 
-def _side_expr(ctx: _Ctx, terms: tuple[Term, ...], binding: dict[str, int]):
+def _side_expr(ctx: _Ctx, terms: tuple[Term, ...], binding: dict[str, int]) -> tuple[Any, bool]:
     """Build a pulp affine expression for one side.
 
     Returns ``(expr, dropped)``. ``dropped`` is True if a *non-aggregated*
@@ -198,7 +198,7 @@ def _side_expr(ctx: _Ctx, terms: tuple[Term, ...], binding: dict[str, int]):
     return expr, dropped
 
 
-def _term_expr(ctx: _Ctx, t: Term, binding: dict[str, int]):
+def _term_expr(ctx: _Ctx, t: Term, binding: dict[str, int]) -> tuple[Any, bool]:
     """Return ``(contribution, dropped)``. ``dropped`` is True only when a
     non-aggregated term's referenced index falls out of a non-cyclic range."""
     if t.operator in ("abs", "max", "min", "indicator", "modulo"):
@@ -218,7 +218,7 @@ def _term_expr(ctx: _Ctx, t: Term, binding: dict[str, int]):
     return _one_occurrence(ctx, t, binding, idx), False
 
 
-def _one_occurrence(ctx: _Ctx, t: Term, scope: dict[str, int], idx: tuple[int, ...]):
+def _one_occurrence(ctx: _Ctx, t: Term, scope: dict[str, int], idx: tuple[int, ...]) -> Any:
     sign = t.sign
     if t.ref_kind == "literal":
         val = t.coefficient if t.coefficient is not None else 1
@@ -282,7 +282,7 @@ def _cyclic_family(ctx: _Ctx, family: str) -> str | None:
     return family if (idx is not None and idx.cyclic) else None
 
 
-def _sum_scopes(ctx: _Ctx, t: Term, binding: dict[str, int]):
+def _sum_scopes(ctx: _Ctx, t: Term, binding: dict[str, int]) -> Iterator[dict[str, int]]:
     """Enumerate the summation scopes for a ``\\sum`` term: the cartesian
     product over the loop variables that are bound by the sum (those binding
     exprs whose base is not already in the enclosing quantifier scope)."""
@@ -306,7 +306,7 @@ def _sum_scopes(ctx: _Ctx, t: Term, binding: dict[str, int]):
 
 def _enum_quantifiers(
     quantifiers: tuple[Quantifier, ...], cards: Mapping[str, int], pvals: Mapping[str, Any]
-):
+) -> list[dict[str, int]]:
     if not quantifiers:
         return [{}]
     ranges = [range(cards[q.over]) for q in quantifiers]
@@ -341,7 +341,9 @@ def _restrictions_ok(quantifiers: tuple[Quantifier, ...], b: dict[str, int]) -> 
     return True
 
 
-def _where_ok(quantifiers, b, pvals) -> bool:
+def _where_ok(
+    quantifiers: tuple[Quantifier, ...], b: dict[str, int], pvals: Mapping[str, Any]
+) -> bool:
     for q in quantifiers:
         if q.where is None:
             continue
@@ -372,7 +374,7 @@ def _check_cards(f: Formulation, instance: Instance) -> dict[str, int]:
     return cards
 
 
-def _tuples(shape: tuple[str, ...], cards: Mapping[str, int]):
+def _tuples(shape: tuple[str, ...], cards: Mapping[str, int]) -> list[tuple[int, ...]]:
     if not shape:
         return [()]
     return list(itertools.product(*[range(cards[s]) for s in shape]))

@@ -8,12 +8,12 @@ Two faithful encodings of the same logic:
 * **native indicator** — for solvers that support it (Gurobi, CPLEX). Exact;
   no ``M``; immune to the big-M tolerance trap.
 * **big-M linearization** — for solvers that do not (HiGHS, CBC, older tools).
-  We add ``±M·(1−y)`` (or ``±M·y``) so the body is *switched off* when the
+  We add ``±M·(1-y)`` (or ``±M·y``) so the body is *switched off* when the
   indicator is inactive. ``M`` is the **tightest valid value**, computed
   exactly from the variable bounds:
 
-  * body ``a·x ≤ b`` :  ``M = max(a·x) − b``  over the variable box;
-  * body ``a·x ≥ b`` :  ``M = b − min(a·x)``  over the variable box.
+  * body ``a·x ≤ b`` :  ``M = max(a·x) - b``  over the variable box;
+  * body ``a·x ≥ b`` :  ``M = b - min(a·x)``  over the variable box.
 
   The extrema of a linear form over a box are attained at a corner, so this
   is pure arithmetic — deterministic and reproducible, no solver needed.
@@ -142,8 +142,8 @@ def to_big_m(
     constraint is vacuous when the indicator is inactive:
 
     * ``le`` body, active when ``y=1`` :  ``a·x + M·y ≤ b + M``
-    * ``le`` body, active when ``y=0`` :  ``a·x − M·y ≤ b``
-    * ``ge`` body, active when ``y=1`` :  ``a·x − M·y ≥ b − M``
+    * ``le`` body, active when ``y=0`` :  ``a·x - M·y ≤ b``
+    * ``ge`` body, active when ``y=1`` :  ``a·x - M·y ≥ b - M``
     * ``ge`` body, active when ``y=0`` :  ``a·x + M·y ≥ b``
     """
     out: list[LinearConstraint] = []
