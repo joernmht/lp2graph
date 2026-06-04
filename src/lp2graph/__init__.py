@@ -11,6 +11,11 @@ view derivations.
 
 from __future__ import annotations
 
+from lp2graph.codec import (
+    canonical_normal_form,
+    from_canonical_latex,
+    to_canonical_latex,
+)
 from lp2graph.core.loader import load, loads
 from lp2graph.core.model import (
     Binding,
@@ -24,6 +29,7 @@ from lp2graph.core.model import (
     VariableTemplate,
 )
 from lp2graph.core.validate import ValidationError, validate
+from lp2graph.nl import describe
 
 __all__ = [
     "Binding",
@@ -36,9 +42,13 @@ __all__ = [
     "Term",
     "ValidationError",
     "VariableTemplate",
+    "canonical_normal_form",
+    "describe",
+    "from_canonical_latex",
     "load",
     "loads",
+    "to_canonical_latex",
     "validate",
 ]
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

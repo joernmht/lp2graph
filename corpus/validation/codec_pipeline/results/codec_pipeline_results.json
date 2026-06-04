@@ -1,0 +1,154 @@
+{
+  "meta": {
+    "solvers": [
+      "cbc",
+      "highs",
+      "gurobi"
+    ],
+    "determinism": "single-thread; codec is model-free and deterministic",
+    "n_cases": 5,
+    "n_passed": 5
+  },
+  "paper_anchors": {
+    "description": "Published / benchmark optima proven by the sibling run_experiments.py harness for corpus models whose structure the canonical pipeline covers.",
+    "timtab1_cyclic_timetabling_pesp_milp": {
+      "optimum": 764772.0,
+      "source": "IBM/CPLEX timtab1 (MIPLIB cyclic timetabling / PESP); cross-solver proven",
+      "pipeline_class": "PESP modulo \u2014 same structure as formulations/constraints/pesp_solvable.json"
+    },
+    "marcotallone_maintenance_scheduling_milp": {
+      "optimum": 3913.47,
+      "source": "marcotallone/railway-scheduling, Gurobi/HiGHS/CBC agreement at tight tolerance",
+      "pipeline_class": "big-M time-indexed scheduling \u2014 same structure as mip_2_1_big_m / mip_2_4"
+    }
+  },
+  "cases": [
+    {
+      "case": "assignment_4x4",
+      "formulation": "formulations/constraints/assignment.json",
+      "cardinalities": {
+        "W": 4,
+        "J": 4
+      },
+      "expected_optimum": 13,
+      "optimum_source": "independent brute-force min-cost perfect matching over all 4! permutations",
+      "codec_roundtrip_ok": true,
+      "codec_idempotent": true,
+      "direct_objective": {
+        "cbc": 13.0,
+        "highs": 13.0,
+        "gurobi": 13.0
+      },
+      "pipeline_objective": {
+        "cbc": 13.0,
+        "highs": 13.0,
+        "gurobi": 13.0
+      },
+      "cross_solver_agree": true,
+      "pipeline_equals_direct": true,
+      "matches_known_optimum": true,
+      "passed": true
+    },
+    {
+      "case": "bigm_ordering_4",
+      "formulation": "formulations/constraints/mip_2_1_big_m.json",
+      "cardinalities": {
+        "I": 4
+      },
+      "expected_optimum": 30,
+      "optimum_source": "closed form: 4 trains on one track with pairwise minimum headway 5 are scheduled at 0,5,10,15; total time = 0+5+10+15 = 30",
+      "codec_roundtrip_ok": true,
+      "codec_idempotent": true,
+      "direct_objective": {
+        "cbc": 30.0,
+        "highs": 29.999999999999872,
+        "gurobi": 30.0
+      },
+      "pipeline_objective": {
+        "cbc": 30.0,
+        "highs": 29.999999999999872,
+        "gurobi": 30.0
+      },
+      "cross_solver_agree": true,
+      "pipeline_equals_direct": true,
+      "matches_known_optimum": true,
+      "passed": true
+    },
+    {
+      "case": "fixed_sequence_4",
+      "formulation": "formulations/constraints/lp_1_1_fixed_sequence.json",
+      "cardinalities": {
+        "I": 4
+      },
+      "expected_optimum": 18,
+      "optimum_source": "closed form: t0=0, then each next train +3 headway (earliest never binding): 0,3,6,9; sum = 18",
+      "codec_roundtrip_ok": true,
+      "codec_idempotent": true,
+      "direct_objective": {
+        "cbc": 18.0,
+        "highs": 18.0,
+        "gurobi": 18.0
+      },
+      "pipeline_objective": {
+        "cbc": 18.0,
+        "highs": 18.0,
+        "gurobi": 18.0
+      },
+      "cross_solver_agree": true,
+      "pipeline_equals_direct": true,
+      "matches_known_optimum": true,
+      "passed": true
+    },
+    {
+      "case": "pesp_2events",
+      "formulation": "formulations/constraints/pesp_solvable.json",
+      "cardinalities": {
+        "E": 2
+      },
+      "expected_optimum": 1,
+      "optimum_source": "independent reasoning: the two arcs require (t_j - t_i) mod 10 in [4,6] in both directions, which is jointly impossible without exactly one period wrap, so min total wraps = 1",
+      "codec_roundtrip_ok": true,
+      "codec_idempotent": true,
+      "direct_objective": {
+        "cbc": 1.0,
+        "highs": 1.0,
+        "gurobi": 1.0
+      },
+      "pipeline_objective": {
+        "cbc": 1.0,
+        "highs": 1.0,
+        "gurobi": 1.0
+      },
+      "cross_solver_agree": true,
+      "pipeline_equals_direct": true,
+      "matches_known_optimum": true,
+      "passed": true
+    },
+    {
+      "case": "time_indexed_4x4",
+      "formulation": "formulations/constraints/mip_2_4_time_indexed.json",
+      "cardinalities": {
+        "I": 4,
+        "T": 4
+      },
+      "expected_optimum": 4,
+      "optimum_source": "closed form: each of the 4 trains is assigned exactly one slot, so the objective sum of all x equals the number of trains = 4 for every feasible solution",
+      "codec_roundtrip_ok": true,
+      "codec_idempotent": true,
+      "direct_objective": {
+        "cbc": 4.0,
+        "highs": 4.0,
+        "gurobi": 4.0
+      },
+      "pipeline_objective": {
+        "cbc": 4.0,
+        "highs": 4.0,
+        "gurobi": 4.0
+      },
+      "cross_solver_agree": true,
+      "pipeline_equals_direct": true,
+      "matches_known_optimum": true,
+      "passed": true
+    }
+  ]
+}

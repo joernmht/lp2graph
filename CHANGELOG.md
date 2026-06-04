@@ -6,6 +6,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-01
+
+### Added
+
+- **Deterministic LaTeX ⇄ graph codec** (`lp2graph.codec`): paper-style
+  LaTeX (`\mathcal` index sets, `\sum`, `\forall`, big-M) round-trips with
+  the canonical model with no LLM in the loop.
+  `to_canonical_latex` / `from_canonical_latex`, plus
+  `canonical_normal_form` for round-trip comparison. The LaTeX
+  serialization is a tested fixed point (`to(from(to(f))) == to(f)`); the
+  solvable content round-trips exactly.
+- **Real grounding solver back-end** (`lp2graph.solve`): replaces the v0.1
+  Pyomo stub. Grounds a formulation with an `Instance` (cardinalities +
+  parameter values) into a concrete `pulp.LpProblem` and solves it
+  (CBC / HiGHS / Gurobi). Covers the linear core including big-M and PESP
+  modulo; boundary-degenerate constraint instances are correctly omitted.
+- **Deterministic graph → natural-language describer** (`lp2graph.nl`):
+  generates a Markdown problem description (sets, data, decisions,
+  per-constraint sentences, objective) with parameter **data tables** when
+  an instance is supplied.
+- **End-to-end validation suite** (`corpus/validation/codec_pipeline/`):
+  runs the full JSON→LaTeX→parse→ground→solve loop and checks codec
+  round-trip, pipeline-vs-direct equality, cross-solver agreement, and
+  match to independently established optima (assignment 13, big-M ordering
+  30, fixed-sequence 18, PESP 1, time-indexed 4). Records paper anchors
+  (timtab1 = 764772, marcotallone = 3913.47).
+- New formulations: `assignment.json`, `pesp_solvable.json`.
+- CLI: `lp2graph latex | parse | describe | solve`.
+- New tests: `test_codec.py`, `test_solve.py`, `test_describe.py`.
+- Optional `solver` extra (`pulp`, `highspy`).
+
 ## [0.2.0] - 2026-05-20
 
 ### Changed
