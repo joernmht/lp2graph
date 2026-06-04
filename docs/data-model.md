@@ -2,9 +2,9 @@
 
 `lp2graph` represents an optimization formulation as a structured JSON
 document validated against
-[`schema/canonical.schema.json`](../schema/canonical.schema.json) and
-mirrored by the pydantic types in
-[`lp2graph.core.model`](../src/lp2graph/core/model.py).
+[`schema/canonical.schema.json`](https://github.com/joernmht/lp2graph/blob/main/schema/canonical.schema.json)
+and mirrored by the pydantic types in
+[`lp2graph.core.model`](https://github.com/joernmht/lp2graph/blob/main/src/lp2graph/core/model.py).
 
 ## Top-level structure
 
