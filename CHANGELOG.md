@@ -6,6 +6,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **LP mining extensions** (`lp2graph.mining`, issues #38–#43) — six
+  deterministic modules implementing the *LP Mining with LP2Graph* method on
+  top of the core library. Every frozen resource is versioned in
+  `lp2graph.mining.versions` and stamped into emitted records.
+  - **M1 `mining.ingest`** — heterogeneous ingestion front-end: a Pyomo
+    importer (`from_pyomo`), a versioned non-canonical LaTeX normalizer with
+    source-span provenance (`normalize_latex` / `ingest_latex`), and an
+    extension dispatcher (`ingest`) that reports failures as structured
+    `IngestionResult`s rather than dropping them.
+  - **M2 `mining.homologize`** — lexical homologizer (tokenize / lemmatize /
+    versioned stop-list / frozen domain thesaurus + optional WordNet) and a
+    TF-IDF `ConceptVectorizer` over a sorted, diffable `Vocabulary`, plus the
+    type signature `τ(s)` and the `Entity` model for levels V/C/M.
+  - **M3 `mining.cluster`** — the cluster-and-name operator `CN` (deterministic
+    average-linkage default, `fixed_k`+silhouette, optional HDBSCAN), the
+    bottom-up Level V→C→M taxonomy `induce`, and `stability_report`
+    (silhouette + bootstrap ARI + sensitivity).
+  - **M4 `mining.label`** — two-stage labeling service: rule layer + calibrated
+    one-vs-rest `LinearSVM`, a confidence-gated closed loop with a versioned,
+    replayable `LabelStore`, rule promotion, retraining, and gold-set
+    guardrails (drift, per-class P/R, Cohen's κ, rollback flag).
+  - **M5 `mining.corpusmgr`** — provenance records, a regeneration `CorpusManifest`
+    (frozen search date + queries), deterministic dedup (schema-graph hash or
+    bibliographic key), and reproducible representative selection.
+  - **M6 `mining.isomorphism`** — per-cluster schema-graph isomorphism rate via
+    the NetworkX export (`isomorphism_report`).
+
 ## [0.3.0] - 2026-06-01
 
 ### Added
