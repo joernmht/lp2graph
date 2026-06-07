@@ -25,7 +25,7 @@ from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from lp2graph.core.model import Formulation
+from lp2graph.core.model import ConstraintTemplate, Formulation
 from lp2graph.metrics.flags import presence_flags
 from lp2graph.metrics.structural import structural_summary
 from lp2graph.mining.cluster.operator import CN, ClusterConfig, NamedClustering
@@ -132,8 +132,21 @@ def _bucket(value: float, edges: Sequence[float]) -> int:
     return len(edges)
 
 
+_SIZE_EDGES = (10.0, 50.0, 200.0, 1000.0)
+_DIAMETER_CAP = 12
+
+
 def model_feature_document(f: Formulation) -> dict[str, int]:
-    """Level-M feature document: family/type histograms, flags, bucketed metrics."""
+    """Level-M structural feature document.
+
+    Covers the model-level channel of the paper's Level M: the presence-flag
+    vector ``φ`` and the structural metrics of Sec.~lp2graph — minimal size
+    ``S_min``, constraint/variable ratio ``R_C/V``, graph diameter ``D_G``,
+    edge density, and coherence — each bucketed (or flagged) so it joins the
+    TF-IDF feature space. The raw declarative kind histograms are retained as
+    supplementary signal; the *induced* Level-V/Level-C cluster histograms are
+    added on top in :func:`induce` (they need the lower passes' output).
+    """
     doc: Counter[str] = Counter()
     doc[f"family:{f.family}"] += 1
     for c in f.constraints:
@@ -151,8 +164,14 @@ def model_feature_document(f: Formulation) -> dict[str, int]:
     metrics = structural_summary(g)
     density = float(metrics["edge_density"].value)
     cvr = float(metrics["constraint_variable_ratio"].value)
+    size = float(metrics["minimal_size"].value)
+    diameter = int(metrics["graph_diameter"].value)
+    coherent = int(metrics["model_coherence"].value)
     doc[f"density_bin:{_bucket(density, _DENSITY_EDGES)}"] += 1
     doc[f"cvr_bin:{_bucket(cvr, _CVR_EDGES)}"] += 1
+    doc[f"size_bin:{_bucket(size, _SIZE_EDGES)}"] += 1
+    doc[f"diam:{min(diameter, _DIAMETER_CAP)}"] += 1
+    doc[f"coherent:{coherent}"] += 1
     return dict(doc)
 
 
@@ -171,21 +190,56 @@ def induce(formulations: Sequence[Formulation], config: ClusterConfig | None = N
     c_entities = corpus_entities(formulations, "C")
     c_sig = signature_documents(c_entities)
     ref_map: dict[str, list[str]] = {}
+    con_by_id: dict[str, ConstraintTemplate] = {}
     for f in formulations:
         ref_map.update(_referenced_variable_ids(f))
+        for c in f.constraints:
+            con_by_id[f"{f.id}::constraint::{c.name}"] = c
     c_docs: list[dict[str, int]] = []
     for i, e in enumerate(c_entities):
         cond: Counter[str] = Counter()
+        # Histogram of Level-V cluster membership over the coupled variables.
         for vid in ref_map.get(e.id, []):
             name = v_label_by_id.get(vid)
             if name is not None:
                 cond[f"vcluster:{name}"] += 1
+        # Relevant per-constraint presence flags (paper Level C: big-M,
+        # aggregation). Comparator + quantifier/restriction pattern + referent
+        # multiset already arrive via the signature document (c_sig).
+        con = con_by_id.get(e.id)
+        if con is not None:
+            if con.kind == "big_m" or con.indicator is not None:
+                cond["cflag:big_m"] += 1
+            if any(t.operator != "none" for t in (*con.lhs, *con.rhs)):
+                cond["cflag:aggregation"] += 1
         c_docs.append(_merge(concept_bag(e.text), c_sig[i], dict(cond)))
     level_c = _run_pass("C", c_entities, c_docs, cfg)
+    c_label_by_id = {e.id: level_c.clustering.name_of(i) for i, e in enumerate(c_entities)}
 
-    # Level M -------------------------------------------------------------
+    # Level M (conditioned on the induced Level-V/Level-C partitions) ------
     m_entities = corpus_entities(formulations, "M")
-    m_docs = [model_feature_document(f) for f in formulations]
+    m_docs: list[dict[str, int]] = []
+    for f in formulations:
+        induced: Counter[str] = Counter()
+        # Histogram of induced Level-C families present in the model.
+        for c in f.constraints:
+            fam = c_label_by_id.get(f"{f.id}::constraint::{c.name}")
+            if fam is not None:
+                induced[f"cfamily:{fam}"] += 1
+        if f.objective is not None:
+            fam = c_label_by_id.get(f"{f.id}::objective::{f.objective.name}")
+            if fam is not None:
+                induced[f"cfamily:{fam}"] += 1
+        # Histogram of induced Level-V types (variables and parameters).
+        for v in f.variables:
+            vtype = v_label_by_id.get(f"{f.id}::variable::{v.name}")
+            if vtype is not None:
+                induced[f"vtype:{vtype}"] += 1
+        for p in f.parameters:
+            vtype = v_label_by_id.get(f"{f.id}::parameter::{p.name}")
+            if vtype is not None:
+                induced[f"vtype:{vtype}"] += 1
+        m_docs.append(_merge(model_feature_document(f), dict(induced)))
     level_m = _run_pass("M", m_entities, m_docs, cfg)
 
     # Text-only one-dimensional clusterings -------------------------------

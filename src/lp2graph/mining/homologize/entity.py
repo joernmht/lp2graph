@@ -178,7 +178,8 @@ def signature_documents(items: Sequence[Entity]) -> list[dict[str, int]]:
 
     Lets the structural channel be vectorized by the same TF-IDF machinery as
     the lexical channel: each signature facet becomes a namespaced concept
-    token (``role:auxiliary``, ``kind:binary``, ``domain:timing``, ...).
+    token (``role:auxiliary``, ``kind:binary``, ``domain:timing``,
+    ``cmp:le``, ``quant:i:I:ne_other``, ``ref:variable``, ...).
     """
     docs: list[dict[str, int]] = []
     for e in items:
@@ -190,6 +191,12 @@ def signature_documents(items: Sequence[Entity]) -> list[dict[str, int]]:
         tokens.append(f"kind:{sig.kind}")
         tokens.append(f"arity:{sig.arity}")
         tokens.extend(f"over:{s}" for s in sig.shape)
+        # Constraint τ extras (paper Eq. homologization): comparator,
+        # quantifier/restriction pattern, and the referent-kind multiset.
+        if sig.comparator:
+            tokens.append(f"cmp:{sig.comparator}")
+        tokens.extend(f"quant:{q}" for q in sig.quantifiers)
+        tokens.extend(f"ref:{r}" for r in sig.referents)
         doc: dict[str, int] = {}
         for tok in tokens:
             doc[tok] = doc.get(tok, 0) + 1

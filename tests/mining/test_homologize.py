@@ -171,3 +171,25 @@ def test_signature_documents_are_categorical() -> None:
     # Every constraint entity emits a role token.
     for doc in docs:
         assert any(k.startswith("role:") for k in doc)
+
+
+def test_constraint_signature_matches_paper_tau() -> None:
+    # Paper τ(constraint) = (comparator, quantifier/restriction structure,
+    # multiset of referent kinds). Check all three are recovered.
+    from lp2graph.mining.homologize import constraint_signature
+
+    forms = _all_formulations()
+    constrained = [f for f in forms if f.constraints]
+    assert constrained, "need a formulation with constraints"
+    c = constrained[0].constraints[0]
+    sig = constraint_signature(c)
+    assert sig.comparator == c.comparator
+    # Referent multiset covers every term's kind, sorted with repetition.
+    expected = tuple(sorted(t.ref_kind for t in (*c.lhs, *c.rhs)))
+    assert sig.referents == expected
+    assert sig.comparator in sig.canonical()
+    # The signature document surfaces comparator and referent tokens.
+    c_ents = corpus_entities([constrained[0]], "C")  # type: ignore[arg-type]
+    docs = signature_documents(c_ents)
+    assert any(k.startswith("cmp:") for k in docs[0])
+    assert any(k.startswith("ref:") for k in docs[0])

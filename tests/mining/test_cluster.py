@@ -167,6 +167,24 @@ def test_induce_runs_on_catalog_and_is_reproducible() -> None:
     assert any(c.startswith("vcluster:") for c in tax_a.level_c.vocabulary.concepts)
 
 
+def test_level_features_match_paper_spec() -> None:
+    forms = _all_formulations()
+    tax = induce(forms)
+    c_vocab = set(tax.level_c.vocabulary.concepts)
+    # Level C carries the paper's constraint structural signature pieces.
+    assert any(c.startswith("cmp:") for c in c_vocab)  # comparator
+    assert any(c.startswith("ref:") for c in c_vocab)  # referent multiset
+    assert any(c.startswith("vcluster:") for c in c_vocab)  # Level-V conditioning
+    m_vocab = set(tax.level_m.vocabulary.concepts)
+    # Level M is conditioned on the induced lower-level partitions and carries
+    # the full structural-metric set.
+    assert any(c.startswith("vtype:") for c in m_vocab)  # induced Level-V types
+    assert any(c.startswith("cfamily:") for c in m_vocab)  # induced Level-C families
+    assert any(c.startswith("size_bin:") for c in m_vocab)  # S_min
+    assert any(c.startswith("diam:") for c in m_vocab)  # graph diameter D_G
+    assert any(c.startswith("coherent:") for c in m_vocab)  # coherence
+
+
 def test_stability_report_emitted() -> None:
     forms = _all_formulations()
     tax = induce(forms)

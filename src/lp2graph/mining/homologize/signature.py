@@ -39,6 +39,13 @@ class TypeSignature:
     - ``shape`` — the index families the entity ranges over.
     - ``quantifiers`` — for constraints, the quantifier index/over/restriction
       pattern; empty otherwise.
+    - ``comparator`` — for constraints, the comparison operator (``le`` /
+      ``ge`` / ``eq``); ``""`` otherwise. Part of the paper's constraint
+      signature ``τ`` (Eq. homologization, Sec. methodology).
+    - ``referents`` — for constraints, the multiset of referent kinds
+      (``variable`` / ``parameter`` / ``literal``) appearing in the term
+      lists, as a sorted tuple with repetition; empty otherwise. Also part of
+      the paper's constraint ``τ``.
     """
 
     domain: str
@@ -46,6 +53,8 @@ class TypeSignature:
     kind: str
     shape: tuple[str, ...]
     quantifiers: tuple[str, ...]
+    comparator: str = ""
+    referents: tuple[str, ...] = ()
 
     @property
     def arity(self) -> int:
@@ -56,7 +65,11 @@ class TypeSignature:
         """A stable, deterministic string form of the signature."""
         shape = ",".join(self.shape)
         quant = ",".join(self.quantifiers)
-        return f"domain={self.domain}|role={self.role}|kind={self.kind}|shape=[{shape}]|quant=[{quant}]"
+        refs = ",".join(self.referents)
+        return (
+            f"domain={self.domain}|role={self.role}|kind={self.kind}"
+            f"|shape=[{shape}]|quant=[{quant}]|cmp={self.comparator}|refs=[{refs}]"
+        )
 
 
 def variable_signature(v: VariableTemplate) -> TypeSignature:
@@ -91,8 +104,24 @@ def _quantifier_tokens(c: ConstraintTemplate) -> tuple[str, ...]:
     return tuple(tokens)
 
 
+def _referent_multiset(c: ConstraintTemplate) -> tuple[str, ...]:
+    """The sorted multiset of referent kinds across the constraint's terms.
+
+    Realizes the ``multiset of referent kinds in its terms`` component of the
+    paper's constraint type signature ``τ`` (Eq. homologization).
+    """
+    kinds = [t.ref_kind for t in (*c.lhs, *c.rhs)]
+    return tuple(sorted(kinds))
+
+
 def constraint_signature(c: ConstraintTemplate) -> TypeSignature:
-    """Signature of a constraint template, including its quantifier pattern."""
+    """Signature of a constraint template.
+
+    Mirrors the paper's ``τ(constraint)`` — the comparator, the
+    quantifier/restriction structure, and the multiset of referent kinds in
+    its terms — while also retaining the declarative ``kind`` and
+    ``domain_class`` facets the lp2graph model adds.
+    """
     shape = tuple(q.over for q in c.quantifiers)
     return TypeSignature(
         domain=c.domain_class or "",
@@ -100,6 +129,8 @@ def constraint_signature(c: ConstraintTemplate) -> TypeSignature:
         kind=c.kind,
         shape=shape,
         quantifiers=_quantifier_tokens(c),
+        comparator=c.comparator,
+        referents=_referent_multiset(c),
     )
 
 
