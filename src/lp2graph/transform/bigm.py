@@ -25,6 +25,7 @@ inventing a number. Callers may supply an explicit ``m`` to override.
 Equality bodies are split into a ``≤`` and a ``≥`` part (two big-M rows), as
 solvers do internally.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -116,8 +117,12 @@ def _split_eq(ind: IndicatorConstraint) -> list[IndicatorConstraint]:
     if b.sense != "eq":
         return [ind]
     return [
-        IndicatorConstraint(ind.binary, ind.active_value, LinearConstraint(dict(b.coeffs), "le", b.rhs)),
-        IndicatorConstraint(ind.binary, ind.active_value, LinearConstraint(dict(b.coeffs), "ge", b.rhs)),
+        IndicatorConstraint(
+            ind.binary, ind.active_value, LinearConstraint(dict(b.coeffs), "le", b.rhs)
+        ),
+        IndicatorConstraint(
+            ind.binary, ind.active_value, LinearConstraint(dict(b.coeffs), "ge", b.rhs)
+        ),
     ]
 
 

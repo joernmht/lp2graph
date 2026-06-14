@@ -182,8 +182,10 @@ def _label_for_offsets(
 ) -> str:
     coef = ""
     if coefficient not in (None, 1):
-        coef = f"{coefficient}·" if not isinstance(coefficient, (int, float)) else (
-            "" if coefficient == 1 else f"{coefficient}·"
+        coef = (
+            f"{coefficient}·"
+            if not isinstance(coefficient, (int, float))
+            else ("" if coefficient == 1 else f"{coefficient}·")
         )
     sgn = "" if sign == 1 else "-"
     if not offsets:

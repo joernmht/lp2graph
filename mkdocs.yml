@@ -27,6 +27,7 @@ nav:
   - LP mining (M1–M6): mining.md
   - Add a formulation: add-a-formulation.md
   - Design context: design-context.md
+  - Software stack: STACK.md
   - Extraction report: extraction-report.md
   - v1 acceptance: v1-acceptance.md
   - ADRs:
@@ -35,6 +36,8 @@ nav:
       - "ADR-0003 license": adr/0003-license.md
       - "ADR-0004 schema versioning": adr/0004-schema-versioning.md
       - "ADR-0005 viewer hosting": adr/0005-viewer-hosting.md
+      - "ADR-0006 determinism": adr/0006-determinism.md
+      - "ADR-0007 optional deps lazy import": adr/0007-optional-deps-lazy-import.md
 
 markdown_extensions:
   - admonition

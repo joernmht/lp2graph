@@ -43,9 +43,7 @@ def test_validation_catches_undeclared_variable_reference(tmp_path: Path) -> Non
         "name": "Bad reference",
         "family": "lp",
         "indices": [{"name": "I"}],
-        "variables": [
-            {"name": "x", "shape": ["I"], "domain": "non_negative"}
-        ],
+        "variables": [{"name": "x", "shape": ["I"], "domain": "non_negative"}],
         "constraints": [
             {
                 "name": "c1",
@@ -175,9 +173,7 @@ def test_legacy_one_literal_still_works(tmp_path: Path) -> None:
                         "role": "lhs",
                     }
                 ],
-                "rhs": [
-                    {"ref": "one", "ref_kind": "literal", "coefficient": 3599, "role": "rhs"}
-                ],
+                "rhs": [{"ref": "one", "ref_kind": "literal", "coefficient": 3599, "role": "rhs"}],
             }
         ],
     }

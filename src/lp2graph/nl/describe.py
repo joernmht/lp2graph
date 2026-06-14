@@ -26,8 +26,11 @@ from lp2graph.core.model import (
     Term,
 )
 
-_FAMILY = {"lp": "linear program", "mip": "mixed-integer program",
-           "milp": "mixed-integer linear program"}
+_FAMILY = {
+    "lp": "linear program",
+    "mip": "mixed-integer program",
+    "milp": "mixed-integer linear program",
+}
 _DOMAIN = {
     "binary": "binary (0/1)",
     "integer": "integer",
@@ -63,8 +66,10 @@ def describe(f: Formulation, instance: Any | None = None) -> str:
     if f.description:
         a(f.description.strip())
         a("")
-    a(f"This is a **{_FAMILY.get(f.family, f.family)}**"
-      + (f" ({', '.join(f.tags)})." if f.tags else "."))
+    a(
+        f"This is a **{_FAMILY.get(f.family, f.family)}**"
+        + (f" ({', '.join(f.tags)})." if f.tags else ".")
+    )
     a("")
 
     if f.indices:
@@ -102,8 +107,7 @@ def describe(f: Formulation, instance: Any | None = None) -> str:
         shape = f"[{', '.join(v.shape)}]" if v.shape else ""
         role = f" _({v.role})_" if v.role != "primary" else ""
         dsc = _sent(v.description) or "a decision variable"
-        a(f"- **{v.name}{shape}** — {dsc}. "
-          f"It is {_DOMAIN.get(v.domain, v.domain)}.{role}")
+        a(f"- **{v.name}{shape}** — {dsc}. It is {_DOMAIN.get(v.domain, v.domain)}.{role}")
     a("")
 
     if f.constraints:
@@ -244,8 +248,15 @@ def _data_tables(f: Formulation, pvals: Mapping[str, Any]) -> list[str]:
             cols = _dim2(pvals[p.name])
             lines.append(f"**{p.name}** (rows {p.shape[0]}, columns {p.shape[1]}):")
             lines.append("")
-            lines.append("| " + p.shape[0] + "\\" + p.shape[1] + " | "
-                         + " | ".join(str(j) for j in range(cols)) + " |")
+            lines.append(
+                "| "
+                + p.shape[0]
+                + "\\"
+                + p.shape[1]
+                + " | "
+                + " | ".join(str(j) for j in range(cols))
+                + " |"
+            )
             lines.append("|" + "---|" * (cols + 1))
             for i in range(rows):
                 vals = " | ".join(_num(lookup(pvals[p.name], (i, j))) for j in range(cols))

@@ -35,6 +35,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   - **M6 `mining.isomorphism`** — per-cluster schema-graph isomorphism rate via
     the NetworkX export (`isomorphism_report`).
 
+### Changed
+
+- **CI now gates formatting:** added a `ruff format --check src tests` step to
+  `ci.yml` (previously only `ruff check` ran, so format drift could land
+  undetected). Bumped the `ruff-pre-commit` pin v0.4.10 → v0.15.12 and the
+  `dev` extra to `ruff>=0.15.12,<0.16` so local, pre-commit, and CI agree;
+  reformatted 21 pre-existing files to the current ruff style.
+
+### Docs
+
+- Added `docs/STACK.md` (software-stack reference) and ADR-0006 (determinism as
+  a hard requirement) and ADR-0007 (optional dependencies are lazily imported),
+  wired into the MkDocs nav.
+
 ## [0.3.0] - 2026-06-01
 
 ### Added
