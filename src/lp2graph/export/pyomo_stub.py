@@ -70,9 +70,7 @@ def to_pyomo_stub(f: Formulation) -> str:
         else:
             lines.append(f"    def _{c.name}_rule(m):")
         lines.append(f'        """{c.description or c.name}."""')
-        lines.append(
-            "        raise NotImplementedError('lp2graph v0.1 emits stubs only')"
-        )
+        lines.append("        raise NotImplementedError('lp2graph v0.1 emits stubs only')")
         lines.append(f"    m.{c.name} = Constraint(rule=_{c.name}_rule{sets_args})")
     lines.append("")
     lines.append("    return m")

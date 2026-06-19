@@ -74,9 +74,7 @@ def canonical_normal_form(f: Formulation) -> Formulation:
     objective = None
     if f.objective is not None:
         objective = f.objective.model_copy(
-            update={
-                "terms": tuple(_norm_term(t, "objective") for t in f.objective.terms)
-            }
+            update={"terms": tuple(_norm_term(t, "objective") for t in f.objective.terms)}
         )
     return f.model_copy(update={"constraints": constraints, "objective": objective})
 

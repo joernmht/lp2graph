@@ -65,12 +65,8 @@ EDGE_STYLE: Final[dict[str, dict[str, str]]] = {
 }
 
 # Typography. JetBrains Mono is the workhorse.
-FONT_DISPLAY: Final[str] = (
-    '"Fraunces", "Iowan Old Style", "Cambria", Georgia, serif'
-)
-FONT_MONO: Final[str] = (
-    '"JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace'
-)
+FONT_DISPLAY: Final[str] = '"Fraunces", "Iowan Old Style", "Cambria", Georgia, serif'
+FONT_MONO: Final[str] = '"JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace'
 
 
 __all__ = [

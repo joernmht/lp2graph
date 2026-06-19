@@ -41,9 +41,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p_view = sub.add_parser("view", help="Derive a view and print a summary.")
     p_view.add_argument("path", type=Path)
-    p_view.add_argument(
-        "--view", choices=("schema", "hybrid", "ground"), default="schema"
-    )
+    p_view.add_argument("--view", choices=("schema", "hybrid", "ground"), default="schema")
     p_view.add_argument(
         "--card",
         action="append",
@@ -59,9 +57,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p_metrics = sub.add_parser("metrics", help="Compute all metrics.")
     p_metrics.add_argument("path", type=Path)
-    p_metrics.add_argument(
-        "--view", choices=("schema", "hybrid"), default="schema"
-    )
+    p_metrics.add_argument("--view", choices=("schema", "hybrid"), default="schema")
 
     p_export = sub.add_parser("export", help="Export to a downstream format.")
     p_export.add_argument("path", type=Path)
@@ -70,9 +66,7 @@ def main(argv: list[str] | None = None) -> int:
         choices=("networkx", "pyg", "dgl", "latex", "pyomo"),
         required=True,
     )
-    p_export.add_argument(
-        "--view", choices=("schema", "hybrid", "ground"), default="hybrid"
-    )
+    p_export.add_argument("--view", choices=("schema", "hybrid", "ground"), default="hybrid")
     p_export.add_argument("--card", action="append", default=[])
     p_export.add_argument("--output", type=Path, default=None)
 
@@ -138,22 +132,27 @@ def main(argv: list[str] | None = None) -> int:
         f = load(args.path)
         if args.format == "latex":
             from lp2graph.export.latex import to_latex
+
             out = to_latex(f)
         elif args.format == "pyomo":
             from lp2graph.export.pyomo_stub import to_pyomo_stub
+
             out = to_pyomo_stub(f)
         else:
             g = _derive(f, args.view, args.card)
             if args.format == "networkx":
                 from lp2graph.export.networkx_adapter import to_networkx
+
                 nxg = to_networkx(g)
                 out = f"<NetworkX MultiDiGraph: {len(nxg)} nodes, {nxg.number_of_edges()} edges>"
             elif args.format == "pyg":
                 from lp2graph.export.pyg import to_pyg
+
                 pyg = to_pyg(g)
                 out = repr(pyg)
             else:  # dgl
                 from lp2graph.export.dgl import to_dgl
+
                 dglg = to_dgl(g)
                 out = repr(dglg)
         if args.output:
@@ -201,10 +200,18 @@ def main(argv: list[str] | None = None) -> int:
             "gurobi": lambda: pulp.GUROBI(msg=0),
         }[args.solver]()
         res = solve(load(args.path), Instance.load(args.instance), solver=solver)
-        print(json.dumps(
-            {"status": res.status, "objective": res.objective,
-             "n_vars": res.n_vars, "n_constraints": res.n_constraints,
-             "solver": res.solver}, indent=2))
+        print(
+            json.dumps(
+                {
+                    "status": res.status,
+                    "objective": res.objective,
+                    "n_vars": res.n_vars,
+                    "n_constraints": res.n_constraints,
+                    "solver": res.solver,
+                },
+                indent=2,
+            )
+        )
         return 0
 
     return 0
@@ -218,9 +225,7 @@ def _emit(text: str, output: Path | None) -> None:
         print(text)
 
 
-def _derive(
-    f: Formulation, view: str, card_args: list[str]
-) -> Graph:
+def _derive(f: Formulation, view: str, card_args: list[str]) -> Graph:
     if view == "schema":
         return _views.schema(f)
     if view == "hybrid":

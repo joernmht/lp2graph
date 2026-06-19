@@ -77,8 +77,7 @@ def to_canonical_latex(f: Formulation) -> str:
     a = lines.append
 
     a("% lp2graph canonical LaTeX")
-    a("% Reversible with lp2graph.codec.from_canonical_latex (schema "
-      f"{SCHEMA}).")
+    a(f"% Reversible with lp2graph.codec.from_canonical_latex (schema {SCHEMA}).")
     a(f"%@ meta id={f.id} family={f.family} schema={SCHEMA}")
     a(f"%@ name :: {_oneline(f.name)}")
     if f.description:
@@ -87,31 +86,45 @@ def to_canonical_latex(f: Formulation) -> str:
         a(f"%@ tags :: {' | '.join(f.tags)}")
     if f.provenance is not None:
         prov = f.provenance
-        for key, val in (("source", prov.source), ("reference", prov.reference),
-                         ("author", prov.author), ("date", prov.date)):
+        for key, val in (
+            ("source", prov.source),
+            ("reference", prov.reference),
+            ("author", prov.author),
+            ("date", prov.date),
+        ):
             if val:
                 a(f"%@ prov {key} :: {_oneline(val)}")
     for idx in f.indices:
-        a(f"%@ index {idx.name} ordered={int(idx.ordered)} "
-          f"cyclic={int(idx.cyclic)} :: {_oneline(idx.description)}")
+        a(
+            f"%@ index {idx.name} ordered={int(idx.ordered)} "
+            f"cyclic={int(idx.cyclic)} :: {_oneline(idx.description)}"
+        )
     for p in f.parameters:
-        a(f"%@ param {p.name} shape={_shape_tok(p.shape)} kind={p.kind} "
-          f"domain={p.domain_class or '-'} :: {_oneline(p.description)}")
+        a(
+            f"%@ param {p.name} shape={_shape_tok(p.shape)} kind={p.kind} "
+            f"domain={p.domain_class or '-'} :: {_oneline(p.description)}"
+        )
     for v in f.variables:
-        a(f"%@ var {v.name} shape={_shape_tok(v.shape)} domain={v.domain} "
-          f"role={v.role} drole={v.domain_role or '-'} "
-          f"lo={_num_tok(v.lower)} hi={_num_tok(v.upper)} "
-          f":: {_oneline(v.description)}")
+        a(
+            f"%@ var {v.name} shape={_shape_tok(v.shape)} domain={v.domain} "
+            f"role={v.role} drole={v.domain_role or '-'} "
+            f"lo={_num_tok(v.lower)} hi={_num_tok(v.upper)} "
+            f":: {_oneline(v.description)}"
+        )
     if f.objective is not None:
         o = f.objective
-        a(f"%@ obj sense={o.sense} name={_tok(o.name)} "
-          f"combination={o.combination} :: {_oneline(o.description)}")
+        a(
+            f"%@ obj sense={o.sense} name={_tok(o.name)} "
+            f"combination={o.combination} :: {_oneline(o.description)}"
+        )
     for c in f.constraints:
         ind = "-"
         if c.indicator is not None:
             ind = f"{c.indicator.binary}@{c.indicator.active_value}"
-        a(f"%@ con {c.name} kind={c.kind} domain={c.domain_class or '-'} "
-          f"indicator={ind} :: {_oneline(c.description)}")
+        a(
+            f"%@ con {c.name} kind={c.kind} domain={c.domain_class or '-'} "
+            f"indicator={ind} :: {_oneline(c.description)}"
+        )
 
     a(r"\begin{align}")
     if f.objective is not None:
@@ -205,9 +218,7 @@ def _emit_quantifiers(quantifiers: tuple[Quantifier, ...]) -> str:
         if q.restriction != "none":
             extra.append(f"{q.index} {_RESTR_OUT[q.restriction]} {q.restriction_other}")
         if q.where is not None:
-            extra.append(
-                f"{_sym(q.where.parameter)}_{{{q.index}}} = {_where_val(q.where.equals)}"
-            )
+            extra.append(f"{_sym(q.where.parameter)}_{{{q.index}}} = {_where_val(q.where.equals)}")
     return ",\\; ".join(parts + extra)
 
 
@@ -541,10 +552,10 @@ def _split_comparison(body: str) -> tuple[str, str, str]:
     for tok, cmp in ((r"\le", "le"), (r"\ge", "ge")):
         idx = _find_top(body, tok)
         if idx >= 0:
-            return cmp, body[:idx], body[idx + len(tok):]
+            return cmp, body[:idx], body[idx + len(tok) :]
     idx = _find_top_eq(body)
     if idx >= 0:
-        return "eq", body[:idx], body[idx + 1:]
+        return "eq", body[:idx], body[idx + 1 :]
     raise ValueError(f"no comparator in constraint body: {body!r}")
 
 
@@ -641,7 +652,7 @@ def _parse_term(text: str, sign: int, role: str, sym: _SymTab) -> Term | None:
 
     # Aggregation wrappers.
     if text.startswith(r"\sum_"):
-        sub, rest = _take_braced(text[len(r"\sum_"):])
+        sub, rest = _take_braced(text[len(r"\sum_") :])
         operator = "sum"
         operator_over = tuple(_setnames(sub))
         text = rest.strip()
@@ -710,9 +721,7 @@ def _parse_referent(text: str, sym: _SymTab) -> tuple[str, list[Binding]]:
         shape = sym.shape(name)
         for pos, expr in enumerate(exprs):
             fam = shape[pos] if pos < len(shape) else (exprs and expr)
-            bindings.append(
-                Binding(index=fam, expr=expr.strip(), offset=_offset(expr))
-            )
+            bindings.append(Binding(index=fam, expr=expr.strip(), offset=_offset(expr)))
     return name, bindings
 
 
@@ -721,7 +730,7 @@ def _split_subscript(text: str) -> tuple[str, str]:
     if not m:
         return text.strip(), ""
     base = text[: m.start()]
-    sub, _ = _take_braced(text[m.end() - 1:])  # include the '{'
+    sub, _ = _take_braced(text[m.end() - 1 :])  # include the '{'
     return base.strip(), sub
 
 
@@ -826,12 +835,12 @@ def _take_braced(s: str) -> tuple[str, str]:
         elif ch == "}":
             depth -= 1
             if depth == 0:
-                return s[1:i], s[i + 1:]
+                return s[1:i], s[i + 1 :]
     raise ValueError(f"unbalanced braces: {s!r}")
 
 
 def _between(text: str, open_t: str, close_t: str) -> str:
-    inner = text[len(open_t):]
+    inner = text[len(open_t) :]
     if inner.endswith(close_t):
         inner = inner[: -len(close_t)]
     else:

@@ -21,17 +21,27 @@ from lp2graph.metrics.result import MetricResult
 
 CONSTRAINT_TYPE_KEYWORDS: dict[str, list[str]] = {
     "ordering": [
-        r"\bprecedence\b", r"\border\b", r"\bordering\b",
-        r"\bovertaking\b", r"\bovertake\b", r"\bre-?ordering\b",
+        r"\bprecedence\b",
+        r"\border\b",
+        r"\bordering\b",
+        r"\bovertaking\b",
+        r"\bovertake\b",
+        r"\bre-?ordering\b",
     ],
     "routing": [
-        r"\broute\s+selection\b", r"\brouting\b", r"\brerouting\b",
+        r"\broute\s+selection\b",
+        r"\brouting\b",
+        r"\brerouting\b",
         r"\bre-?routing\b",
     ],
     "timing": [
-        r"\bdepart(ure)?\b", r"\bdwell\b", r"\bdelay\b",
-        r"\bscheduled\b", r"\brunning\s+time\b",
-        r"\bminimum\s+duration\b", r"\bre-?timing\b",
+        r"\bdepart(ure)?\b",
+        r"\bdwell\b",
+        r"\bdelay\b",
+        r"\bscheduled\b",
+        r"\brunning\s+time\b",
+        r"\bminimum\s+duration\b",
+        r"\bre-?timing\b",
     ],
     "cancellation": [
         r"\bcancel(l?ation|l?ed|l?ing)?\b",
@@ -39,19 +49,26 @@ CONSTRAINT_TYPE_KEYWORDS: dict[str, list[str]] = {
         r"\bunbalanced\s+timetable\b",
     ],
     "headway": [
-        r"\bheadway\b", r"\bconflict-free\b",
-        r"\bincompatible\s+arc\b", r"\btrain\s+incompatibility\b",
+        r"\bheadway\b",
+        r"\bconflict-free\b",
+        r"\bincompatible\s+arc\b",
+        r"\btrain\s+incompatibility\b",
     ],
     "capacity": [
-        r"\binfrastructure\s+capacity\b", r"\btrack\s+capacity\b",
-        r"\bstation\s+capacity\b", r"\bblock\s+section\b",
-        r"\bsingle-?track\b", r"\bno-?store\b",
+        r"\binfrastructure\s+capacity\b",
+        r"\btrack\s+capacity\b",
+        r"\bstation\s+capacity\b",
+        r"\bblock\s+section\b",
+        r"\bsingle-?track\b",
+        r"\bno-?store\b",
     ],
     "flow_balance": [
-        r"\bflow\s+balance\b", r"\bflow\s+conservation\b",
+        r"\bflow\s+balance\b",
+        r"\bflow\s+conservation\b",
     ],
     "big_m": [
-        r"\blarge\s+constant\b", r"\bbig-?M\s+constraint\b",
+        r"\blarge\s+constant\b",
+        r"\bbig-?M\s+constraint\b",
         r"\bbig-?M\b",
     ],
     "passenger_connection": [
@@ -88,9 +105,7 @@ def classify_constraints(f: Formulation) -> MetricResult:
     return MetricResult(
         name="classify_constraints",
         value=type_counts,
-        explanation=(
-            f"Classified {classified}/{len(matrix)} constraint(s) by keyword."
-        ),
+        explanation=(f"Classified {classified}/{len(matrix)} constraint(s) by keyword."),
         data={"matrix": matrix, "total": len(matrix), "classified": classified},
     )
 

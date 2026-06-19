@@ -114,7 +114,10 @@ def build_problem(
                 # like ``t_{i-1}`` at ``i=0``): the constraint instance is
                 # degenerate and is omitted, not partially enforced.
                 continue
-            cname = _safe(c.name + "_" + "_".join(f"{i}{v}" for i, v in binding.items())) or f"{c.name}_{k}"
+            cname = (
+                _safe(c.name + "_" + "_".join(f"{i}{v}" for i, v in binding.items()))
+                or f"{c.name}_{k}"
+            )
             prob += _CMP[c.comparator](expr_l, expr_r), cname[:255]
 
     return prob, vmap
@@ -348,9 +351,7 @@ def _where_ok(
         if q.where is None:
             continue
         if q.where.parameter not in pvals:
-            raise UnsupportedModel(
-                f"where-clause needs parameter values for {q.where.parameter!r}"
-            )
+            raise UnsupportedModel(f"where-clause needs parameter values for {q.where.parameter!r}")
         if lookup(pvals[q.where.parameter], (b[q.index],)) != q.where.equals:
             return False
     return True

@@ -30,8 +30,7 @@ def to_pyg(g: Graph) -> HeteroData:
         from torch_geometric.data import HeteroData
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
-            "to_pyg requires torch and torch_geometric; "
-            "install with 'pip install lp2graph[pyg]'"
+            "to_pyg requires torch and torch_geometric; install with 'pip install lp2graph[pyg]'"
         ) from exc
 
     data: Any = HeteroData()

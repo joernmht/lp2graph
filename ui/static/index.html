@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>lp2graph · translate</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+</head>
+<body>
+  <!-- Frosted Cupertino top bar -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">
+        <span class="logo-square"></span>
+        <span class="logo-circle"></span>
+        <span class="logo-tri"></span>
+      </span>
+      <div class="brand-text">
+        <h1>lp2graph</h1>
+        <p>formulation → typed graph</p>
+      </div>
+    </div>
+
+    <div class="topbar-right">
+      <button id="keyBtn" class="key-btn" hidden title="Set or change your API key">🔑 Key</button>
+      <div id="familyBadge" class="family-badge is-empty" title="Deterministically detected from variable domains">
+        <span class="fb-dot"></span>
+        <span class="fb-label">family</span>
+        <span class="fb-value">—</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- API-key bar — only shown when the server requires a key -->
+  <div id="keyBar" class="key-bar" hidden>
+    <span class="key-bar-label">🔒 This demo requires an API key.</span>
+    <input id="keyInput" class="key-input" type="password" autocomplete="off"
+      spellcheck="false" placeholder="Paste your API key…" />
+    <button id="keySave" class="key-save">Unlock</button>
+    <span id="keyMsg" class="key-msg"></span>
+  </div>
+
+  <main class="stage">
+    <!-- LEFT · input -->
+    <section class="panel panel-input">
+      <div class="panel-head">
+        <h2>Input</h2>
+        <select id="examples" class="select" title="Load a bundled formulation">
+          <option value="">Load example…</option>
+        </select>
+      </div>
+
+      <div class="editor-wrap">
+        <textarea id="source" class="editor" spellcheck="false"
+          placeholder="Paste a canonical MILP formulation (JSON) here…"></textarea>
+      </div>
+
+      <div class="controls">
+        <div class="seg" id="viewSeg" role="tablist" aria-label="Graph view">
+          <button class="seg-btn is-active" data-view="schema">Schema</button>
+          <button class="seg-btn" data-view="hybrid">Hybrid</button>
+          <button class="seg-btn" data-view="ground">Ground</button>
+        </div>
+        <div id="cards" class="cards" hidden></div>
+      </div>
+
+      <button id="translate" class="bauhaus-btn">
+        <span class="bh-shapes" aria-hidden="true">
+          <span class="bh-circle"></span>
+          <span class="bh-square"></span>
+        </span>
+        <span class="bh-label">Translate</span>
+      </button>
+    </section>
+
+    <!-- CENTER · the graph (the star) -->
+    <section class="panel panel-graph">
+      <div class="panel-head">
+        <h2 id="graphTitle">Generated graph</h2>
+        <span id="graphMeta" class="graph-meta"></span>
+      </div>
+      <div id="graphHost" class="graph-host">
+        <div class="graph-placeholder">
+          <div class="ph-grid"><span></span><span></span><span></span></div>
+          <p>Pick an example and press <b>Translate</b></p>
+        </div>
+      </div>
+      <div id="errorBar" class="error-bar" hidden></div>
+    </section>
+
+    <!-- RIGHT · details -->
+    <aside class="panel panel-meta">
+      <div class="panel-head"><h2>Details</h2></div>
+      <div id="detail" class="detail">
+        <p class="detail-empty">Translate a formulation to see its
+          structure, metrics and presence flags.</p>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="footnote">
+    <span id="footStatus">ready</span>
+    <span class="dot-sep">·</span>
+    <span>deterministic family detection · LP / MIP / MILP</span>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

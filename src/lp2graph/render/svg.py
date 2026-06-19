@@ -102,7 +102,7 @@ def render_svg(g: Graph, *, title: str = "", width: int = 1200, height: int = 76
             mx, my = (x1 + x2) // 2, (y1 + y2) // 2
             parts.append(
                 f'<text x="{mx + 4}" y="{my - 2}" font-size="9" fill="#444" '
-                f'font-family={FONT_MONO!r}>{html.escape(str(e.label))}</text>'
+                f"font-family={FONT_MONO!r}>{html.escape(str(e.label))}</text>"
             )
 
     # Operator-group brackets (drawn after edges, before nodes, so they
@@ -125,14 +125,12 @@ def render_html(g: Graph, *, title: str = "") -> str:
     return (
         "<!doctype html><meta charset='utf-8'>"
         f"<title>{html.escape(title or 'graph')}</title>"
-        "<body style=\"margin:0;background:#fafafa;\">"
+        '<body style="margin:0;background:#fafafa;">'
         f"{svg}</body>"
     )
 
 
-def _operator_group_brackets(
-    g: Graph, positions: dict[str, tuple[int, int]]
-) -> list[str]:
+def _operator_group_brackets(g: Graph, positions: dict[str, tuple[int, int]]) -> list[str]:
     """Render a faint shared background behind operators feeding one objective.
 
     Makes it visually obvious that several sum/aggregation operators
@@ -173,21 +171,21 @@ def _operator_group_brackets(
         out.append(
             f'<text x="{x + 8}" y="{y - 4}" font-size="9" '
             f'fill="#2f7a1f" font-family={FONT_MONO!r}>'
-            f'↑ {label}</text>'
+            f"↑ {label}</text>"
         )
     return out
 
 
 def _defs() -> str:
     return (
-        '<defs>'
+        "<defs>"
         '<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" '
         'markerWidth="7" markerHeight="7" orient="auto-start-reverse">'
         '<path d="M 0 0 L 10 5 L 0 10 z" fill="#4a4a4a"/></marker>'
         '<marker id="arrow-soft" viewBox="0 0 10 10" refX="9" refY="5" '
         'markerWidth="6" markerHeight="6" orient="auto-start-reverse">'
         '<path d="M 0 0 L 10 5 L 0 10 z" fill="#a8341d"/></marker>'
-        '</defs>'
+        "</defs>"
     )
 
 
@@ -198,7 +196,13 @@ def _render_node(n: Node, cx: int, cy: int) -> str:
     dasharray = ""
     if n.cls in ("constraint", "instance_constraint") and n.subtype in CONSTRAINT_DASHED_KINDS:
         dasharray = ' stroke-dasharray="6 3"'
-    rx = 18 if n.cls == "objective" else 8 if n.cls.startswith("variable") or n.cls == "instance_variable" else 4
+    rx = (
+        18
+        if n.cls == "objective"
+        else 8
+        if n.cls.startswith("variable") or n.cls == "instance_variable"
+        else 4
+    )
     x = cx - _NODE_W // 2
     y = cy - _NODE_H // 2
     label = html.escape(n.label or n.id)

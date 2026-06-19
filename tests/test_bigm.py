@@ -1,4 +1,5 @@
 """Solver-free tests for the deterministic indicator ⇄ big-M transform."""
+
 import pytest
 
 from lp2graph.transform import (
@@ -19,8 +20,8 @@ def _box(**kw):
 def test_expr_extremum_picks_corners():
     coeffs = {"x": 2.0, "y": -3.0}
     b = _box(x=(0, 10), y=(1, 4))
-    assert expr_extremum(coeffs, b, maximize=True) == 2 * 10 - 3 * 1   # 17
-    assert expr_extremum(coeffs, b, maximize=False) == 2 * 0 - 3 * 4   # -12
+    assert expr_extremum(coeffs, b, maximize=True) == 2 * 10 - 3 * 1  # 17
+    assert expr_extremum(coeffs, b, maximize=False) == 2 * 0 - 3 * 4  # -12
 
 
 def test_minimal_M_le():

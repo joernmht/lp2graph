@@ -63,10 +63,7 @@ def has_modulo_offset(f: Formulation) -> MetricResult:
 def has_soft_slack(f: Formulation) -> MetricResult:
     """True if any variable has role ``slack`` or any term has role ``slack``."""
     by_var = any(v.role == "slack" for v in f.variables)
-    by_term = any(
-        any(t.role == "slack" for t in (*c.lhs, *c.rhs))
-        for c in f.constraints
-    )
+    by_term = any(any(t.role == "slack" for t in (*c.lhs, *c.rhs)) for c in f.constraints)
     by_obj = bool(f.objective) and any(t.role == "slack" for t in f.objective.terms)  # type: ignore[union-attr]
     return MetricResult(
         name="has_soft_slack",
