@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`metrics.model_completeness`** — the second model-level well-formedness
+  indicator described in *LP Mining with LP2Graph* (objective declared together
+  with ≥1 variable and ≥1 constraint), companion to `model_coherence`. Now
+  computed and wired into the Level-M structural feature document
+  (`mining.cluster.taxonomy.model_feature_document`) as a `complete:{0,1}`
+  feature, closing a paper↔code gap where the paper named both indicators but
+  only coherence was implemented.
 - **LP mining extensions** (`lp2graph.mining`, issues #38–#43) — six
   deterministic modules implementing the *LP Mining with LP2Graph* method on
   top of the core library. Every frozen resource is versioned in

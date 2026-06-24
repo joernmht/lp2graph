@@ -32,6 +32,7 @@ from lp2graph.metrics.structural import (
     graph_diameter,
     minimal_size,
     model_coherence,
+    model_completeness,
     node_counts_by_class,
     structural_summary,
 )
@@ -50,6 +51,7 @@ __all__ = [
     "has_soft_slack",
     "minimal_size",
     "model_coherence",
+    "model_completeness",
     "node_counts_by_class",
     "presence_flags",
     "structural_summary",

@@ -16,6 +16,7 @@ from lp2graph.metrics.structural import (
     graph_diameter,
     minimal_size,
     model_coherence,
+    model_completeness,
     node_counts_by_class,
     structural_summary,
 )
@@ -90,6 +91,22 @@ def test_model_coherence_for_connected_formulation() -> None:
     f = load("formulations/constraints/lp_1_1_fixed_sequence.json")
     g = schema(f)
     assert model_coherence(g).value == 1
+
+
+def test_model_completeness_for_full_formulation() -> None:
+    f = load("formulations/constraints/lp_1_1_fixed_sequence.json")
+    assert model_completeness(f).value == 1
+
+
+def test_model_completeness_zero_without_objective() -> None:
+    f = load("formulations/constraints/lp_1_1_fixed_sequence.json")
+    fragment = f.model_copy(update={"objective": None})
+    assert model_completeness(fragment).value == 0
+
+
+def test_model_completeness_is_deterministic() -> None:
+    f = load("formulations/constraints/mip_2_1_big_m.json")
+    assert model_completeness(f).value == model_completeness(f).value
 
 
 def test_graph_diameter_is_nonnegative_int() -> None:
