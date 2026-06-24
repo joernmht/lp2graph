@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections import defaultdict, deque
 
 from lp2graph.core.graph import Graph
+from lp2graph.core.model import Formulation
 from lp2graph.metrics.result import MetricResult
 
 
@@ -112,6 +113,31 @@ def model_coherence(g: Graph) -> MetricResult:
     )
 
 
+def model_completeness(f: Formulation) -> MetricResult:
+    """1 if the formulation is a recoverable model, else 0.
+
+    A *complete* model declares an objective together with at least one
+    variable and at least one constraint -- the minimal evidence that a
+    whole model, rather than a fragment, was extracted. This is the
+    companion well-formedness indicator to :func:`model_coherence`; unlike
+    coherence (a graph property) it reads the canonical
+    :class:`~lp2graph.core.model.Formulation` directly.
+    """
+    complete = (
+        1 if f.objective is not None and len(f.variables) >= 1 and len(f.constraints) >= 1 else 0
+    )
+    return MetricResult(
+        name="model_completeness",
+        value=complete,
+        explanation="1 if the model declares an objective, >=1 variable and >=1 constraint, else 0.",
+        data={
+            "has_objective": f.objective is not None,
+            "n_variables": len(f.variables),
+            "n_constraints": len(f.constraints),
+        },
+    )
+
+
 def graph_diameter(g: Graph) -> MetricResult:
     """Diameter of the largest connected component (undirected, unweighted).
 
@@ -204,6 +230,7 @@ __all__ = [
     "graph_diameter",
     "minimal_size",
     "model_coherence",
+    "model_completeness",
     "node_counts_by_class",
     "structural_summary",
 ]
