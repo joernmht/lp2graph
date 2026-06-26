@@ -37,10 +37,13 @@ and each is listed in `[[tool.mypy.overrides]]` `ignore_missing_imports`.
 | `dev` | `pytest`, `pytest-cov`, `ruff>=0.15.12,<0.16`, `mypy>=1.10`, `pre-commit` | development |
 | `docs` | `mkdocs-material`, `mkdocstrings[python]` | docs site |
 
-> **Compatibility watch:** the `solve/` tests emit PuLP 4.0 deprecation
-> warnings (`LpVariable(...)` direct construction, `PULP_CBC_CMD`,
-> `LpProblem.constraints` mapping). PuLP 4.0 will break the current `solve/`
-> code path — track and migrate before bumping past PuLP 3.x.
+> **PuLP 4.0 compatibility (migrated 2026-06-26, ADR-0008):** the `solve/`
+> path no longer uses any API deprecated for PuLP 4.0. It builds variables via
+> `prob.add_variable(...)`, counts constraints via `prob.numConstraints()`, and
+> defaults to `COIN_CMD` through `solve.default_solver()` (with a bundled-CBC
+> path fallback for PuLP 3.x). `tests/test_solve.py::test_solve_path_is_pulp4_clean`
+> fails if any PuLP `DeprecationWarning` reappears. Floor stays `pulp>=2.8`;
+> the migrated code runs on both 3.x and the forthcoming 4.0.
 
 ## Architecture (single source of truth → derived views)
 

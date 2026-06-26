@@ -25,11 +25,19 @@ if TYPE_CHECKING:  # for type checkers / IDEs only — no runtime pulp import
         SolveResult,
         UnsupportedModel,
         build_problem,
+        default_solver,
         solve,
         to_lp_string,
     )
 
-_LAZY = {"SolveResult", "UnsupportedModel", "build_problem", "solve", "to_lp_string"}
+_LAZY = {
+    "SolveResult",
+    "UnsupportedModel",
+    "build_problem",
+    "default_solver",
+    "solve",
+    "to_lp_string",
+}
 
 
 def __getattr__(name: str) -> Any:
@@ -45,6 +53,7 @@ __all__ = [
     "SolveResult",
     "UnsupportedModel",
     "build_problem",
+    "default_solver",
     "solve",
     "to_lp_string",
 ]

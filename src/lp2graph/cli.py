@@ -192,10 +192,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "solve":
         import pulp
 
-        from lp2graph.solve import Instance, solve
+        from lp2graph.solve import Instance, default_solver, solve
 
         solver = {
-            "cbc": lambda: pulp.PULP_CBC_CMD(msg=0, threads=1),
+            "cbc": lambda: default_solver(msg=False),
             "highs": lambda: pulp.HiGHS(msg=False),
             "gurobi": lambda: pulp.GUROBI(msg=0),
         }[args.solver]()
