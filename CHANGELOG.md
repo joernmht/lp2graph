@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **M1b big-operator wrapper rules** (`mining.ingest.latex_normalizer`) — four
+  new rewrite rules driven by Paper-1 corpus evidence (3,668 of 8,957 Tier-2
+  MathML-derived formulas): `underset_bigop` (`\underset{X}{\sum}` →
+  `\sum_{X}`, likewise `\prod`/`\min`/`\max`/`\int`/`\bigcup`/`\bigcap`),
+  `mathop_unwrap`, `underbrace_unwrap`, and `overset_base`. Rule-table version
+  bumped to `rewrite-2026.07.0`.
+
 - **`metrics.model_completeness`** — the second model-level well-formedness
   indicator described in *LP Mining with LP2Graph* (objective declared together
   with ≥1 variable and ≥1 constraint), companion to `model_coherence`. Now

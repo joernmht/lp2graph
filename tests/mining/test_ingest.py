@@ -173,6 +173,31 @@ def test_normalize_is_deterministic():
     assert prov_a.rewrites == prov_b.rewrites
 
 
+def test_underset_bigop_rewritten_to_subscript_form():
+    text, prov = normalize_latex(
+        r"\underset{s_{i} \in \mathcal{S}}{\sum} t_{s_{i}}", source="d.tex"
+    )
+    assert text == r"\sum_{s_{i} \in \mathcal{S}} t_{s_{i}}"
+    assert "underset_bigop" in {r.rule for r in prov.rewrites}
+
+
+def test_underset_bigop_all_operators():
+    for op in (r"\sum", r"\prod", r"\min", r"\max", r"\int", r"\bigcup", r"\bigcap"):
+        text, _ = normalize_latex(r"\underset{i \in \mathcal{N}}{" + op + "} x_i", source="d.tex")
+        assert text.startswith(op + r"_{i \in \mathcal{N}}"), text
+
+
+def test_mathop_overset_underbrace_unwrapped():
+    text, prov = normalize_latex(r"\mathop{\sum}_{i} x_i", source="d.tex")
+    assert text == r"\sum_{i} x_i"
+    text2, prov2 = normalize_latex(
+        r"\overset{\text{def}}{\mathrm{Z}} + \underbrace{c x}", source="d.tex"
+    )
+    assert r"\overset" not in text2 and r"\underbrace" not in text2
+    fired = {r.rule for r in prov.rewrites} | {r.rule for r in prov2.rewrites}
+    assert {"mathop_unwrap", "overset_base", "underbrace_unwrap"} <= fired
+
+
 # ---------------------------------------------------------------------------
 # M1a: Pyomo importer (skipped where pyomo is absent)
 # ---------------------------------------------------------------------------
