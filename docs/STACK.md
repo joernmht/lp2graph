@@ -73,7 +73,7 @@ The package is **not** pip-installed in this environment (PEP 668), so prefix
 local tooling with `PYTHONPATH=src`:
 
 ```bash
-PYTHONPATH=src python3 -m pytest -q                 # full suite (151 tests)
+PYTHONPATH=src python3 -m pytest -q                 # full suite (156 tests)
 PYTHONPATH=src python3 -m ruff check src tests      # lint (line-length 100)
 PYTHONPATH=src python3 -m ruff format --check src tests   # format gate
 PYTHONPATH=src python3 -m mypy                      # mypy --strict (src/lp2graph)
@@ -95,4 +95,24 @@ mkdocs build --strict                               # docs
 
 - `hatchling>=1.21`; wheel packages `src/lp2graph`. Version `0.3.0`
   (`Development Status :: 3 - Alpha`). License Apache-2.0.
-</content>
+
+## Security notes (untrusted-input surfaces)
+
+The library has **no `eval`/`exec`/`pickle`/`subprocess`/`os.system` paths** and
+no network I/O; deserialization is `json.loads` -> pydantic `model_validate`
+(frozen, `extra="forbid"`) -> in-memory semantic `validate()` -- structurally
+safe (no `$ref`/SSRF resolver). The genuine attack surface is the ingestion
+boundary, where the Paper-1 corpus is mined from **third-party GitHub repos**:
+
+- **`mining/ingest/dispatch.py`** -- reads arbitrary source files. Hardened
+  2026-07-02 (ADR-0009): non-UTF-8 files are reported as read-stage
+  `IngestionResult` failures, not raised, so one bad-encoding file no longer
+  aborts a batch. **Open follow-up:** no input-size bound before `read_text`
+  (multi-GB file -> memory-exhaustion DoS); `_looks_like_path` treats short
+  path-like strings as filesystem paths.
+- **Regex-driven LaTeX parsing** (`codec/latex.py`,
+  `mining/ingest/latex_normalizer.py`) -- reviewed for catastrophic backtracking
+  (ReDoS); patterns are lazy (`.*?`) or non-nested, no `(a+)+`-class constructs
+  found. `ingest_latex` swallows all parse exceptions, so a *hang* (not a crash)
+  would be the failure mode of any future pathological pattern -- keep new
+  ingest regexes linear.

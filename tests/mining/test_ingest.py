@@ -143,6 +143,17 @@ def test_missing_file_reported():
     assert result.failures[0].stage == "read"
 
 
+def test_non_utf8_source_reported(tmp_path):
+    # Third-party corpus files are not guaranteed UTF-8; a lone latin-1 byte
+    # must be reported as a read-stage failure, never raised (M1 invariant).
+    p = tmp_path / "model.tex"
+    p.write_bytes(b"\\begin{align}\n x \\le 5 \\quad \xe9\n\\end{align}\n")
+    result = ingest(p)
+    assert result.ok is False
+    assert result.failures[0].stage == "read"
+    assert "UTF-8" in result.failures[0].message
+
+
 def test_code_stubs_report_unsupported(tmp_path):
     for ext in (".gms", ".mod", ".jl", ".py"):
         p = tmp_path / f"m{ext}"
