@@ -27,7 +27,7 @@ from dataclasses import dataclass
 
 from lp2graph.core.model import ConstraintTemplate, Formulation
 from lp2graph.metrics.flags import presence_flags
-from lp2graph.metrics.structural import structural_summary
+from lp2graph.metrics.structural import model_completeness, structural_summary
 from lp2graph.mining.cluster.operator import CN, ClusterConfig, NamedClustering
 from lp2graph.mining.homologize.concept import concept_bag
 from lp2graph.mining.homologize.entity import (
@@ -142,7 +142,8 @@ def model_feature_document(f: Formulation) -> dict[str, int]:
     Covers the model-level channel of the paper's Level M: the presence-flag
     vector ``φ`` and the structural metrics of Sec.~lp2graph — minimal size
     ``S_min``, constraint/variable ratio ``R_C/V``, graph diameter ``D_G``,
-    edge density, and coherence — each bucketed (or flagged) so it joins the
+    edge density, and the two well-formedness indicators (coherence and
+    completeness) — each bucketed (or flagged) so it joins the
     TF-IDF feature space. The raw declarative kind histograms are retained as
     supplementary signal; the *induced* Level-V/Level-C cluster histograms are
     added on top in :func:`induce` (they need the lower passes' output).
@@ -167,11 +168,13 @@ def model_feature_document(f: Formulation) -> dict[str, int]:
     size = float(metrics["minimal_size"].value)
     diameter = int(metrics["graph_diameter"].value)
     coherent = int(metrics["model_coherence"].value)
+    complete = int(model_completeness(f).value)
     doc[f"density_bin:{_bucket(density, _DENSITY_EDGES)}"] += 1
     doc[f"cvr_bin:{_bucket(cvr, _CVR_EDGES)}"] += 1
     doc[f"size_bin:{_bucket(size, _SIZE_EDGES)}"] += 1
     doc[f"diam:{min(diameter, _DIAMETER_CAP)}"] += 1
     doc[f"coherent:{coherent}"] += 1
+    doc[f"complete:{complete}"] += 1
     return dict(doc)
 
 
