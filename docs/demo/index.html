@@ -58,9 +58,14 @@
     padding:2px 8px;border-radius:999px;margin-bottom:6px;color:var(--accent);
     background:color-mix(in srgb,var(--accent) 12%,transparent);
     border:1px solid color-mix(in srgb,var(--accent) 32%,transparent)}
-  a.app.alt{border-left-color:var(--tier3)}
-  a.app.alt .go,a.app.alt .tag{color:var(--tier3);background:color-mix(in srgb,var(--tier3) 12%,transparent);
-    border-color:color-mix(in srgb,var(--tier3) 35%,transparent)}
+  /* game-like entries stand out: darker (Dunkelblau) in light, orange in dark */
+  a.app.game{--gc:#001450;border-left:6px solid var(--gc);
+    background:linear-gradient(120deg,color-mix(in srgb,var(--gc) 7%,var(--card)),var(--card))}
+  a.app.game .go,a.app.game .tag{color:var(--gc);background:color-mix(in srgb,var(--gc) 11%,transparent);
+    border-color:color-mix(in srgb,var(--gc) 38%,transparent)}
+  @media (prefers-color-scheme: dark){
+    a.app.game{--gc:var(--warn)}
+  }
   a.app.doc{border-left-color:var(--accent2)}
   a.app.doc .go,a.app.doc .tag{color:var(--accent2);background:color-mix(in srgb,var(--accent2) 12%,transparent);
     border-color:color-mix(in srgb,var(--accent2) 35%,transparent)}
@@ -96,8 +101,8 @@
     <div class="ah"><div class="at">🔍 Explore the representation</div><div class="go">Open ›</div></div>
     <div class="as">What LP2Graph does today: a clickable typed graph of a real catalog formulation, why graphs matter, install &amp; usage, honest limitations.</div>
   </a>
-  <a class="app alt" href="configurator.html">
-    <div class="tag">vision</div>
+  <a class="app game" href="configurator.html">
+    <div class="tag">vision · interactive</div>
     <div class="ah"><div class="at">🎛️ Model configurator</div><div class="go">Try ›</div></div>
     <div class="as">Where it's going: compose a rescheduling model on your phone — wire every variable and parameter to data with your finger, then export it as text, PuLP / Gurobi code or LaTeX.</div>
   </a>
@@ -115,7 +120,7 @@
 <div class="install">$ <b>pip install lp2graph</b></div>
 
 <footer>
-  <span><a href="https://joernmht.github.io/lp2graph/docs/">Documentation</a> · part of the LP2Graph paper series — <i>LP Mining with LP2Graph: A Use Case for Railway Rescheduling</i>.</span>
+  <span><a href="https://joernmht.github.io/lp2graph/docs/">Documentation</a> · sister demo: <a href="https://railpmining.joernmaurischat.de/">corpus mining — PRISMA &amp; Formula Express</a> · part of the LP2Graph paper series — <i>LP Mining with LP2Graph: A Use Case for Railway Rescheduling</i>.</span>
 </footer>
 </body>
 </html>

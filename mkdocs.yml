@@ -38,6 +38,7 @@ nav:
   - Home: index.md
   - Catalog: catalog.md
   - "Demo (mobile)": https://joernmht.github.io/lp2graph/
+  - "Corpus demo (Paper 1)": https://railpmining.joernmaurischat.de/
   - Data model: data-model.md
   - Views: views.md
   - Text ⇄ graph interface: text-graph-interface.md

@@ -119,15 +119,18 @@
   .lim .ls{font-size:12.5px;color:var(--muted);margin-top:4px}
 
   /* app link */
-  a.app{display:block;text-decoration:none;color:inherit;background:var(--card);
-    border:1px solid var(--line);border-left:4px solid var(--tier3);border-radius:16px;
+  /* game-like entry stands out: darker (Dunkelblau) in light, orange in dark */
+  a.app{--gc:#001450;display:block;text-decoration:none;color:inherit;
+    background:linear-gradient(120deg,color-mix(in srgb,var(--gc) 7%,var(--card)),var(--card));
+    border:1px solid var(--line);border-left:6px solid var(--gc);border-radius:16px;
     padding:16px;box-shadow:var(--shadow);transition:transform .08s ease}
+  @media (prefers-color-scheme: dark){ a.app{--gc:var(--warn)} }
   a.app:active{transform:scale(.985)}
   a.app .ah{display:flex;align-items:center;justify-content:space-between;gap:10px}
   a.app .at{font-size:17px;font-weight:800;letter-spacing:-.01em}
-  a.app .go{flex:none;font-size:13px;font-weight:800;color:var(--tier3);
-    background:color-mix(in srgb,var(--tier3) 12%,transparent);
-    border:1px solid color-mix(in srgb,var(--tier3) 35%,transparent);
+  a.app .go{flex:none;font-size:13px;font-weight:800;color:var(--gc);
+    background:color-mix(in srgb,var(--gc) 11%,transparent);
+    border:1px solid color-mix(in srgb,var(--gc) 38%,transparent);
     border-radius:999px;padding:5px 12px;white-space:nowrap}
   a.app .as{font-size:13px;color:var(--muted);margin-top:6px}
 
@@ -215,7 +218,7 @@ open(<span class="s">"pesp.svg"</span>,<span class="s">"w"</span>).write(render_
 </a>
 
 <footer>
-  <span>LP2Graph — <i>LP Mining with LP2Graph: A Use Case for Railway Rescheduling</i> (Paper 1 of the LP2Graph series), TU Dresden, Chair of Railway Operations. Code: <a href="https://github.com/joernmht/lp2graph">github.com/joernmht/lp2graph</a> · PyPI: <a href="https://pypi.org/project/lp2graph/">lp2graph</a>.</span>
+  <span>LP2Graph — <i>LP Mining with LP2Graph: A Use Case for Railway Rescheduling</i> (Paper 1 of the LP2Graph series), TU Dresden, Chair of Railway Operations. Code: <a href="https://github.com/joernmht/lp2graph">github.com/joernmht/lp2graph</a> · PyPI: <a href="https://pypi.org/project/lp2graph/">lp2graph</a> · sister demo: <a href="https://railpmining.joernmaurischat.de/">corpus mining — PRISMA &amp; Formula Express</a>.</span>
   <div class="modenote">Türkis accent on light · TUD dark-blue field in dark mode · theme follows device appearance.</div>
 </footer>
 
