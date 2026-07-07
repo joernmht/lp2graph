@@ -20,6 +20,7 @@ theme:
 
 nav:
   - Home: index.md
+  - "Demo (mobile)": https://joernmht.github.io/lp2graph/demo/
   - Data model: data-model.md
   - Views: views.md
   - Text ⇄ graph interface: text-graph-interface.md

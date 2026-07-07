@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f3f7f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#00103a" media="(prefers-color-scheme: dark)">
+<title>LP2Graph — model configurator (vision demo)</title>
+<meta name="description" content="Vision demo: compose a railway rescheduling optimization model by wiring constraint templates to data sources with your finger.">
+<style>
+  :root{
+    --page1:#f3f7f8; --page2:#e7f1f1;
+    --ink:#0c1f3a; --muted:#566782;
+    --card:#ffffff; --card2:#f1f8f8; --line:#d6e6e7; --track:#e6f0f0;
+    --accent:#0A777F; --accent2:#2F57B2; --good:#0A777F;
+    --warn:#C85000; --bad:#D20F41; --tier3:#7369BE;
+    --shadow:0 1px 3px rgba(12,40,50,.08),0 6px 18px rgba(12,40,50,.05);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --page1:#00103a; --page2:#001a55;
+      --ink:#eaf1ff; --muted:#a0b4d8;
+      --card:#0c2766; --card2:#10307c; --line:#2a4a92; --track:#001a55;
+      --accent:#36b8bf; --accent2:#7aa2ff; --good:#36b8bf;
+      --warn:#f0922e; --bad:#ff667e; --tier3:#a98bf0;
+      --shadow:0 1px 3px rgba(0,0,0,.4);
+    }
+    .brandlogo svg text, .brandlogo svg path{fill:#ffffff !important}
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    background:linear-gradient(180deg,var(--page1),var(--page2));
+    background-attachment:fixed; color:var(--ink);
+    font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    padding:max(16px,env(safe-area-inset-top)) 16px calc(40px + env(safe-area-inset-bottom));
+    max-width:640px;margin:0 auto;-webkit-font-smoothing:antialiased;
+  }
+  header{margin:6px 0 18px}
+  .brandlogo{margin:2px 0 14px}
+  .brandlogo svg{height:30px;width:auto;display:block}
+  .eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:800}
+  h1{font-size:24px;line-height:1.2;margin:6px 0 4px;font-weight:800;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:14px}
+  .pill{display:inline-flex;align-items:center;gap:6px;margin-top:12px;background:var(--card);
+    border:1px solid color-mix(in srgb,var(--warn) 40%,transparent);border-radius:999px;padding:6px 12px;
+    font-size:12.5px;color:var(--warn);font-weight:700;box-shadow:var(--shadow)}
+  h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:26px 0 12px;font-weight:700}
+  h2 small{letter-spacing:0;text-transform:none;font-weight:600;color:var(--muted)}
+
+  /* objective picker */
+  .obj{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .obj button{appearance:none;border:1px solid var(--line);background:var(--card);color:var(--ink);
+    border-radius:14px;padding:11px 12px;font:inherit;font-size:13px;font-weight:700;text-align:left;
+    box-shadow:var(--shadow);cursor:pointer;transition:transform .06s}
+  .obj button small{display:block;font-weight:600;color:var(--muted);font-size:11px;margin-top:2px}
+  .obj button.sel{border-color:var(--tier3);outline:2px solid color-mix(in srgb,var(--tier3) 45%,transparent);
+    background:color-mix(in srgb,var(--tier3) 10%,var(--card))}
+  .obj button:active{transform:scale(.97)}
+
+  /* constraint library */
+  .lib{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .lib button{appearance:none;border:1px solid var(--line);background:var(--card);color:var(--ink);
+    border-radius:14px;padding:10px 12px;font:inherit;font-size:12.5px;font-weight:700;text-align:left;
+    box-shadow:var(--shadow);cursor:pointer;transition:transform .06s}
+  .lib button:active{transform:scale(.97)}
+  .lib button .m{display:block;font:11px ui-monospace,Menlo,Consolas,monospace;color:var(--accent);margin-top:3px;font-weight:600}
+  .lib button .plus{float:right;color:var(--accent);font-weight:800}
+  .lib button:disabled{opacity:.45;cursor:default}
+
+  /* canvas */
+  .cwrap{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);
+    padding:8px 4px 2px;margin-top:4px}
+  svg{display:block;width:100%;height:auto;touch-action:none;user-select:none;-webkit-user-select:none}
+  .cnode rect{transition:stroke .15s}
+  .cnode text{font:700 10.5px -apple-system,sans-serif;fill:var(--ink);pointer-events:none}
+  .cnode .st{font:600 8.5px -apple-system,sans-serif;fill:var(--muted)}
+  .chipn text{font:700 10px -apple-system,sans-serif;fill:var(--ink);pointer-events:none}
+  .chipn .sym{font:600 8.5px ui-monospace,Menlo,monospace;fill:var(--muted)}
+  .band{font:800 9px -apple-system,sans-serif;fill:var(--muted);letter-spacing:.12em;opacity:.7}
+  .wire{fill:none;stroke-width:2.2;cursor:pointer}
+  .temp{fill:none;stroke:var(--accent2);stroke-width:2.2;stroke-dasharray:5 4;pointer-events:none}
+  .xdel{cursor:pointer}
+  .hint{font-size:11.5px;color:var(--muted);margin:8px 2px 0;text-align:center}
+
+  /* checks */
+  .checks{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .chk{font-size:12px;font-weight:700;border-radius:999px;padding:5px 12px;border:1px solid var(--line);
+    background:var(--card);color:var(--muted);box-shadow:var(--shadow)}
+  .chk.ok{color:var(--good);border-color:color-mix(in srgb,var(--good) 40%,transparent);background:color-mix(in srgb,var(--good) 10%,var(--card))}
+  .chk.warn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 40%,transparent);background:color-mix(in srgb,var(--warn) 10%,var(--card))}
+
+  /* model preview */
+  .lx{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);
+    margin-top:12px;padding:10px 0;overflow-x:auto}
+  .lx .ln{padding:4px 14px;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:nowrap;color:var(--ink)}
+  .lx .ln .t{color:var(--muted);font-size:11px;margin-left:10px}
+  .lx .ln.miss{color:var(--warn)}
+  .lx .empty{padding:4px 14px;font-size:12.5px;color:var(--muted)}
+
+  .bar{display:flex;gap:10px;margin-top:14px}
+  .bar button{appearance:none;flex:1;border:1px solid var(--line);background:var(--card);color:var(--muted);
+    border-radius:12px;padding:10px;font:inherit;font-size:13px;font-weight:700;box-shadow:var(--shadow);cursor:pointer}
+  footer{margin-top:30px;padding-top:14px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+  footer a{color:var(--accent);font-weight:700;text-decoration:none}
+</style>
+</head>
+<body>
+<header>
+  <div class="brandlogo" aria-label="TUD — Chair of Railway Operations">
+    <svg viewBox="0 0 1014 321" xmlns="http://www.w3.org/2000/svg" role="img"><g transform="translate(-1485 -585)"><text fill="#00008C" font-family="Arial,Arial_MSFontService,sans-serif" font-weight="700" font-size="83" transform="matrix(1 0 0 1 1728.92 690)">TUD | Chair</text><text fill="#00008C" font-family="Arial,Arial_MSFontService,sans-serif" font-weight="400" font-size="83" transform="matrix(1 0 0 1 1728.92 763)">o</text><text fill="#00008C" font-family="Arial,Arial_MSFontService,sans-serif" font-weight="400" font-size="83" transform="matrix(1 0 0 1 1774.75 763)">f</text><text fill="#00008C" font-family="Arial,Arial_MSFontService,sans-serif" font-weight="400" font-size="83" transform="matrix(1 0 0 1 1820.59 763)">Railway </text><text fill="#00008C" font-family="Arial,Arial_MSFontService,sans-serif" font-weight="400" font-size="83" transform="matrix(1 0 0 1 1728.92 837)">Operations</text><path d="M1600.51 630 1693 630 1693 722.49 1670.62 744.874 1670.62 674.888 1670.62 674.888 1670.62 651.685 1670.62 651.685 1647.41 651.685 1612.6 651.685 1589.4 674.876 1589.4 674.888 1647.41 674.888 1647.41 768.077 1577.49 838 1577.49 745.511 1485 745.511 1508.77 721.74 1601.01 721.74 1601.01 779.747 1601.02 779.747 1624.21 756.556 1624.21 721.74 1624.21 698.536 1624.21 698.536 1601.01 698.536 1601.01 698.536 1531.97 698.536Z" fill="#00008C" fill-rule="evenodd"/><path d="M1485 628 1554 628 1530.99 651.345 1508.01 651.345 1508.01 674.655 1485 698Z" fill="#C00000" fill-rule="evenodd"/><path d="M1485 768 1508.01 768 1508.01 813.988 1554 813.988 1554 837 1485 837Z" fill="#C00000" fill-rule="evenodd"/><path d="M1694 768 1694 837 1624 837 1647.32 814.012 1670.65 814.012 1670.65 791.012Z" fill="#C00000" fill-rule="evenodd"/></g></svg>
+  </div>
+  <div class="eyebrow">LP2Graph · Configurator</div>
+  <h1>Compose a rescheduling model</h1>
+  <div class="sub">Pick an objective, add constraint templates, then <b>drag from a model node to a data source</b> to ground it. LP2Graph-style structure checks run as you build.</div>
+  <div class="pill">⚗ vision demo — UI only, not yet wired to the library</div>
+</header>
+
+<h2>1 · Objective <small>— tap to change</small></h2>
+<div class="obj" id="obj"></div>
+
+<h2>2 · Constraints <small>— tap to add to the canvas</small></h2>
+<div class="lib" id="lib"></div>
+
+<h2>3 · Wire it to your data</h2>
+<div class="cwrap">
+  <svg id="cv" viewBox="0 0 360 430" aria-label="Model canvas"></svg>
+</div>
+<div class="hint">Drag from the ⚓ objective or a constraint down to a data chip. Tap a wire to remove it, ✕ to remove a constraint.</div>
+
+<div class="checks" id="checks"></div>
+
+<h2>Model preview</h2>
+<div class="lx" id="lx"></div>
+
+<div class="bar"><button id="reset">↺ Reset model</button></div>
+
+<footer>
+  <span>Where LP2Graph is going: from <a href="index.html">representing published models</a> to composing new, structurally validated ones — on the device in your hand. Part of the LP2Graph paper series, TU Dresden, Chair of Railway Operations.</span>
+</footer>
+
+<script>
+(function(){
+const DATA = [
+ {id:"ev", lab:"Timetable events", sym:"t̂ᵢ, τᵢ", x:62},
+ {id:"hw", lab:"Headways",  sym:"hᵢⱼ", x:148},
+ {id:"tr", lab:"Tracks",    sym:"S",   x:222},
+ {id:"rs", lab:"Rolling stock", sym:"R", x:296},
+ {id:"pd", lab:"Pax demand",sym:"p_od",x:62, x2:true}
+];
+const OBJS = [
+ {id:"delay",  lab:"Min total delay",      sub:"operator view",  math:"min Σᵢ (tᵢ − τᵢ)",          needs:["ev"]},
+ {id:"pax",    lab:"Min passenger delay",  sub:"passenger view", math:"min Σᵢ pᵢ·(tᵢ − τᵢ)",       needs:["ev","pd"]},
+ {id:"energy", lab:"Min traction energy",  sub:"sustainability", math:"min Σ_r e_r(v)",            needs:["ev","rs"]},
+ {id:"cancel", lab:"Min cancellations",    sub:"robustness",     math:"min Σᵢ cᵢ·xᵢ",              needs:["ev","rs"]}
+];
+const LIB = [
+ {id:"headway", lab:"Headway",        math:"tⱼ − tᵢ ≥ hᵢⱼ",              needs:["ev","hw"]},
+ {id:"cap",     lab:"Track capacity", math:"Σᵢ xᵢ,s ≤ 1  ∀s∈S",          needs:["ev","tr"]},
+ {id:"conn",    lab:"Connection",     math:"tⱼ ≥ tᵢ + mᵢⱼ",              needs:["ev","pd"]},
+ {id:"turn",    lab:"Turnaround",     math:"t_dep ≥ t_arr + r",          needs:["ev","rs"]},
+ {id:"pesp",    lab:"PESP window",    math:"l ≤ (tⱼ−tᵢ) mod T ≤ l+w",    needs:["ev","hw"]},
+ {id:"bigm",    lab:"Ordering (big-M)",math:"tⱼ ≥ tᵢ − M(1−qᵢⱼ)",        needs:["ev"]}
+];
+const MAXC = 4;
+const NS="http://www.w3.org/2000/svg";
+const svg=document.getElementById('cv');
+let objSel="delay";
+let placed=[];          // {tpl, wires:Set(dataId)}
+let objWires=new Set();
+let drag=null;
+
+function el(t,a){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);return e;}
+const tpl=id=>LIB.find(l=>l.id===id);
+const obj=()=>OBJS.find(o=>o.id===objSel);
+
+/* ---------- static pickers ---------- */
+const objDiv=document.getElementById('obj');
+objDiv.innerHTML=OBJS.map(o=>`<button data-o="${o.id}">${o.lab}<small>${o.sub}</small></button>`).join('');
+objDiv.addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b)return;
+  objSel=b.dataset.o; objWires.clear(); paintAll();
+});
+const libDiv=document.getElementById('lib');
+libDiv.innerHTML=LIB.map(l=>`<button data-c="${l.id}"><span class="plus">＋</span>${l.lab}<span class="m">${l.math}</span></button>`).join('');
+libDiv.addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b||b.disabled)return;
+  if(placed.length>=MAXC)return;
+  placed.push({tpl:tpl(b.dataset.c),wires:new Set()});
+  paintAll();
+});
+
+/* ---------- geometry ---------- */
+const OBJN={x:180,y:38,w:200,h:34};
+function conPos(i){const col=i%2,row=(i/2)|0;return{x:95+col*170,y:118+row*72,w:150,h:44};}
+function dataPos(d,i){const row=i<4?0:1;return{x:DATA[i].x,y:row?398:352,w:74,h:34};}
+
+/* ---------- painting ---------- */
+function paintAll(){
+  [...objDiv.children].forEach(b=>b.classList.toggle('sel',b.dataset.o===objSel));
+  [...libDiv.children].forEach(b=>b.disabled=placed.length>=MAXC);
+  svg.innerHTML='';
+  [["MODEL",20],["DATA",332]].forEach(([t,y])=>{
+    const b=el('text',{x:6,y:y,class:'band'});b.textContent=t;svg.appendChild(b);
+  });
+
+  const centers={};
+  /* data chips */
+  DATA.forEach((d,i)=>{
+    const p=dataPos(d,i);centers["d:"+d.id]=p;
+    const g=el('g',{class:'chipn','data-chip':d.id});
+    g.appendChild(el('rect',{x:p.x-p.w/2,y:p.y-p.h/2,width:p.w,height:p.h,rx:10,
+      fill:'color-mix(in srgb,var(--accent2) 10%, var(--card))',stroke:'var(--accent2)','stroke-width':1.4}));
+    const t1=el('text',{x:p.x,y:p.y-2,'text-anchor':'middle'});t1.textContent=d.lab;
+    const t2=el('text',{x:p.x,y:p.y+11,'text-anchor':'middle',class:'sym'});t2.textContent=d.sym;
+    g.appendChild(t1);g.appendChild(t2);svg.appendChild(g);
+  });
+
+  /* wires (under nodes) */
+  const wl=el('g',{});svg.appendChild(wl);
+  function wire(from,dId,onRemove,ok){
+    const a=from,b=centers["d:"+dId];
+    const cx=(a.x+b.x)/2, cy=(a.y+b.y)/2+26;
+    const d=`M${a.x},${a.y+a.h/2} Q${cx},${cy} ${b.x},${b.y-b.h/2}`;
+    const p=el('path',{d,class:'wire',stroke: ok?'var(--good)':'var(--bad)',opacity:.85});
+    const hit=el('path',{d,fill:'none',stroke:'transparent','stroke-width':16,style:'cursor:pointer'});
+    hit.addEventListener('click',ev=>{ev.stopPropagation();onRemove();paintAll();});
+    wl.appendChild(p);wl.appendChild(hit);
+  }
+
+  /* objective node */
+  const o=obj(), p=OBJN;centers["objective"]=p;
+  const og=el('g',{class:'cnode','data-node':'objective'});
+  const done=o.needs.every(n=>objWires.has(n));
+  og.appendChild(el('rect',{x:p.x-p.w/2,y:p.y-p.h/2,width:p.w,height:p.h,rx:10,
+    fill:'color-mix(in srgb,var(--tier3) 12%, var(--card))',stroke:'var(--tier3)',
+    'stroke-width':done?2.4:1.6,'stroke-dasharray':done?'none':'5 3'}));
+  const ot=el('text',{x:p.x,y:p.y-1,'text-anchor':'middle'});ot.textContent='⚓ '+o.lab+(done?' ✓':'');
+  const os=el('text',{x:p.x,y:p.y+12,'text-anchor':'middle',class:'st'});os.textContent=o.math+'   ('+objWires.size+'/'+o.needs.length+' data)';
+  og.appendChild(ot);og.appendChild(os);svg.appendChild(og);
+  objWires.forEach(d=>wire(p,d,()=>objWires.delete(d),true));
+
+  /* constraint nodes */
+  placed.forEach((c,i)=>{
+    const q=conPos(i);centers["c:"+i]=q;
+    const g=el('g',{class:'cnode','data-node':'c:'+i});
+    const full=c.tpl.needs.every(n=>c.wires.has(n));
+    g.appendChild(el('rect',{x:q.x-q.w/2,y:q.y-q.h/2,width:q.w,height:q.h,rx:10,
+      fill:'color-mix(in srgb,var(--accent) 11%, var(--card))',stroke: full?'var(--good)':'var(--warn)',
+      'stroke-width':full?2.4:1.6,'stroke-dasharray':full?'none':'5 3'}));
+    const t1=el('text',{x:q.x,y:q.y-3,'text-anchor':'middle'});t1.textContent=c.tpl.lab+(full?' ✓':' '+c.wires.size+'/'+c.tpl.needs.length);
+    const t2=el('text',{x:q.x,y:q.y+11,'text-anchor':'middle',class:'st'});t2.textContent=c.tpl.math;
+    g.appendChild(t1);g.appendChild(t2);
+    /* remove button */
+    const xg=el('g',{class:'xdel'});
+    xg.appendChild(el('circle',{cx:q.x+q.w/2-2,cy:q.y-q.h/2+2,r:9,fill:'var(--card)',stroke:'var(--bad)','stroke-width':1.3}));
+    const xt=el('text',{x:q.x+q.w/2-2,y:q.y-q.h/2+5.5,'text-anchor':'middle',style:'font:800 10px sans-serif;fill:var(--bad)'});xt.textContent='✕';
+    xg.appendChild(xt);
+    xg.addEventListener('click',ev=>{ev.stopPropagation();placed.splice(i,1);paintAll();});
+    g.appendChild(xg);svg.appendChild(g);
+    c.wires.forEach(d=>wire(q,d,()=>c.wires.delete(d),true));
+  });
+
+  paintChecks(); paintPreview();
+}
+
+/* ---------- drag to connect (pointer events: mouse + finger) ---------- */
+let tempLine=null;
+svg.addEventListener('pointerdown',e=>{
+  const nd=e.target.closest('[data-node]'); if(!nd)return;
+  e.preventDefault();
+  svg.setPointerCapture(e.pointerId);
+  drag={node:nd.getAttribute('data-node')};
+  tempLine=el('path',{class:'temp',d:''});svg.appendChild(tempLine);
+});
+function svgPt(e){
+  const r=svg.getBoundingClientRect();
+  return {x:(e.clientX-r.left)*360/r.width, y:(e.clientY-r.top)*430/r.height};
+}
+function anchorOf(id){
+  if(id==='objective')return{x:OBJN.x,y:OBJN.y+OBJN.h/2};
+  const i=+id.slice(2), q=conPos(i);return{x:q.x,y:q.y+q.h/2};
+}
+svg.addEventListener('pointermove',e=>{
+  if(!drag)return;
+  const a=anchorOf(drag.node), m=svgPt(e);
+  tempLine.setAttribute('d',`M${a.x},${a.y} Q${(a.x+m.x)/2},${(a.y+m.y)/2+20} ${m.x},${m.y}`);
+});
+svg.addEventListener('pointerup',e=>{
+  if(!drag)return;
+  const t=document.elementFromPoint(e.clientX,e.clientY);
+  const chip=t&&t.closest?t.closest('[data-chip]'):null;
+  if(chip){
+    const dId=chip.getAttribute('data-chip');
+    if(drag.node==='objective'){
+      if(obj().needs.includes(dId))objWires.add(dId);else flash(chip);
+    }else{
+      const c=placed[+drag.node.slice(2)];
+      if(c&&c.tpl.needs.includes(dId))c.wires.add(dId);else flash(chip);
+    }
+  }
+  drag=null; if(tempLine){tempLine.remove();tempLine=null;}
+  paintAll();
+});
+svg.addEventListener('pointercancel',()=>{drag=null;if(tempLine){tempLine.remove();tempLine=null;}});
+function flash(chip){
+  const r=chip.querySelector('rect');if(!r)return;
+  r.setAttribute('stroke','var(--bad)');
+  setTimeout(()=>r.setAttribute('stroke','var(--accent2)'),350);
+}
+
+/* ---------- checks + preview (Level-M analogues) ---------- */
+function paintChecks(){
+  const o=obj();
+  const objOK=o.needs.every(n=>objWires.has(n));
+  const consOK=placed.length>0&&placed.every(c=>c.tpl.needs.every(n=>c.wires.has(n)));
+  const need=o.needs.length+placed.reduce((s,c)=>s+c.tpl.needs.length,0);
+  const have=objWires.size+placed.reduce((s,c)=>s+c.wires.size,0);
+  const complete=objOK&&placed.length>0&&consOK;
+  const cov=need?Math.round(100*have/need):0;
+  document.getElementById('checks').innerHTML=
+    `<span class="chk ${complete?'ok':'warn'}">${complete?'✓ complete':'△ incomplete'}</span>`+
+    `<span class="chk ${cov===100?'ok':(cov>0?'warn':'')}">grounding ${cov}%</span>`+
+    `<span class="chk">${placed.length} constraint${placed.length===1?'':'s'}</span>`+
+    `<span class="chk">objective: ${o.lab.toLowerCase()}</span>`;
+}
+function paintPreview(){
+  const o=obj();
+  const rows=[];
+  const objMiss=!o.needs.every(n=>objWires.has(n));
+  rows.push(`<div class="ln ${objMiss?'miss':''}">${o.math}<span class="t">(objective${objMiss?' — needs data':''})</span></div>`);
+  placed.forEach(c=>{
+    const miss=!c.tpl.needs.every(n=>c.wires.has(n));
+    rows.push(`<div class="ln ${miss?'miss':''}">${c.tpl.math}<span class="t">(${c.tpl.lab.toLowerCase()}${miss?' — needs data':''})</span></div>`);
+  });
+  if(placed.length===0)rows.push(`<div class="empty">Add constraints above — the canonical model preview assembles here.</div>`);
+  document.getElementById('lx').innerHTML=rows.join('');
+}
+
+document.getElementById('reset').addEventListener('click',()=>{
+  placed=[];objWires.clear();objSel='delay';paintAll();
+});
+paintAll();
+})();
+</script>
+</body>
+</html>
