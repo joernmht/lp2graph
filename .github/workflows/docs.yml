@@ -28,10 +28,18 @@ jobs:
           pip install -e ".[docs]"
       - name: Build site
         run: mkdocs build --strict
+      - name: Assemble Pages tree (landing at root, mkdocs under /docs/)
+        run: |
+          mkdir -p public
+          cp -r site public/docs
+          cp docs/demo/index.html docs/demo/explore.html docs/demo/configurator.html public/
+          # keep the old /demo/ URLs working (conference links already shared)
+          mkdir -p public/demo
+          cp docs/demo/index.html docs/demo/explore.html docs/demo/configurator.html public/demo/
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          path: public
 
   deploy:
     needs: build

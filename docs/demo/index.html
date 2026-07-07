@@ -61,6 +61,9 @@
   a.app.alt{border-left-color:var(--tier3)}
   a.app.alt .go,a.app.alt .tag{color:var(--tier3);background:color-mix(in srgb,var(--tier3) 12%,transparent);
     border-color:color-mix(in srgb,var(--tier3) 35%,transparent)}
+  a.app.doc{border-left-color:var(--accent2)}
+  a.app.doc .go,a.app.doc .tag{color:var(--accent2);background:color-mix(in srgb,var(--accent2) 12%,transparent);
+    border-color:color-mix(in srgb,var(--accent2) 35%,transparent)}
 
   .cta{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:24px}
   a.btn{display:block;text-align:center;text-decoration:none;font-weight:800;font-size:14px;
@@ -98,6 +101,11 @@
     <div class="ah"><div class="at">🎛️ Model configurator</div><div class="go">Try ›</div></div>
     <div class="as">Where it's going: compose a rescheduling model on your phone — wire every variable and parameter to data with your finger, then export it as text, PuLP / Gurobi code or LaTeX.</div>
   </a>
+  <a class="app doc" href="https://joernmht.github.io/lp2graph/docs/">
+    <div class="tag">technical</div>
+    <div class="ah"><div class="at">📚 Documentation</div><div class="go">Read ›</div></div>
+    <div class="as">The full reference — README, data model, views, text ⇄ graph interface, metrics, LP mining (M1–M6) and the architecture decision records.</div>
+  </a>
 </div>
 
 <div class="cta">
@@ -107,7 +115,7 @@
 <div class="install">$ <b>pip install lp2graph</b></div>
 
 <footer>
-  <span><a href="https://joernmht.github.io/lp2graph/">Documentation</a> · part of the LP2Graph paper series — <i>LP Mining with LP2Graph: A Use Case for Railway Rescheduling</i>.</span>
+  <span><a href="https://joernmht.github.io/lp2graph/docs/">Documentation</a> · part of the LP2Graph paper series — <i>LP Mining with LP2Graph: A Use Case for Railway Rescheduling</i>.</span>
 </footer>
 </body>
 </html>
