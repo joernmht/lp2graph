@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f3f7f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#00103a" media="(prefers-color-scheme: dark)">
+<title>LP2Graph — from formulas to typed graphs</title>
+<meta name="description" content="Why represent LP/MILP formulations as typed graphs — a clickable example, install &amp; usage, and honest limitations. TU Dresden, Chair of Railway Operations.">
+<style>
+  /* TUD Chair of Railway Operations — mobile design system (tud-mobile skill). */
+  :root{
+    --page1:#f3f7f8; --page2:#e7f1f1;
+    --ink:#0c1f3a; --muted:#566782;
+    --card:#ffffff; --card2:#f1f8f8; --line:#d6e6e7; --track:#e6f0f0;
+    --accent:#0A777F; --accent2:#2F57B2; --good:#0A777F;
+    --warn:#C85000; --bad:#D20F41; --tier3:#7369BE;
+    --kpi1:#e6f4f4; --kpi2:#eef0fb;
+    --shadow:0 1px 3px rgba(12,40,50,.08),0 6px 18px rgba(12,40,50,.05);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --page1:#00103a; --page2:#001a55;
+      --ink:#eaf1ff; --muted:#a0b4d8;
+      --card:#0c2766; --card2:#10307c; --line:#2a4a92; --track:#001a55;
+      --accent:#36b8bf; --accent2:#7aa2ff; --good:#36b8bf;
+      --warn:#f0922e; --bad:#ff667e; --tier3:#a98bf0;
+      --kpi1:#0c2a6e; --kpi2:#11306f;
+      --shadow:0 1px 3px rgba(0,0,0,.4);
+    }
+    .brandlogo svg text, .brandlogo svg path{fill:#ffffff !important}
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    background:linear-gradient(180deg,var(--page1),var(--page2));
+    background-attachment:fixed; color:var(--ink);
+    font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    padding:max(16px,env(safe-area-inset-top)) 16px calc(40px + env(safe-area-inset-bottom));
+    max-width:640px;margin:0 auto;-webkit-font-smoothing:antialiased;
+  }
+  header{margin:6px 0 22px}
+  .back{display:inline-block;font-size:12px;font-weight:800;color:var(--accent);text-decoration:none;margin-bottom:8px}
+  .brandlogo{margin:2px 0 14px}
+  .brandlogo svg{height:30px;width:auto;display:block}
+  .eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:800}
+  h1{font-size:24px;line-height:1.2;margin:6px 0 4px;font-weight:800;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:14px}
+  .pill{display:inline-flex;align-items:center;gap:6px;margin-top:12px;background:var(--card);
+    border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12.5px;color:var(--muted);box-shadow:var(--shadow)}
+  .pill b{color:var(--ink);font-weight:700}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--good);box-shadow:0 0 0 3px color-mix(in srgb,var(--good) 24%,transparent)}
+  h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:32px 0 14px;font-weight:700}
+  p.lead{font-size:14px;color:var(--muted);margin:0 0 14px}
+
+  /* pipeline flow */
+  .flow{display:flex;flex-direction:column}
+  .node{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 16px;
+    display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:var(--shadow);
+    position:relative;z-index:2;border-left:4px solid var(--accent)}
+  .node.start{border-left-color:var(--accent2)}
+  .node.end{border-left-color:var(--tier3)}
+  .node .nm{font-weight:700;font-size:15px}
+  .node .ns{font-size:12px;color:var(--muted);margin-top:3px}
+  .node code{background:var(--card2);border:1px solid var(--line);border-radius:6px;padding:1px 6px;
+    font-size:11.5px;color:var(--accent)}
+  .conn{position:relative;display:flex;flex-direction:column;align-items:center;gap:7px;padding:10px 0}
+  .conn::before{content:"";position:absolute;top:-2px;bottom:-2px;left:50%;transform:translateX(-50%);width:2px;background:var(--line);z-index:0}
+  .chip{position:relative;z-index:1;display:inline-flex;align-items:center;gap:6px;background:var(--card);
+    border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:12.5px;font-weight:700;color:var(--muted);box-shadow:var(--shadow)}
+
+  /* interactive graph */
+  .gwrap{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:10px 6px 4px}
+  .gwrap svg{display:block;width:100%;height:auto;touch-action:manipulation}
+  .gnode{cursor:pointer}
+  .gnode rect,.gnode circle{transition:opacity .15s}
+  .gnode text{font:700 11px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;fill:var(--ink);pointer-events:none}
+  .gedge{fill:none;transition:opacity .15s}
+  .glabel{font:700 8.5px -apple-system,sans-serif;fill:var(--muted);pointer-events:none}
+  .band{font:800 9px -apple-system,sans-serif;fill:var(--muted);letter-spacing:.12em;opacity:.7}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;padding:8px 10px 6px;font-size:11px;color:var(--muted)}
+  .legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+  .detail{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--accent);
+    border-radius:14px;padding:12px 14px;box-shadow:var(--shadow);margin-top:12px;min-height:74px}
+  .detail .dt{font-weight:800;font-size:15px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .detail .tag{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;padding:2px 7px;border-radius:999px;
+    color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);border:1px solid color-mix(in srgb,var(--accent) 32%,transparent)}
+  .detail .ds{font-size:12.5px;color:var(--muted);margin-top:5px}
+  .detail ul{margin:8px 0 0;padding-left:18px;font-size:12px;color:var(--muted)}
+  .detail li{margin:2px 0}
+  .detail b{color:var(--ink)}
+
+  /* latex block */
+  .lx{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);
+    margin-top:12px;padding:10px 0;overflow-x:auto}
+  .lx .ln{padding:5px 14px;font:12.5px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:nowrap;color:var(--ink);
+    border-left:3px solid transparent}
+  .lx .ln .t{color:var(--muted);font-size:11px;margin-left:10px}
+  .lx .ln.hl{background:color-mix(in srgb,var(--accent) 10%,transparent);border-left-color:var(--accent)}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:8px;text-align:center}
+
+  /* cards */
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .pcard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px;box-shadow:var(--shadow)}
+  .pcard .h{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);font-weight:700}
+  .pcard .s{font-size:12.5px;color:var(--muted);margin-top:6px}
+  .pcard .s b{color:var(--ink)}
+
+  /* code */
+  pre{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);
+    padding:13px 14px;overflow-x:auto;font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--ink);margin:0 0 12px}
+  pre .c{color:var(--muted)} pre .k{color:var(--accent);font-weight:700} pre .s{color:var(--accent2)}
+
+  /* limitations */
+  .lim{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--warn);
+    border-radius:14px;padding:12px 14px;box-shadow:var(--shadow);margin-bottom:10px}
+  .lim .lt{font-weight:800;font-size:14px}
+  .lim .ls{font-size:12.5px;color:var(--muted);margin-top:4px}
+
+  /* app link */
+  a.app{display:block;text-decoration:none;color:inherit;background:var(--card);
+    border:1px solid var(--line);border-left:4px solid var(--tier3);border-radius:16px;
+    padding:16px;box-shadow:var(--shadow);transition:transform .08s ease}
+  a.app:active{transform:scale(.985)}
+  a.app .ah{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  a.app .at{font-size:17px;font-weight:800;letter-spacing:-.01em}
+  a.app .go{flex:none;font-size:13px;font-weight:800;color:var(--tier3);
+    background:color-mix(in srgb,var(--tier3) 12%,transparent);
+    border:1px solid color-mix(in srgb,var(--tier3) 35%,transparent);
+    border-radius:999px;padding:5px 12px;white-space:nowrap}
+  a.app .as{font-size:13px;color:var(--muted);margin-top:6px}
+
+  footer{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+  footer a{color:var(--accent);font-weight:700;text-decoration:none}
+  .modenote{font-size:11px;color:var(--muted);margin-top:6px;opacity:.85}
+</style>
+</head>
+<body>
+<header>
+  <a class="back" href="./">‹ demo hub</a>
+  <div class="brandlogo" aria-label="TUD — Chair of Railway Operations">
+    <svg viewBox="0 0 1014 321" xmlns="http://www.w3.org/2000/svg" role="img"><g transform="translate(-1485 -585)"><text fill="#00008C" font-family="Arial,Arial_MSFontService,sans-serif" font-weight="700" font-size="83" transform="matrix(1 0 0 1 1728.92 690)">TUD | Chair</text><text fill="#00008C" font-family="Arial,Arial_MSFontService,sans-serif" font-weight="400" font-size="83" transform="matrix(1 0 0 1 1728.92 763)">o</text><text fill="#00008C" font-family="Arial,Arial_MSFontService,sans-serif" font-weight="400" font-size="83" transform="matrix(1 0 0 1 1774.75 763)">f</text><text fill="#00008C" font-family="Arial,Arial_MSFontService,sans-serif" font-weight="400" font-size="83" transform="matrix(1 0 0 1 1820.59 763)">Railway </text><text fill="#00008C" font-family="Arial,Arial_MSFontService,sans-serif" font-weight="400" font-size="83" transform="matrix(1 0 0 1 1728.92 837)">Operations</text><path d="M1600.51 630 1693 630 1693 722.49 1670.62 744.874 1670.62 674.888 1670.62 674.888 1670.62 651.685 1670.62 651.685 1647.41 651.685 1612.6 651.685 1589.4 674.876 1589.4 674.888 1647.41 674.888 1647.41 768.077 1577.49 838 1577.49 745.511 1485 745.511 1508.77 721.74 1601.01 721.74 1601.01 779.747 1601.02 779.747 1624.21 756.556 1624.21 721.74 1624.21 698.536 1624.21 698.536 1601.01 698.536 1601.01 698.536 1531.97 698.536Z" fill="#00008C" fill-rule="evenodd"/><path d="M1485 628 1554 628 1530.99 651.345 1508.01 651.345 1508.01 674.655 1485 698Z" fill="#C00000" fill-rule="evenodd"/><path d="M1485 768 1508.01 768 1508.01 813.988 1554 813.988 1554 837 1485 837Z" fill="#C00000" fill-rule="evenodd"/><path d="M1694 768 1694 837 1624 837 1647.32 814.012 1670.65 814.012 1670.65 791.012Z" fill="#C00000" fill-rule="evenodd"/></g></svg>
+  </div>
+  <div class="eyebrow">TU Dresden · LP2Graph</div>
+  <h1>From formulas to typed graphs</h1>
+  <div class="sub">LP2Graph turns LP / MIP / MILP formulations into <b>deterministic typed graphs</b> — so optimization models become data you can compare, measure, mine and learn from.</div>
+  <div class="pill"><span class="dot"></span><span><b>pip install lp2graph</b> · Apache-2.0 · deterministic by design</span></div>
+</header>
+
+<h2>The idea in one pipeline</h2>
+<div class="flow">
+  <div class="node start"><div><div class="nm">Published formulation</div><div class="ns">LaTeX from a paper, or a JSON model — e.g. train timetabling, rescheduling</div></div></div>
+  <div class="conn"><span class="chip">validate → canonical model</span></div>
+  <div class="node"><div><div class="nm">Canonical <code>Formulation</code></div><div class="ns">one pydantic model, version-stable JSON schema — the single source of truth</div></div></div>
+  <div class="conn"><span class="chip">derive (pure, reproducible)</span></div>
+  <div class="node"><div><div class="nm">Typed graph views</div><div class="ns"><code>schema</code> templates &amp; indices · <code>hybrid</code> + offset edges · <code>ground</code> instances</div></div></div>
+  <div class="conn"><span class="chip">analyze &amp; export</span></div>
+  <div class="node end"><div><div class="nm">Metrics · Mining · ML</div><div class="ns">structural metrics, isomorphism &amp; clustering (taxonomy), PyG / DGL / NetworkX / Pyomo</div></div></div>
+</div>
+
+<h2>Try it — tap the graph</h2>
+<p class="lead">This is a <b>real LP2Graph output</b>: the <code style="font-size:12px">schema</code> view of the PESP cyclic-timetabling MILP from the library's catalog (11 nodes, 18 typed edges), exactly as <code style="font-size:12px">lp2graph.views.schema()</code> derives it. Tap any node.</p>
+<div class="gwrap">
+  <svg id="g" viewBox="0 0 360 330" role="img" aria-label="Typed graph of the PESP formulation"></svg>
+  <div class="legend">
+    <span><i style="background:var(--accent)"></i>lhs term</span>
+    <span><i style="background:var(--warn)"></i>rhs term</span>
+    <span><i style="background:var(--tier3)"></i>objective</span>
+    <span><i style="background:var(--muted);opacity:.6"></i>shape (indexing)</span>
+    <span>dashed = negative sign</span>
+  </div>
+</div>
+<div class="detail" id="detail">
+  <div class="dt">Tap a node <span class="tag">interactive</span></div>
+  <div class="ds">Every node and edge is typed. Select a constraint, variable, parameter or the objective to see its role — and where it appears in the canonical LaTeX below.</div>
+</div>
+<div class="lx" id="lx"></div>
+<div class="hint">The LaTeX is the library's own reversible canonical form (<code style="font-size:10.5px">codec.to_canonical_latex</code>) — graph ⇄ text round-trips losslessly.</div>
+
+<h2>Why graphs?</h2>
+<div class="cards">
+  <div class="pcard"><div class="h">Comparable structure</div><div class="s">Two papers, different symbols, same model? As typed graphs that's an <b>isomorphism check</b>, not a judgement call — the basis for a formulation taxonomy.</div></div>
+  <div class="pcard"><div class="h">Deterministic</div><div class="s">Same input → byte-identical graph, metrics and LaTeX. <b>No LLM, no randomness</b> from the validated model onward. Snapshot-tested.</div></div>
+  <div class="pcard"><div class="h">Measurable</div><div class="s">Structural metrics (density, diameter, degree profiles), modeling-idiom flags (<b>big-M, modulo, slack</b>), well-formedness checks — computed, not eyeballed.</div></div>
+  <div class="pcard"><div class="h">ML-ready</div><div class="s">One export call to <b>PyG / DGL / NetworkX</b> turns a century of published models into graph-learning datasets.</div></div>
+  <div class="pcard"><div class="h">Solver-agnostic</div><div class="s">The representation carries no solver dependency; grounding + a Pyomo/PuLP back-end are optional extras, not the core.</div></div>
+  <div class="pcard"><div class="h">Scales to corpora</div><div class="s">The mining extensions (M1–M6) ingest, homologize, cluster and label <b>whole literatures</b> of formulations with versioned, replayable resources.</div></div>
+</div>
+
+<h2>Install &amp; use</h2>
+<pre><span class="c"># core is just pydantic + jsonschema</span>
+pip install lp2graph
+<span class="c"># extras: [networkx] [pyg] [all] …</span></pre>
+<pre><span class="k">from</span> lp2graph <span class="k">import</span> load
+<span class="k">from</span> lp2graph.views <span class="k">import</span> schema, hybrid, ground
+<span class="k">from</span> lp2graph.metrics.structural <span class="k">import</span> structural_summary
+
+f = load(<span class="s">"formulations/constraints/mip_2_8_pesp.json"</span>)
+g = schema(f)                      <span class="c"># ← the graph you tapped above</span>
+print(structural_summary(g)[<span class="s">"graph_diameter"</span>].value)
+open(<span class="s">"pesp.svg"</span>,<span class="s">"w"</span>).write(render_svg(hybrid(f)))</pre>
+<p class="lead">Full docs, data model and the formulation catalog: <a href="https://joernmht.github.io/lp2graph/" style="color:var(--accent);font-weight:700">joernmht.github.io/lp2graph</a>.</p>
+
+<h2>Honest limitations</h2>
+<div class="lim"><div class="lt">Linear world only</div><div class="ls">LP / MIP / MILP. General nonlinear programs, black-box objectives and constraint programming are out of scope by design.</div></div>
+<div class="lim"><div class="lt">Representable ≠ solvable</div><div class="ls">A valid typed graph proves structure, not feasibility or tractability. Solving needs grounding with instance data and an external solver.</div></div>
+<div class="lim"><div class="lt">Canonical input needed</div><div class="ls">The LaTeX ⇄ graph codec is deterministic and reversible on the <i>canonical</i> form. Arbitrary paper LaTeX first needs normalization and human review — extraction from PDFs is upstream of the determinism boundary.</div></div>
+<div class="lim"><div class="lt">Schema view abstracts size</div><div class="ls">Templates and index sets, not instances: a model over 10 or 10,000 trains has the same schema graph. Use the ground view (with cardinalities) when size matters.</div></div>
+
+<h2>Where this is going</h2>
+<a class="app" href="configurator.html">
+  <div class="ah"><div class="at">🎛️ Model configurator (vision demo)</div><div class="go">Try ›</div></div>
+  <div class="as">Compose a rescheduling model on your phone: pick an objective, add constraint templates, and wire them to live data sources with your finger — LP2Graph checks the structure as you build. A UI vision of the road ahead, not yet wired to the library.</div>
+</a>
+
+<footer>
+  <span>LP2Graph — <i>LP Mining with LP2Graph: A Use Case for Railway Rescheduling</i> (Paper 1 of the LP2Graph series), TU Dresden, Chair of Railway Operations. Code: <a href="https://github.com/joernmht/lp2graph">github.com/joernmht/lp2graph</a> · PyPI: <a href="https://pypi.org/project/lp2graph/">lp2graph</a>.</span>
+  <div class="modenote">Türkis accent on light · TUD dark-blue field in dark mode · theme follows device appearance.</div>
+</footer>
+
+<script>
+(function(){
+/* Real lp2graph schema-view graph of formulations/constraints/mip_2_8_pesp.json
+   (derived with lp2graph.views.schema — node ids, classes, subtypes and edge
+   roles are verbatim library output; only x/y layout is added for display). */
+const G = {
+ nodes:[
+  {id:"objective:0",cls:"objective",sub:"min",lab:"min tension",x:105,y:28,d:"Objective: minimize the sum of period-wrap counters k (timetable tension).",lx:[0]},
+  {id:"op:objective:0/obj[0]/sum",cls:"operator",sub:"sum",lab:"Σ over E×E",x:255,y:28,d:"Aggregation operator: the objective sums k over all event pairs (i,j).",lx:[0]},
+  {id:"constraint:pesp_lower",cls:"constraint",sub:"modulo",lab:"pesp_lower",x:95,y:100,d:"Lower bound on the cyclic offset: t_j − t_i + T·k_ij ≥ l_ij, ∀ i≠j.",lx:[1]},
+  {id:"constraint:pesp_upper",cls:"constraint",sub:"modulo",lab:"pesp_upper",x:265,y:100,d:"Upper bound on the cyclic offset (lower + tolerance window), ∀ i≠j.",lx:[2]},
+  {id:"var:t",cls:"variable",sub:"non_negative",lab:"t",x:120,y:172,d:"Event time within the period (primary decision variable, indexed by E).",lx:[1,2]},
+  {id:"var:k",cls:"variable",sub:"integer",lab:"k",x:240,y:172,d:"Period wrap counter (auxiliary integer variable, indexed by E×E).",lx:[0,1,2]},
+  {id:"param:l",cls:"parameter",sub:"matrix",lab:"l",x:60,y:242,d:"Lower offset target between event pairs (data, E×E matrix).",lx:[1,2]},
+  {id:"param:w",cls:"parameter",sub:"matrix",lab:"w",x:152,y:242,d:"Tolerance window width between event pairs (data, E×E matrix).",lx:[2]},
+  {id:"param:T_period",cls:"parameter",sub:"scalar",lab:"T_period",x:268,y:242,d:"Period length (scalar data, e.g. 60 min for an hourly timetable).",lx:[1,2]},
+  {id:"index:E",cls:"index",sub:"set",lab:"E",x:130,y:305,d:"Index set: events (arrivals/departures) scheduled within the period.",lx:[0,1,2]},
+  {id:"index:T",cls:"index",sub:"cyclic",lab:"T (cyclic)",x:255,y:305,d:"Cyclic time index — structural: it marks the period as wrap-around; it appears in the graph, not as a symbol in the LaTeX.",lx:[]}
+ ],
+ edges:[
+  {s:"objective:0",t:"op:objective:0/obj[0]/sum",r:"objective"},
+  {s:"op:objective:0/obj[0]/sum",t:"var:k",r:"objective"},
+  {s:"constraint:pesp_lower",t:"var:t",r:"lhs",sign:1},
+  {s:"constraint:pesp_lower",t:"var:t",r:"lhs",sign:-1},
+  {s:"constraint:pesp_lower",t:"var:k",r:"lhs",sign:1,coef:"T_period"},
+  {s:"constraint:pesp_lower",t:"param:l",r:"rhs",sign:1},
+  {s:"constraint:pesp_upper",t:"var:t",r:"lhs",sign:1},
+  {s:"constraint:pesp_upper",t:"var:t",r:"lhs",sign:-1},
+  {s:"constraint:pesp_upper",t:"var:k",r:"lhs",sign:1,coef:"T_period"},
+  {s:"constraint:pesp_upper",t:"param:l",r:"rhs",sign:1},
+  {s:"constraint:pesp_upper",t:"param:w",r:"rhs",sign:1},
+  {s:"var:t",t:"index:E",r:"shape"},
+  {s:"var:k",t:"index:E",r:"shape"},
+  {s:"var:k",t:"index:E",r:"shape"},
+  {s:"param:l",t:"index:E",r:"shape"},
+  {s:"param:l",t:"index:E",r:"shape"},
+  {s:"param:w",t:"index:E",r:"shape"},
+  {s:"param:w",t:"index:E",r:"shape"}
+ ]
+};
+const LX = [
+ {html:"min&nbsp; Σ<sub>i∈E, j∈E</sub> k<sub>ij</sub>", tag:"tension"},
+ {html:"t<sub>j</sub> − t<sub>i</sub> + T_period·k<sub>ij</sub> ≥ l<sub>ij</sub> &nbsp;&nbsp;∀ i,j∈E, j≠i", tag:"pesp_lower"},
+ {html:"t<sub>j</sub> − t<sub>i</sub> + T_period·k<sub>ij</sub> ≤ l<sub>ij</sub> + w<sub>ij</sub> &nbsp;&nbsp;∀ i,j∈E, j≠i", tag:"pesp_upper"}
+];
+const ROLE = {lhs:"var(--accent)", rhs:"var(--warn)", objective:"var(--tier3)", shape:"var(--muted)"};
+const CLS  = {objective:"var(--tier3)", operator:"var(--tier3)", constraint:"var(--accent)",
+              variable:"var(--accent2)", parameter:"var(--warn)", index:"var(--muted)"};
+const W = {objective:86,operator:82,constraint:84,variable:44,parameter:64,index:70};
+const svg = document.getElementById('g');
+const NS = "http://www.w3.org/2000/svg";
+const pos = Object.fromEntries(G.nodes.map(n=>[n.id,n]));
+function el(t,a){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);return e;}
+
+/* band labels */
+[["OBJ",28],["CON",100],["VAR",172],["PAR",242],["IDX",305]].forEach(([t,y])=>{
+  const b=el('text',{x:6,y:y+3,class:'band'});b.textContent=t;svg.appendChild(b);
+});
+
+/* edges (parallel edges curved apart) */
+const seen={};
+const edgeEls=[];
+G.edges.forEach(ed=>{
+  const key=ed.s+"|"+ed.t, k=(seen[key]=(seen[key]||0)+1);
+  const a=pos[ed.s], b=pos[ed.t];
+  const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
+  const dx=b.x-a.x, dy=b.y-a.y, L=Math.hypot(dx,dy)||1;
+  const n=G.edges.filter(e=>e.s+"|"+e.t===key).length;
+  const o=(k-(n+1)/2)*16;
+  const cx=mx-dy/L*o, cy=my+dx/L*o;
+  const p=el('path',{d:`M${a.x},${a.y} Q${cx},${cy} ${b.x},${b.y}`,class:'gedge',
+    stroke:ROLE[ed.r],'stroke-width':ed.r==='shape'?1.1:1.8,
+    'stroke-dasharray':ed.sign===-1?'4 3':(ed.r==='shape'?'2 3':'none'),opacity:.75});
+  svg.appendChild(p);edgeEls.push({el:p,ed});
+  if(ed.coef){const t=el('text',{x:cx,y:cy-3,class:'glabel','text-anchor':'middle'});t.textContent='×'+ed.coef;svg.appendChild(t);}
+});
+
+/* nodes */
+const nodeEls={};
+G.nodes.forEach(n=>{
+  const g=el('g',{class:'gnode',tabindex:0,role:'button','aria-label':n.lab});
+  const w=W[n.cls]||70,h=26;
+  const r=el('rect',{x:n.x-w/2,y:n.y-h/2,width:w,height:h,rx:n.cls==='variable'?13:9,
+    fill:'color-mix(in srgb,'+CLS[n.cls]+' 13%, var(--card))',stroke:CLS[n.cls],
+    'stroke-width':1.6,'stroke-dasharray':n.cls==='operator'?'3 3':'none'});
+  const t=el('text',{x:n.x,y:n.y+4,'text-anchor':'middle'});t.textContent=n.lab;
+  g.appendChild(r);g.appendChild(t);svg.appendChild(g);nodeEls[n.id]={g,r,n};
+  g.addEventListener('click',ev=>{ev.stopPropagation();select(n.id);});
+  g.addEventListener('keydown',ev=>{if(ev.key==='Enter'||ev.key===' ')select(n.id);});
+});
+
+/* latex block */
+const lx=document.getElementById('lx');
+lx.innerHTML=LX.map((l,i)=>`<div class="ln" id="lxl${i}">${l.html}<span class="t">(${l.tag})</span></div>`).join('');
+
+const detail=document.getElementById('detail');
+let cur=null;
+function select(id){
+  if(cur===id){return clear();}
+  cur=id;const n=pos[id];
+  for(const nid in nodeEls){nodeEls[nid].g.style.opacity=(nid===id)?1:0.35;nodeEls[nid].r.setAttribute('stroke-width',nid===id?3:1.6);}
+  edgeEls.forEach(({el,ed})=>{const on=(ed.s===id||ed.t===id);el.style.opacity=on?1:0.12;el.setAttribute('stroke-width',on?(ed.r==='shape'?1.8:2.6):(ed.r==='shape'?1.1:1.8));});
+  const inc=G.edges.filter(e=>e.s===id||e.t===id);
+  const li=inc.map(e=>{
+    const other=e.s===id?e.t:e.s, dir=e.s===id?'→':'←';
+    const bits=[e.r]; if(e.sign===-1)bits.push('sign −'); if(e.coef)bits.push('coef '+e.coef);
+    return `<li>${dir} <b>${pos[other].lab}</b> <span>(${bits.join(', ')})</span></li>`;}).join('');
+  detail.style.borderLeftColor=CLS[n.cls];
+  detail.innerHTML=`<div class="dt">${n.lab} <span class="tag" style="color:${CLS[n.cls]};border-color:color-mix(in srgb,${CLS[n.cls]} 32%,transparent);background:color-mix(in srgb,${CLS[n.cls]} 12%,transparent)">${n.cls} · ${n.sub}</span></div>
+    <div class="ds">${n.d}</div><ul>${li}</ul>`;
+  LX.forEach((_,i)=>document.getElementById('lxl'+i).classList.toggle('hl',n.lx.includes(i)));
+}
+function clear(){cur=null;
+  for(const nid in nodeEls){nodeEls[nid].g.style.opacity=1;nodeEls[nid].r.setAttribute('stroke-width',1.6);}
+  edgeEls.forEach(({el,ed})=>{el.style.opacity=.75;el.setAttribute('stroke-width',ed.r==='shape'?1.1:1.8);});
+  LX.forEach((_,i)=>document.getElementById('lxl'+i).classList.remove('hl'));
+  detail.style.borderLeftColor='var(--accent)';
+  detail.innerHTML=`<div class="dt">Tap a node <span class="tag">interactive</span></div>
+   <div class="ds">Every node and edge is typed. Select a constraint, variable, parameter or the objective to see its role — and where it appears in the canonical LaTeX below.</div>`;
+}
+svg.addEventListener('click',clear);
+})();
+</script>
+</body>
+</html>

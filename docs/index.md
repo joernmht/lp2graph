@@ -3,10 +3,11 @@
 Typed-graph representation of LP, MIP, and MILP formulations.
 
 !!! tip "Interactive demo"
-    New here? Open the **[mobile demo](https://joernmht.github.io/lp2graph/demo/)** —
-    a clickable typed graph of a real catalog formulation, why graphs matter,
-    install & limitations, plus a
-    **[model-configurator vision demo](https://joernmht.github.io/lp2graph/demo/configurator.html)**.
+    New here? Open the **[mobile demo hub](https://joernmht.github.io/lp2graph/demo/)**:
+    [explore the representation](https://joernmht.github.io/lp2graph/demo/explore.html)
+    (status quo — a clickable typed graph of a real catalog formulation) or try the
+    [model configurator](https://joernmht.github.io/lp2graph/demo/configurator.html)
+    (vision — compose a model and export it as text, PuLP/Gurobi or LaTeX).
 
 ## Catalog
 
