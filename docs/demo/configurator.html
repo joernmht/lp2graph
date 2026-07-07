@@ -7,7 +7,7 @@
 <meta name="theme-color" content="#f3f7f8" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#00103a" media="(prefers-color-scheme: dark)">
 <title>LP2Graph — model configurator (vision demo)</title>
-<meta name="description" content="Vision demo: compose a railway rescheduling optimization model by wiring constraint templates to data sources with your finger.">
+<meta name="description" content="Vision demo: compose a railway rescheduling optimization model by wiring every variable and parameter to data sources with your finger.">
 <style>
   :root{
     --page1:#f3f7f8; --page2:#e7f1f1;
@@ -73,16 +73,18 @@
   .cwrap{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);
     padding:8px 4px 2px;margin-top:4px}
   svg{display:block;width:100%;height:auto;touch-action:none;user-select:none;-webkit-user-select:none}
-  .cnode rect{transition:stroke .15s}
+  .cnode rect.body{transition:stroke .15s}
   .cnode text{font:700 10.5px -apple-system,sans-serif;fill:var(--ink);pointer-events:none}
-  .cnode .st{font:600 8.5px -apple-system,sans-serif;fill:var(--muted)}
+  .cnode .st{font:600 8.5px ui-monospace,Menlo,monospace;fill:var(--muted)}
+  .plab{font:700 8px ui-monospace,Menlo,monospace;pointer-events:none}
   .chipn text{font:700 10px -apple-system,sans-serif;fill:var(--ink);pointer-events:none}
   .chipn .sym{font:600 8.5px ui-monospace,Menlo,monospace;fill:var(--muted)}
   .band{font:800 9px -apple-system,sans-serif;fill:var(--muted);letter-spacing:.12em;opacity:.7}
-  .wire{fill:none;stroke-width:2.2;cursor:pointer}
+  .wire{fill:none;stroke-width:2.2;pointer-events:none}
   .temp{fill:none;stroke:var(--accent2);stroke-width:2.2;stroke-dasharray:5 4;pointer-events:none}
   .xdel{cursor:pointer}
   .hint{font-size:11.5px;color:var(--muted);margin:8px 2px 0;text-align:center}
+  .hint i{font-style:normal;font-weight:800}
 
   /* checks */
   .checks{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
@@ -113,7 +115,7 @@
   </div>
   <div class="eyebrow">LP2Graph · Configurator</div>
   <h1>Compose a rescheduling model</h1>
-  <div class="sub">Pick an objective, add constraint templates, then <b>drag from a model node to a data source</b> to ground it. LP2Graph-style structure checks run as you build.</div>
+  <div class="sub">Pick an objective, add constraint templates, then ground the model symbol by symbol: <b>every variable and parameter has its own connector</b> — drag each port to the data source that grounds it.</div>
   <div class="pill">⚗ vision demo — UI only, not yet wired to the library</div>
 </header>
 
@@ -123,11 +125,11 @@
 <h2>2 · Constraints <small>— tap to add to the canvas</small></h2>
 <div class="lib" id="lib"></div>
 
-<h2>3 · Wire it to your data</h2>
+<h2>3 · Ground every symbol</h2>
 <div class="cwrap">
-  <svg id="cv" viewBox="0 0 360 430" aria-label="Model canvas"></svg>
+  <svg id="cv" viewBox="0 0 360 470" aria-label="Model canvas"></svg>
 </div>
-<div class="hint">Drag from the ⚓ objective or a constraint down to a data chip. Tap a wire to remove it, ✕ to remove a constraint.</div>
+<div class="hint">Drag a port ○ to a data chip. <i style="color:var(--accent2)">Blue = variable</i> — binds to the index set it ranges over; <i style="color:var(--warn)">orange = parameter</i> — binds to the data that fills it. Tap a wire to unbind, ✕ removes a constraint.</div>
 
 <div class="checks" id="checks"></div>
 
@@ -147,29 +149,44 @@ const DATA = [
  {id:"hw", lab:"Headways",  sym:"hᵢⱼ", x:148},
  {id:"tr", lab:"Tracks",    sym:"S",   x:222},
  {id:"rs", lab:"Rolling stock", sym:"R", x:296},
- {id:"pd", lab:"Pax demand",sym:"p_od",x:62, x2:true}
+ {id:"pd", lab:"Pax demand",sym:"p_od",x:62}
 ];
+/* every objective/constraint declares its symbols: k = var|par, b = the data
+   source that grounds it (variables: the index set they range over;
+   parameters: the data that fills them) */
 const OBJS = [
- {id:"delay",  lab:"Min total delay",      sub:"operator view",  math:"min Σᵢ (tᵢ − τᵢ)",          needs:["ev"]},
- {id:"pax",    lab:"Min passenger delay",  sub:"passenger view", math:"min Σᵢ pᵢ·(tᵢ − τᵢ)",       needs:["ev","pd"]},
- {id:"energy", lab:"Min traction energy",  sub:"sustainability", math:"min Σ_r e_r(v)",            needs:["ev","rs"]},
- {id:"cancel", lab:"Min cancellations",    sub:"robustness",     math:"min Σᵢ cᵢ·xᵢ",              needs:["ev","rs"]}
+ {id:"delay",  lab:"Min total delay",     sub:"operator view",  math:"min Σᵢ (tᵢ − τᵢ)",
+  syms:[{s:"t",k:"var",b:"ev"},{s:"τ",k:"par",b:"ev"}]},
+ {id:"pax",    lab:"Min passenger delay", sub:"passenger view", math:"min Σᵢ pᵢ·(tᵢ − τᵢ)",
+  syms:[{s:"t",k:"var",b:"ev"},{s:"τ",k:"par",b:"ev"},{s:"p",k:"par",b:"pd"}]},
+ {id:"energy", lab:"Min traction energy", sub:"sustainability", math:"min Σ_r e_r(v)",
+  syms:[{s:"v",k:"var",b:"ev"},{s:"e",k:"par",b:"rs"}]},
+ {id:"cancel", lab:"Min cancellations",   sub:"robustness",     math:"min Σᵢ cᵢ·xᵢ",
+  syms:[{s:"x",k:"var",b:"ev"},{s:"c",k:"par",b:"pd"}]}
 ];
 const LIB = [
- {id:"headway", lab:"Headway",        math:"tⱼ − tᵢ ≥ hᵢⱼ",              needs:["ev","hw"]},
- {id:"cap",     lab:"Track capacity", math:"Σᵢ xᵢ,s ≤ 1  ∀s∈S",          needs:["ev","tr"]},
- {id:"conn",    lab:"Connection",     math:"tⱼ ≥ tᵢ + mᵢⱼ",              needs:["ev","pd"]},
- {id:"turn",    lab:"Turnaround",     math:"t_dep ≥ t_arr + r",          needs:["ev","rs"]},
- {id:"pesp",    lab:"PESP window",    math:"l ≤ (tⱼ−tᵢ) mod T ≤ l+w",    needs:["ev","hw"]},
- {id:"bigm",    lab:"Ordering (big-M)",math:"tⱼ ≥ tᵢ − M(1−qᵢⱼ)",        needs:["ev"]}
+ {id:"headway", lab:"Headway",         math:"tⱼ − tᵢ ≥ hᵢⱼ",
+  syms:[{s:"t",k:"var",b:"ev"},{s:"h",k:"par",b:"hw"}]},
+ {id:"cap",     lab:"Track capacity",  math:"Σᵢ xᵢ,s ≤ 1  ∀s∈S",
+  syms:[{s:"x",k:"var",b:"ev"},{s:"S",k:"par",b:"tr"}]},
+ {id:"conn",    lab:"Connection",      math:"tⱼ ≥ tᵢ + mᵢⱼ",
+  syms:[{s:"t",k:"var",b:"ev"},{s:"m",k:"par",b:"pd"}]},
+ {id:"turn",    lab:"Turnaround",      math:"t_dep ≥ t_arr + r",
+  syms:[{s:"t",k:"var",b:"ev"},{s:"r",k:"par",b:"rs"}]},
+ {id:"pesp",    lab:"PESP window",     math:"l ≤ (tⱼ−tᵢ) mod T ≤ l+w",
+  syms:[{s:"t",k:"var",b:"ev"},{s:"l,w",k:"par",b:"hw"}]},
+ {id:"bigm",    lab:"Ordering (big-M)",math:"tⱼ ≥ tᵢ − M(1−qᵢⱼ)",
+  syms:[{s:"t",k:"var",b:"ev"},{s:"q",k:"var",b:"ev"}]}
 ];
 const MAXC = 4;
+const KIND = {var:"var(--accent2)", par:"var(--warn)"};
 const NS="http://www.w3.org/2000/svg";
 const svg=document.getElementById('cv');
 let objSel="delay";
-let placed=[];          // {tpl, wires:Set(dataId)}
-let objWires=new Set();
-let drag=null;
+let objBinds={};        // sym -> dataId (objective)
+let placed=[];          // {tpl, binds:{sym->dataId}}
+let drag=null, tempLine=null;
+let portPos={};         // "owner|sym" -> {x,y,kind,bind,owner,sym}
 
 function el(t,a){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);return e;}
 const tpl=id=>LIB.find(l=>l.id===id);
@@ -180,35 +197,36 @@ const objDiv=document.getElementById('obj');
 objDiv.innerHTML=OBJS.map(o=>`<button data-o="${o.id}">${o.lab}<small>${o.sub}</small></button>`).join('');
 objDiv.addEventListener('click',e=>{
   const b=e.target.closest('button'); if(!b)return;
-  objSel=b.dataset.o; objWires.clear(); paintAll();
+  objSel=b.dataset.o; objBinds={}; paintAll();
 });
 const libDiv=document.getElementById('lib');
 libDiv.innerHTML=LIB.map(l=>`<button data-c="${l.id}"><span class="plus">＋</span>${l.lab}<span class="m">${l.math}</span></button>`).join('');
 libDiv.addEventListener('click',e=>{
   const b=e.target.closest('button'); if(!b||b.disabled)return;
   if(placed.length>=MAXC)return;
-  placed.push({tpl:tpl(b.dataset.c),wires:new Set()});
+  placed.push({tpl:tpl(b.dataset.c),binds:{}});
   paintAll();
 });
 
 /* ---------- geometry ---------- */
-const OBJN={x:180,y:38,w:200,h:34};
-function conPos(i){const col=i%2,row=(i/2)|0;return{x:95+col*170,y:118+row*72,w:150,h:44};}
-function dataPos(d,i){const row=i<4?0:1;return{x:DATA[i].x,y:row?398:352,w:74,h:34};}
+const OBJN={x:180,y:46,w:220,h:56};
+function conPos(i){const col=i%2,row=(i/2)|0;return{x:95+col*170,y:132+row*88,w:150,h:56};}
+function dataPos(i){const row=i<4?0:1;return{x:DATA[i].x,y:row?442:396,w:74,h:34};}
+function portXY(p,idx,n){return{x:p.x-p.w/2+p.w*(idx+1)/(n+1), y:p.y+p.h/2};}
 
 /* ---------- painting ---------- */
 function paintAll(){
   [...objDiv.children].forEach(b=>b.classList.toggle('sel',b.dataset.o===objSel));
   [...libDiv.children].forEach(b=>b.disabled=placed.length>=MAXC);
-  svg.innerHTML='';
-  [["MODEL",20],["DATA",332]].forEach(([t,y])=>{
+  svg.innerHTML=''; portPos={};
+  [["MODEL",14],["DATA",372]].forEach(([t,y])=>{
     const b=el('text',{x:6,y:y,class:'band'});b.textContent=t;svg.appendChild(b);
   });
 
-  const centers={};
+  const chipC={};
   /* data chips */
   DATA.forEach((d,i)=>{
-    const p=dataPos(d,i);centers["d:"+d.id]=p;
+    const p=dataPos(i);chipC[d.id]=p;
     const g=el('g',{class:'chipn','data-chip':d.id});
     g.appendChild(el('rect',{x:p.x-p.w/2,y:p.y-p.h/2,width:p.w,height:p.h,rx:10,
       fill:'color-mix(in srgb,var(--accent2) 10%, var(--card))',stroke:'var(--accent2)','stroke-width':1.4}));
@@ -217,74 +235,83 @@ function paintAll(){
     g.appendChild(t1);g.appendChild(t2);svg.appendChild(g);
   });
 
-  /* wires (under nodes) */
+  /* wire layer (under nodes); tap-to-remove hit layer is added last, on top */
   const wl=el('g',{});svg.appendChild(wl);
-  function wire(from,dId,onRemove,ok){
-    const a=from,b=centers["d:"+dId];
-    const cx=(a.x+b.x)/2, cy=(a.y+b.y)/2+26;
-    const d=`M${a.x},${a.y+a.h/2} Q${cx},${cy} ${b.x},${b.y-b.h/2}`;
-    const p=el('path',{d,class:'wire',stroke: ok?'var(--good)':'var(--bad)',opacity:.85});
-    const hit=el('path',{d,fill:'none',stroke:'transparent','stroke-width':16,style:'cursor:pointer'});
-    hit.addEventListener('click',ev=>{ev.stopPropagation();onRemove();paintAll();});
-    wl.appendChild(p);wl.appendChild(hit);
+  const wires=[];
+  function wire(pp,dId,onRemove){
+    const b=chipC[dId];
+    const d=`M${pp.x},${pp.y+4} Q${(pp.x+b.x)/2},${(pp.y+b.y)/2+22} ${b.x},${b.y-b.h/2}`;
+    wl.appendChild(el('path',{d,class:'wire',stroke:KIND[pp.kind],opacity:.85}));
+    wires.push({d,onRemove});
+  }
+
+  /* a model node with one port per symbol */
+  function node(owner,p,color,title,math,syms,binds,extra){
+    const g=el('g',{class:'cnode'});
+    const full=syms.every(s=>binds[s.s]);
+    g.appendChild(el('rect',{class:'body',x:p.x-p.w/2,y:p.y-p.h/2,width:p.w,height:p.h,rx:10,
+      fill:'color-mix(in srgb,'+color+' 11%, var(--card))',stroke: full?'var(--good)':color,
+      'stroke-width':full?2.4:1.6,'stroke-dasharray':full?'none':'5 3'}));
+    const t1=el('text',{x:p.x,y:p.y-14,'text-anchor':'middle'});t1.textContent=title+(full?' ✓':'');
+    const t2=el('text',{x:p.x,y:p.y,'text-anchor':'middle',class:'st'});t2.textContent=math;
+    g.appendChild(t1);g.appendChild(t2);
+    syms.forEach((s,i)=>{
+      const q=portXY(p,i,syms.length), key=owner+'|'+s.s;
+      portPos[key]={...q,kind:s.k,bind:s.b,owner,sym:s.s};
+      const lb=el('text',{x:q.x,y:q.y-9,'text-anchor':'middle',class:'plab',fill:KIND[s.k]});
+      lb.textContent=s.s; g.appendChild(lb);
+      g.appendChild(el('circle',{cx:q.x,cy:q.y,r:5.5,fill: binds[s.s]?KIND[s.k]:'var(--card)',
+        stroke:KIND[s.k],'stroke-width':1.8}));
+      /* big invisible touch target */
+      g.appendChild(el('circle',{cx:q.x,cy:q.y+2,r:16,fill:'transparent','data-port':key,style:'cursor:crosshair'}));
+      if(binds[s.s])wire(portPos[key],binds[s.s],()=>{delete binds[s.s];});
+    });
+    if(extra)extra(g);
+    svg.appendChild(g);
   }
 
   /* objective node */
-  const o=obj(), p=OBJN;centers["objective"]=p;
-  const og=el('g',{class:'cnode','data-node':'objective'});
-  const done=o.needs.every(n=>objWires.has(n));
-  og.appendChild(el('rect',{x:p.x-p.w/2,y:p.y-p.h/2,width:p.w,height:p.h,rx:10,
-    fill:'color-mix(in srgb,var(--tier3) 12%, var(--card))',stroke:'var(--tier3)',
-    'stroke-width':done?2.4:1.6,'stroke-dasharray':done?'none':'5 3'}));
-  const ot=el('text',{x:p.x,y:p.y-1,'text-anchor':'middle'});ot.textContent='⚓ '+o.lab+(done?' ✓':'');
-  const os=el('text',{x:p.x,y:p.y+12,'text-anchor':'middle',class:'st'});os.textContent=o.math+'   ('+objWires.size+'/'+o.needs.length+' data)';
-  og.appendChild(ot);og.appendChild(os);svg.appendChild(og);
-  objWires.forEach(d=>wire(p,d,()=>objWires.delete(d),true));
+  const o=obj();
+  node('objective',OBJN,'var(--tier3)','⚓ '+o.lab,o.math,o.syms,objBinds);
 
   /* constraint nodes */
   placed.forEach((c,i)=>{
-    const q=conPos(i);centers["c:"+i]=q;
-    const g=el('g',{class:'cnode','data-node':'c:'+i});
-    const full=c.tpl.needs.every(n=>c.wires.has(n));
-    g.appendChild(el('rect',{x:q.x-q.w/2,y:q.y-q.h/2,width:q.w,height:q.h,rx:10,
-      fill:'color-mix(in srgb,var(--accent) 11%, var(--card))',stroke: full?'var(--good)':'var(--warn)',
-      'stroke-width':full?2.4:1.6,'stroke-dasharray':full?'none':'5 3'}));
-    const t1=el('text',{x:q.x,y:q.y-3,'text-anchor':'middle'});t1.textContent=c.tpl.lab+(full?' ✓':' '+c.wires.size+'/'+c.tpl.needs.length);
-    const t2=el('text',{x:q.x,y:q.y+11,'text-anchor':'middle',class:'st'});t2.textContent=c.tpl.math;
-    g.appendChild(t1);g.appendChild(t2);
-    /* remove button */
-    const xg=el('g',{class:'xdel'});
-    xg.appendChild(el('circle',{cx:q.x+q.w/2-2,cy:q.y-q.h/2+2,r:9,fill:'var(--card)',stroke:'var(--bad)','stroke-width':1.3}));
-    const xt=el('text',{x:q.x+q.w/2-2,y:q.y-q.h/2+5.5,'text-anchor':'middle',style:'font:800 10px sans-serif;fill:var(--bad)'});xt.textContent='✕';
-    xg.appendChild(xt);
-    xg.addEventListener('click',ev=>{ev.stopPropagation();placed.splice(i,1);paintAll();});
-    g.appendChild(xg);svg.appendChild(g);
-    c.wires.forEach(d=>wire(q,d,()=>c.wires.delete(d),true));
+    const q=conPos(i);
+    node('c:'+i,q,'var(--accent)',c.tpl.lab,c.tpl.math,c.tpl.syms,c.binds,g=>{
+      const xg=el('g',{class:'xdel'});
+      xg.appendChild(el('circle',{cx:q.x+q.w/2-2,cy:q.y-q.h/2+2,r:9,fill:'var(--card)',stroke:'var(--bad)','stroke-width':1.3}));
+      const xt=el('text',{x:q.x+q.w/2-2,y:q.y-q.h/2+5.5,'text-anchor':'middle',style:'font:800 10px sans-serif;fill:var(--bad)'});xt.textContent='✕';
+      xg.appendChild(xt);
+      xg.addEventListener('click',ev=>{ev.stopPropagation();placed.splice(i,1);paintAll();});
+      g.appendChild(xg);
+    });
+  });
+
+  /* wire tap-to-remove hit paths (on top so nothing swallows the tap) */
+  wires.forEach(w=>{
+    const hit=el('path',{d:w.d,fill:'none',stroke:'transparent','stroke-width':14,style:'cursor:pointer'});
+    hit.addEventListener('click',ev=>{ev.stopPropagation();w.onRemove();paintAll();});
+    svg.appendChild(hit);
   });
 
   paintChecks(); paintPreview();
 }
 
-/* ---------- drag to connect (pointer events: mouse + finger) ---------- */
-let tempLine=null;
+/* ---------- drag a port to a data chip (pointer events: mouse + finger) ---------- */
 svg.addEventListener('pointerdown',e=>{
-  const nd=e.target.closest('[data-node]'); if(!nd)return;
+  const pt=e.target.closest('[data-port]'); if(!pt)return;
   e.preventDefault();
-  svg.setPointerCapture(e.pointerId);
-  drag={node:nd.getAttribute('data-node')};
+  if(svg.setPointerCapture)svg.setPointerCapture(e.pointerId);
+  drag={key:pt.getAttribute('data-port')};
   tempLine=el('path',{class:'temp',d:''});svg.appendChild(tempLine);
 });
 function svgPt(e){
   const r=svg.getBoundingClientRect();
-  return {x:(e.clientX-r.left)*360/r.width, y:(e.clientY-r.top)*430/r.height};
-}
-function anchorOf(id){
-  if(id==='objective')return{x:OBJN.x,y:OBJN.y+OBJN.h/2};
-  const i=+id.slice(2), q=conPos(i);return{x:q.x,y:q.y+q.h/2};
+  return {x:(e.clientX-r.left)*360/(r.width||1), y:(e.clientY-r.top)*470/(r.height||1)};
 }
 svg.addEventListener('pointermove',e=>{
   if(!drag)return;
-  const a=anchorOf(drag.node), m=svgPt(e);
+  const a=portPos[drag.key], m=svgPt(e);
   tempLine.setAttribute('d',`M${a.x},${a.y} Q${(a.x+m.x)/2},${(a.y+m.y)/2+20} ${m.x},${m.y}`);
 });
 svg.addEventListener('pointerup',e=>{
@@ -292,13 +319,11 @@ svg.addEventListener('pointerup',e=>{
   const t=document.elementFromPoint(e.clientX,e.clientY);
   const chip=t&&t.closest?t.closest('[data-chip]'):null;
   if(chip){
-    const dId=chip.getAttribute('data-chip');
-    if(drag.node==='objective'){
-      if(obj().needs.includes(dId))objWires.add(dId);else flash(chip);
-    }else{
-      const c=placed[+drag.node.slice(2)];
-      if(c&&c.tpl.needs.includes(dId))c.wires.add(dId);else flash(chip);
-    }
+    const dId=chip.getAttribute('data-chip'), p=portPos[drag.key];
+    if(p&&p.bind===dId){
+      if(p.owner==='objective')objBinds[p.sym]=dId;
+      else placed[+p.owner.slice(2)].binds[p.sym]=dId;
+    }else flash(chip);
   }
   drag=null; if(tempLine){tempLine.remove();tempLine=null;}
   paintAll();
@@ -311,35 +336,38 @@ function flash(chip){
 }
 
 /* ---------- checks + preview (Level-M analogues) ---------- */
-function paintChecks(){
+function counts(){
   const o=obj();
-  const objOK=o.needs.every(n=>objWires.has(n));
-  const consOK=placed.length>0&&placed.every(c=>c.tpl.needs.every(n=>c.wires.has(n)));
-  const need=o.needs.length+placed.reduce((s,c)=>s+c.tpl.needs.length,0);
-  const have=objWires.size+placed.reduce((s,c)=>s+c.wires.size,0);
-  const complete=objOK&&placed.length>0&&consOK;
+  const need=o.syms.length+placed.reduce((s,c)=>s+c.tpl.syms.length,0);
+  const have=Object.keys(objBinds).length+placed.reduce((s,c)=>s+Object.keys(c.binds).length,0);
+  const objOK=o.syms.every(s=>objBinds[s.s]);
+  const consOK=placed.length>0&&placed.every(c=>c.tpl.syms.every(s=>c.binds[s.s]));
+  return {need,have,complete:objOK&&consOK};
+}
+function paintChecks(){
+  const o=obj(),{need,have,complete}=counts();
   const cov=need?Math.round(100*have/need):0;
   document.getElementById('checks').innerHTML=
     `<span class="chk ${complete?'ok':'warn'}">${complete?'✓ complete':'△ incomplete'}</span>`+
-    `<span class="chk ${cov===100?'ok':(cov>0?'warn':'')}">grounding ${cov}%</span>`+
+    `<span class="chk ${cov===100?'ok':(cov>0?'warn':'')}">grounding ${cov}% · ${have}/${need} symbols</span>`+
     `<span class="chk">${placed.length} constraint${placed.length===1?'':'s'}</span>`+
     `<span class="chk">objective: ${o.lab.toLowerCase()}</span>`;
 }
 function paintPreview(){
   const o=obj();
   const rows=[];
-  const objMiss=!o.needs.every(n=>objWires.has(n));
-  rows.push(`<div class="ln ${objMiss?'miss':''}">${o.math}<span class="t">(objective${objMiss?' — needs data':''})</span></div>`);
-  placed.forEach(c=>{
-    const miss=!c.tpl.needs.every(n=>c.wires.has(n));
-    rows.push(`<div class="ln ${miss?'miss':''}">${c.tpl.math}<span class="t">(${c.tpl.lab.toLowerCase()}${miss?' — needs data':''})</span></div>`);
-  });
+  function line(math,tag,syms,binds){
+    const miss=syms.filter(s=>!binds[s.s]).map(s=>s.s);
+    rows.push(`<div class="ln ${miss.length?'miss':''}">${math}<span class="t">(${tag}${miss.length?' — bind '+miss.join(', '):''})</span></div>`);
+  }
+  line(o.math,'objective',o.syms,objBinds);
+  placed.forEach(c=>line(c.tpl.math,c.tpl.lab.toLowerCase(),c.tpl.syms,c.binds));
   if(placed.length===0)rows.push(`<div class="empty">Add constraints above — the canonical model preview assembles here.</div>`);
   document.getElementById('lx').innerHTML=rows.join('');
 }
 
 document.getElementById('reset').addEventListener('click',()=>{
-  placed=[];objWires.clear();objSel='delay';paintAll();
+  placed=[];objBinds={};objSel='delay';paintAll();
 });
 paintAll();
 })();
