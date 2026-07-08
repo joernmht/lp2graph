@@ -1,10 +1,10 @@
 # Catalog & where to start
 
 !!! tip "Interactive demo"
-    New here? Open the **[mobile demo hub](https://joernmht.github.io/lp2graph/)**:
-    [explore the representation](https://joernmht.github.io/lp2graph/explore.html)
+    New here? Open the **[mobile demo hub](https://lp2graph.joernmaurischat.de/)**:
+    [explore the representation](https://lp2graph.joernmaurischat.de/explore.html)
     (status quo — a clickable typed graph of a real catalog formulation) or try the
-    [model configurator](https://joernmht.github.io/lp2graph/configurator.html)
+    [model configurator](https://lp2graph.joernmaurischat.de/configurator.html)
     (vision — compose a model and export it as text, PuLP/Gurobi or LaTeX).
 
 ## Catalog

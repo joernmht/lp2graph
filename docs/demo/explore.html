@@ -203,7 +203,7 @@ f = load(<span class="s">"formulations/constraints/mip_2_8_pesp.json"</span>)
 g = schema(f)                      <span class="c"># ← the graph you tapped above</span>
 print(structural_summary(g)[<span class="s">"graph_diameter"</span>].value)
 open(<span class="s">"pesp.svg"</span>,<span class="s">"w"</span>).write(render_svg(hybrid(f)))</pre>
-<p class="lead">Full docs, data model and the formulation catalog: <a href="https://joernmht.github.io/lp2graph/docs/" style="color:var(--accent);font-weight:700">joernmht.github.io/lp2graph/docs</a>.</p>
+<p class="lead">Full docs, data model and the formulation catalog: <a href="https://lp2graph.joernmaurischat.de/docs/" style="color:var(--accent);font-weight:700">lp2graph.joernmaurischat.de/docs</a>.</p>
 
 <h2>Honest limitations</h2>
 <div class="lim"><div class="lt">Linear world only</div><div class="ls">LP / MIP / MILP. General nonlinear programs, black-box objectives and constraint programming are out of scope by design.</div></div>

@@ -2,7 +2,7 @@ site_name: lp2graph
 site_description: Typed-graph representation of LP, MIP, and MILP formulations.
 # The mkdocs site is the technical level, served under /docs/;
 # the mobile landing page (docs/demo/index.html) owns the site root.
-site_url: https://joernmht.github.io/lp2graph/docs/
+site_url: https://lp2graph.joernmaurischat.de/docs/
 repo_url: https://github.com/joernmht/lp2graph
 repo_name: joernmht/lp2graph
 
@@ -37,7 +37,7 @@ validation:
 nav:
   - Home: index.md
   - Catalog: catalog.md
-  - "Demo (mobile)": https://joernmht.github.io/lp2graph/
+  - "Demo (mobile)": https://lp2graph.joernmaurischat.de/
   - "Corpus demo (Paper 1)": https://railpmining.joernmaurischat.de/
   - Data model: data-model.md
   - Views: views.md
