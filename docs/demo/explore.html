@@ -164,7 +164,7 @@
 </div>
 
 <h2>Try it — tap the graph</h2>
-<p class="lead">This is a <b>real LP2Graph output</b>: the <code style="font-size:12px">schema</code> view of the PESP cyclic-timetabling MILP from the library's catalog (11 nodes, 18 typed edges), exactly as <code style="font-size:12px">lp2graph.views.schema()</code> derives it. Tap any node.</p>
+<p class="lead">This is a <b>real LP2Graph output</b>: the <code style="font-size:12px">schema</code> view of the PESP cyclic-timetabling MILP from the library's catalog (10 nodes, 20 typed edges), exactly as <code style="font-size:12px">lp2graph.views.schema()</code> derives it. Tap any node.</p>
 <div class="gwrap">
   <svg id="g" viewBox="0 0 360 330" role="img" aria-label="Typed graph of the PESP formulation"></svg>
   <div class="legend">
@@ -172,6 +172,7 @@
     <span><i style="background:var(--warn)"></i>rhs term</span>
     <span><i style="background:var(--tier3)"></i>objective</span>
     <span><i style="background:var(--muted);opacity:.6"></i>shape (indexing)</span>
+    <span><i style="background:var(--warn);opacity:.7"></i>coefficient use</span>
     <span>dashed = negative sign</span>
   </div>
 </div>
@@ -239,8 +240,7 @@ const G = {
   {id:"param:l",cls:"parameter",sub:"matrix",lab:"l",x:60,y:242,d:"Lower offset target between event pairs (data, E×E matrix).",lx:[1,2]},
   {id:"param:w",cls:"parameter",sub:"matrix",lab:"w",x:152,y:242,d:"Tolerance window width between event pairs (data, E×E matrix).",lx:[2]},
   {id:"param:T_period",cls:"parameter",sub:"scalar",lab:"T_period",x:268,y:242,d:"Period length (scalar data, e.g. 60 min for an hourly timetable).",lx:[1,2]},
-  {id:"index:E",cls:"index",sub:"set",lab:"E",x:130,y:305,d:"Index set: events (arrivals/departures) scheduled within the period.",lx:[0,1,2]},
-  {id:"index:T",cls:"index",sub:"cyclic",lab:"T (cyclic)",x:255,y:305,d:"Cyclic time index — structural: it marks the period as wrap-around; it appears in the graph, not as a symbol in the LaTeX.",lx:[]}
+  {id:"index:E",cls:"index",sub:"set",lab:"E",x:172,y:305,d:"Index set: events (arrivals/departures) scheduled within the period.",lx:[0,1,2]}
  ],
  edges:[
   {s:"objective:0",t:"op:objective:0/obj[0]/sum",r:"objective"},
@@ -248,10 +248,12 @@ const G = {
   {s:"constraint:pesp_lower",t:"var:t",r:"lhs",sign:1},
   {s:"constraint:pesp_lower",t:"var:t",r:"lhs",sign:-1},
   {s:"constraint:pesp_lower",t:"var:k",r:"lhs",sign:1,coef:"T_period"},
+  {s:"constraint:pesp_lower",t:"param:T_period",r:"coef"},
   {s:"constraint:pesp_lower",t:"param:l",r:"rhs",sign:1},
   {s:"constraint:pesp_upper",t:"var:t",r:"lhs",sign:1},
   {s:"constraint:pesp_upper",t:"var:t",r:"lhs",sign:-1},
   {s:"constraint:pesp_upper",t:"var:k",r:"lhs",sign:1,coef:"T_period"},
+  {s:"constraint:pesp_upper",t:"param:T_period",r:"coef"},
   {s:"constraint:pesp_upper",t:"param:l",r:"rhs",sign:1},
   {s:"constraint:pesp_upper",t:"param:w",r:"rhs",sign:1},
   {s:"var:t",t:"index:E",r:"shape"},
@@ -268,7 +270,8 @@ const LX = [
  {html:"t<sub>j</sub> − t<sub>i</sub> + T_period·k<sub>ij</sub> ≥ l<sub>ij</sub> &nbsp;&nbsp;∀ i,j∈E, j≠i", tag:"pesp_lower"},
  {html:"t<sub>j</sub> − t<sub>i</sub> + T_period·k<sub>ij</sub> ≤ l<sub>ij</sub> + w<sub>ij</sub> &nbsp;&nbsp;∀ i,j∈E, j≠i", tag:"pesp_upper"}
 ];
-const ROLE = {lhs:"var(--accent)", rhs:"var(--warn)", objective:"var(--tier3)", shape:"var(--muted)"};
+const ROLE = {lhs:"var(--accent)", rhs:"var(--warn)", objective:"var(--tier3)", shape:"var(--muted)", coef:"var(--warn)"};
+const thin = r => r==='shape'||r==='coef';
 const CLS  = {objective:"var(--tier3)", operator:"var(--tier3)", constraint:"var(--accent)",
               variable:"var(--accent2)", parameter:"var(--warn)", index:"var(--muted)"};
 const W = {objective:86,operator:82,constraint:84,variable:44,parameter:64,index:70};
@@ -294,8 +297,8 @@ G.edges.forEach(ed=>{
   const o=(k-(n+1)/2)*16;
   const cx=mx-dy/L*o, cy=my+dx/L*o;
   const p=el('path',{d:`M${a.x},${a.y} Q${cx},${cy} ${b.x},${b.y}`,class:'gedge',
-    stroke:ROLE[ed.r],'stroke-width':ed.r==='shape'?1.1:1.8,
-    'stroke-dasharray':ed.sign===-1?'4 3':(ed.r==='shape'?'2 3':'none'),opacity:.75});
+    stroke:ROLE[ed.r],'stroke-width':thin(ed.r)?1.1:1.8,
+    'stroke-dasharray':ed.sign===-1?'4 3':(ed.r==='shape'?'2 3':(ed.r==='coef'?'1 3':'none')),opacity:.75});
   svg.appendChild(p);edgeEls.push({el:p,ed});
   if(ed.coef){const t=el('text',{x:cx,y:cy-3,class:'glabel','text-anchor':'middle'});t.textContent='×'+ed.coef;svg.appendChild(t);}
 });
@@ -324,7 +327,7 @@ function select(id){
   if(cur===id){return clear();}
   cur=id;const n=pos[id];
   for(const nid in nodeEls){nodeEls[nid].g.style.opacity=(nid===id)?1:0.35;nodeEls[nid].r.setAttribute('stroke-width',nid===id?3:1.6);}
-  edgeEls.forEach(({el,ed})=>{const on=(ed.s===id||ed.t===id);el.style.opacity=on?1:0.12;el.setAttribute('stroke-width',on?(ed.r==='shape'?1.8:2.6):(ed.r==='shape'?1.1:1.8));});
+  edgeEls.forEach(({el,ed})=>{const on=(ed.s===id||ed.t===id);el.style.opacity=on?1:0.12;el.setAttribute('stroke-width',on?(thin(ed.r)?1.8:2.6):(thin(ed.r)?1.1:1.8));});
   const inc=G.edges.filter(e=>e.s===id||e.t===id);
   const li=inc.map(e=>{
     const other=e.s===id?e.t:e.s, dir=e.s===id?'→':'←';
@@ -337,7 +340,7 @@ function select(id){
 }
 function clear(){cur=null;
   for(const nid in nodeEls){nodeEls[nid].g.style.opacity=1;nodeEls[nid].r.setAttribute('stroke-width',1.6);}
-  edgeEls.forEach(({el,ed})=>{el.style.opacity=.75;el.setAttribute('stroke-width',ed.r==='shape'?1.1:1.8);});
+  edgeEls.forEach(({el,ed})=>{el.style.opacity=.75;el.setAttribute('stroke-width',thin(ed.r)?1.1:1.8);});
   LX.forEach((_,i)=>document.getElementById('lxl'+i).classList.remove('hl'));
   detail.style.borderLeftColor='var(--accent)';
   detail.innerHTML=`<div class="dt">Tap a node <span class="tag">interactive</span></div>

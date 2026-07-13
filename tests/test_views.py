@@ -207,3 +207,21 @@ def test_validation_rejects_where_with_wrong_shape(tmp_path) -> None:
     with pytest.raises(ValidationError) as e:
         load(p)
     assert any("where-clause" in m and "shape" in m for m in e.value.errors)
+
+
+def test_symbolic_coefficient_produces_uses_parameter_edge() -> None:
+    f = load("formulations/constraints/mip_2_8_pesp.json")
+    for view in (schema, hybrid):
+        g = view(f)
+        coef_edges = [(e.src, e.dst) for e in g.edges if e.type == "uses_parameter"]
+        assert coef_edges == [
+            ("constraint:pesp_lower", "param:T_period"),
+            ("constraint:pesp_upper", "param:T_period"),
+        ]
+
+
+def test_pesp_schema_view_has_no_isolated_nodes() -> None:
+    f = load("formulations/constraints/mip_2_8_pesp.json")
+    g = schema(f)
+    touched = {n for e in g.edges for n in (e.src, e.dst)}
+    assert touched == {n.id for n in g.nodes}
