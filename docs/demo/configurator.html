@@ -119,6 +119,14 @@
   .bar button.acc{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,transparent)}
   footer{margin-top:30px;padding-top:14px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
   footer a{color:var(--accent);font-weight:700;text-decoration:none}
+
+  /* desktop: composer (left) and live preview + export (right) side by side */
+  @media (min-width:1100px){
+    body{max-width:1220px}
+    .cols{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);column-gap:32px;align-items:start}
+    .colR{position:sticky;top:16px;max-height:calc(100vh - 32px);overflow-y:auto;padding:0 2px 6px}
+    .colR h2:first-child{margin-top:6px}
+  }
 </style>
 </head>
 <body>
@@ -134,6 +142,8 @@
   <div class="pill">⚗ vision demo — UI only, not yet wired to the library</div>
 </header>
 
+<div class="cols">
+<div class="colL">
 <h2>1 · Objective <small>— tap to change</small></h2>
 <div class="obj" id="obj"></div>
 
@@ -147,7 +157,9 @@
 <div class="hint">Drag a port ○ to a data chip. <i style="color:var(--accent2)">Blue = variable</i> — binds to the index set it ranges over; <i style="color:var(--warn)">orange = parameter</i> — binds to the data that fills it. Any connection is allowed; a <i style="color:var(--warn)">dashed orange wire</i> warns of a bad fit. Tap a wire to unbind, ✕ removes a constraint.</div>
 
 <div class="checks" id="checks"></div>
+</div>
 
+<div class="colR">
 <h2>Model preview</h2>
 <div class="lx" id="lx"></div>
 
@@ -164,6 +176,8 @@
   <button id="copy" class="acc">⧉ Copy</button>
   <button id="dl" class="acc">⬇ Download</button>
   <button id="reset">↺ Reset</button>
+</div>
+</div>
 </div>
 
 <footer>
