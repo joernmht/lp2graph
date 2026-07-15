@@ -8,6 +8,13 @@ docstring placeholders for v0.1; full body translation lands in v1.0.
 This is a deliberate v0.1 scope choice — see issue
 ``open-question/solver-language-export-scope`` and the v1 acceptance
 criteria.
+
+The *functional* Pyomo exporters live in :mod:`lp2graph.interop`:
+:func:`lp2graph.interop.to_pyomo` builds a live ``ConcreteModel`` with
+real constraint bodies and :func:`lp2graph.interop.to_pyomo_code` emits
+a runnable script. This template-level skeleton is kept for callers
+that want the schema shape (sets/params/quantifiers) rather than a
+grounded model.
 """
 
 from __future__ import annotations

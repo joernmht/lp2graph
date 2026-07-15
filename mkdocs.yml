@@ -42,6 +42,7 @@ nav:
   - Data model: data-model.md
   - Views: views.md
   - Text ⇄ graph interface: text-graph-interface.md
+  - Code ⇄ graph interop: interop.md
   - Metrics: metrics.md
   - LP mining (M1–M6): mining.md
   - Add a formulation: add-a-formulation.md

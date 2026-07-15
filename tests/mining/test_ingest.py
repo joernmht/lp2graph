@@ -143,13 +143,43 @@ def test_missing_file_reported():
     assert result.failures[0].stage == "read"
 
 
-def test_code_stubs_report_unsupported(tmp_path):
-    for ext in (".gms", ".mod", ".jl", ".py"):
+def test_python_source_reports_unsupported(tmp_path):
+    # Executing arbitrary .py source stays out of scope by design.
+    p = tmp_path / "m.py"
+    p.write_text("import gurobipy", encoding="utf-8")
+    result = ingest(p)
+    assert result.ok is False
+    assert result.failures[0].stage == "unsupported"
+
+
+def test_code_formats_report_parse_failures(tmp_path):
+    # Unparseable solver-language sources fail at the parse stage --
+    # reported, never swallowed (the importers are real now).
+    for ext in (".gms", ".mod", ".jl", ".lp", ".mps"):
         p = tmp_path / f"m{ext}"
-        p.write_text("source", encoding="utf-8")
+        p.write_text("@@ not a model @@", encoding="utf-8")
         result = ingest(p)
         assert result.ok is False
-        assert result.failures[0].stage == "unsupported"
+        assert result.failures[0].stage == "parse"
+
+
+def test_gams_file_ingests_to_validated_formulation(tmp_path):
+    p = tmp_path / "knap.gms"
+    p.write_text(
+        "Binary Variables a, b, c;\n"
+        "Variables profit;\n"
+        "Equations obj, cap;\n"
+        "obj .. profit =e= 60*a + 100*b + 120*c;\n"
+        "cap .. 10*a + 20*b + 30*c =l= 50;\n"
+        "Model knap / all /;\n"
+        "Solve knap using mip maximizing profit;\n",
+        encoding="utf-8",
+    )
+    result = ingest(p)
+    assert result.ok is True
+    assert result.formulation.id == "knap"
+    assert len(result.formulation.variables) == 3
+    assert result.formulation.objective.sense == "max"
 
 
 def test_unwrap_raises_on_failure():
