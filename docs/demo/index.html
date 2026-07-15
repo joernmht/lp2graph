@@ -69,6 +69,10 @@
   a.app.doc{border-left-color:var(--accent2)}
   a.app.doc .go,a.app.doc .tag{color:var(--accent2);background:color-mix(in srgb,var(--accent2) 12%,transparent);
     border-color:color-mix(in srgb,var(--accent2) 35%,transparent)}
+  /* sister-site card (same look on both landings) */
+  a.app.sister{border-left-color:var(--accent2)}
+  a.app.sister .go,a.app.sister .tag{color:var(--accent2);background:color-mix(in srgb,var(--accent2) 12%,transparent);
+    border-color:color-mix(in srgb,var(--accent2) 35%,transparent)}
 
   .cta{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:24px}
   a.btn{display:block;text-align:center;text-decoration:none;font-weight:800;font-size:14px;
@@ -111,6 +115,11 @@
     <div class="tag">technical</div>
     <div class="ah"><div class="at">📚 Documentation</div><div class="go">Read ›</div></div>
     <div class="as">The full reference — README, data model, views, text ⇄ graph interface, metrics, LP mining (M1–M6) and the architecture decision records.</div>
+  </a>
+  <a class="app sister" href="https://railpmining.joernmaurischat.de/">
+    <div class="tag">sister site</div>
+    <div class="ah"><div class="at">⛏️ Corpus mining — PRISMA &amp; Formula Express</div><div class="go">Open ›</div></div>
+    <div class="as">Where the corpus behind LP2Graph comes from: the PRISMA acquisition pipeline and the gamified human-in-the-loop formula review (Paper 1).</div>
   </a>
 </div>
 
