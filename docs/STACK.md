@@ -37,10 +37,13 @@ and each is listed in `[[tool.mypy.overrides]]` `ignore_missing_imports`.
 | `dev` | `pytest`, `pytest-cov`, `ruff>=0.15.12,<0.16`, `mypy>=1.10`, `pre-commit` | development |
 | `docs` | `mkdocs-material`, `mkdocstrings[python]` | docs site |
 
-> **Compatibility watch:** the `solve/` tests emit PuLP 4.0 deprecation
-> warnings (`LpVariable(...)` direct construction, `PULP_CBC_CMD`,
-> `LpProblem.constraints` mapping). PuLP 4.0 will break the current `solve/`
-> code path — track and migrate before bumping past PuLP 3.x.
+> **PuLP 4.0 compatibility (migrated 2026-06-26, ADR-0008):** the `solve/`
+> path no longer uses any API deprecated for PuLP 4.0. It builds variables via
+> `prob.add_variable(...)`, counts constraints via `prob.numConstraints()`, and
+> defaults to `COIN_CMD` through `solve.default_solver()` (with a bundled-CBC
+> path fallback for PuLP 3.x). `tests/test_solve.py::test_solve_path_is_pulp4_clean`
+> fails if any PuLP `DeprecationWarning` reappears. Floor stays `pulp>=2.8`;
+> the migrated code runs on both 3.x and the forthcoming 4.0.
 
 ## Architecture (single source of truth → derived views)
 
@@ -70,7 +73,7 @@ The package is **not** pip-installed in this environment (PEP 668), so prefix
 local tooling with `PYTHONPATH=src`:
 
 ```bash
-PYTHONPATH=src python3 -m pytest -q                 # full suite (151 tests)
+PYTHONPATH=src python3 -m pytest -q                 # full suite (156 tests)
 PYTHONPATH=src python3 -m ruff check src tests      # lint (line-length 100)
 PYTHONPATH=src python3 -m ruff format --check src tests   # format gate
 PYTHONPATH=src python3 -m mypy                      # mypy --strict (src/lp2graph)
@@ -92,4 +95,24 @@ mkdocs build --strict                               # docs
 
 - `hatchling>=1.21`; wheel packages `src/lp2graph`. Version `0.3.0`
   (`Development Status :: 3 - Alpha`). License Apache-2.0.
-</content>
+
+## Security notes (untrusted-input surfaces)
+
+The library has **no `eval`/`exec`/`pickle`/`subprocess`/`os.system` paths** and
+no network I/O; deserialization is `json.loads` -> pydantic `model_validate`
+(frozen, `extra="forbid"`) -> in-memory semantic `validate()` -- structurally
+safe (no `$ref`/SSRF resolver). The genuine attack surface is the ingestion
+boundary, where the Paper-1 corpus is mined from **third-party GitHub repos**:
+
+- **`mining/ingest/dispatch.py`** -- reads arbitrary source files. Hardened
+  2026-07-02 (ADR-0009): non-UTF-8 files are reported as read-stage
+  `IngestionResult` failures, not raised, so one bad-encoding file no longer
+  aborts a batch. **Open follow-up:** no input-size bound before `read_text`
+  (multi-GB file -> memory-exhaustion DoS); `_looks_like_path` treats short
+  path-like strings as filesystem paths.
+- **Regex-driven LaTeX parsing** (`codec/latex.py`,
+  `mining/ingest/latex_normalizer.py`) -- reviewed for catastrophic backtracking
+  (ReDoS); patterns are lazy (`.*?`) or non-nested, no `(a+)+`-class constructs
+  found. `ingest_latex` swallows all parse exceptions, so a *hang* (not a crash)
+  would be the failure mode of any future pathological pattern -- keep new
+  ingest regexes linear.

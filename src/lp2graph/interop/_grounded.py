@@ -20,6 +20,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import Any
 
 from lp2graph.core.model import (
     ConstraintTemplate,
@@ -403,7 +404,7 @@ def grounded_from_pulp(
         obj_const = float(prob.objective.constant)
 
     constraints = []
-    for cname, con in prob.constraints.items():
+    for cname, con in _pulp_constraint_items(prob):
         constraints.append(
             GroundedConstraint(
                 name=cname,
@@ -423,6 +424,23 @@ def grounded_from_pulp(
         objective_constant=obj_const,
         constraints=tuple(constraints),
     )
+
+
+def _pulp_constraint_items(prob: object) -> list[tuple[str, Any]]:
+    """List a problem's constraints across the PuLP 3/4 API change.
+
+    PuLP 4.0 turns ``LpProblem.constraints`` into a method returning a
+    list; on 3.x it is a dict whose mapping access is deprecated (and the
+    only listing API), so the DeprecationWarning is silenced locally.
+    """
+    import warnings
+
+    cons = prob.constraints  # type: ignore[attr-defined]
+    if callable(cons):  # PuLP >= 4.0
+        return [(c.name, c) for c in cons()]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        return list(cons.items())
 
 
 def _pulp_var(v: object) -> GroundedVar:

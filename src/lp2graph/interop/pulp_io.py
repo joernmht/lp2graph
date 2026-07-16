@@ -53,7 +53,7 @@ def to_pulp_code(f: Formulation, instance: Instance | None = None) -> str:
         "    v = {}",
     ]
     for v in gm.variables:
-        out.append(f"    v[{v.name!r}] = pulp.LpVariable({v.name!r}{_var_args(v)})")
+        out.append(f"    v[{v.name!r}] = prob.add_variable({v.name!r}{_var_args(v)})")
     obj = py_linexpr(gm.objective, gm.objective_constant)
     out.append(f'    prob += {obj}, "objective"')
     cmp_ = {"le": "<=", "ge": ">=", "eq": "=="}
@@ -68,7 +68,7 @@ def to_pulp_code(f: Formulation, instance: Instance | None = None) -> str:
         "",
         'if __name__ == "__main__":',
         "    prob = build_problem()",
-        "    prob.solve(pulp.PULP_CBC_CMD(msg=False))",
+        "    prob.solve()",
         '    print("status =", pulp.LpStatus[prob.status])',
         '    print("objective =", pulp.value(prob.objective))',
         "    for var in prob.variables():",

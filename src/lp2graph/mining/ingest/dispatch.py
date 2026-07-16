@@ -139,6 +139,23 @@ def _resolve(
                 ),
                 resolved_fmt,
             )
+        except UnicodeDecodeError as exc:
+            # Third-party corpus files are not always UTF-8 (BOMs, legacy
+            # latin-1 comments, binary blobs mistaken for text). ``read_text``
+            # raises ``UnicodeDecodeError`` -- a ``ValueError``, *not* an
+            # ``OSError`` -- which would otherwise escape and abort the whole
+            # batch, breaking the M1 "never an exception, never silently drop"
+            # invariant. Report it as a read-stage failure instead.
+            return (
+                source,
+                IngestionResult.single_failure(
+                    source=source,
+                    stage="read",
+                    message=f"source file is not valid UTF-8: {exc}",
+                    detail=type(exc).__name__,
+                ),
+                resolved_fmt,
+            )
         except OSError as exc:
             return (
                 source,

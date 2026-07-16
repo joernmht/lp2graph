@@ -63,12 +63,12 @@ def make_solver(
 
     key = name.lower()
     if key == "cbc":
-        opts: dict[str, object] = {"msg": msg, "threads": threads}
-        if time_limit is not None:
-            opts["timeLimit"] = time_limit
-        if gap_rel is not None:
-            opts["gapRel"] = gap_rel
-        return pulp.PULP_CBC_CMD(**opts)
+        # The 4.0-safe CBC construction (COIN_CMD + bundled-CBC fallback)
+        # lives with the grounder; imported lazily to keep this module
+        # pulp-free at import time.
+        from lp2graph.solve.grounder import default_solver
+
+        return default_solver(msg, threads=threads, time_limit=time_limit, gap_rel=gap_rel)
     if key == "highs":
         # NB: do not forward ``threads`` to pulp.HiGHS. With the pinned
         # pulp/highspy, setting the HiGHS ``threads`` option on the

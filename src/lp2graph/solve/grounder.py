@@ -95,7 +95,11 @@ def build_problem(
         cells: dict[tuple[int, ...], pulp.LpVariable] = {}
         for tup in _tuples(v.shape, cards):
             vname = _safe(f"{v.name}_" + "_".join(map(str, tup))) if tup else _safe(v.name)
-            cells[tup] = pulp.LpVariable(vname, lowBound=lo, upBound=v.upper, cat=cat)
+            # ``prob.add_variable`` (vs the deprecated ``LpVariable(...)`` direct
+            # constructor, removed in PuLP 4.0) attaches the variable to ``prob``
+            # at creation. ``prob.variables()`` still returns only variables that
+            # appear in the objective/constraints, so ``n_vars`` is unchanged.
+            cells[tup] = prob.add_variable(vname, lowBound=lo, upBound=v.upper, cat=cat)
         vmap[v.name] = cells
 
     ctx = _Ctx(f=f, cards=cards, pvals=pvals, vmap=vmap, var_index=var_index)
@@ -123,6 +127,37 @@ def build_problem(
     return prob, vmap
 
 
+def default_solver(
+    msg: bool = False,
+    *,
+    threads: int = 1,
+    time_limit: float | None = None,
+    gap_rel: float | None = None,
+) -> pulp.LpSolver:
+    """Return the default CBC solver, forward-compatible with PuLP 4.0.
+
+    PuLP 4.0 deprecates ``PULP_CBC_CMD`` in favour of ``COIN_CMD`` (the bundled
+    CBC moves to the ``pulp[cbc]`` extra). ``COIN_CMD`` does not auto-discover
+    PuLP's bundled CBC binary on PuLP 3.x, so when it reports itself unavailable
+    we fall back to the bundled path exposed as the
+    ``PULP_CBC_CMD.pulp_cbc_path`` *class* attribute — read without instantiating
+    the deprecated solver, so no deprecation warning is emitted. Under PuLP 4.0
+    with ``pulp[cbc]`` installed, ``COIN_CMD`` finds CBC itself and the fallback
+    path is unused. Deterministic: single-threaded, messages off by default.
+    """
+    opts: dict[str, object] = {"msg": msg, "threads": threads}
+    if time_limit is not None:
+        opts["timeLimit"] = time_limit
+    if gap_rel is not None:
+        opts["gapRel"] = gap_rel
+    solver = pulp.COIN_CMD(**opts)
+    if not solver.available():
+        path = getattr(pulp.PULP_CBC_CMD, "pulp_cbc_path", None)
+        if path:
+            solver = pulp.COIN_CMD(path=path, **opts)
+    return solver
+
+
 def solve(
     f: Formulation,
     instance: Instance,
@@ -146,7 +181,10 @@ def solve(
         status=status,
         objective=None if obj is None else float(obj),
         n_vars=len(prob.variables()),
-        n_constraints=len(prob.constraints),
+        # ``prob.numConstraints()`` (vs ``len(prob.constraints)``, whose
+        # dict-mapping access is deprecated in PuLP 4.0) returns the count
+        # directly without touching the deprecated mapping interface.
+        n_constraints=prob.numConstraints(),
         solver=type(s).__name__,
         variables=values,
     )
@@ -172,7 +210,7 @@ def to_lp_string(f: Formulation, instance: Instance) -> str:
 def _coerce_solver(solver: pulp.LpSolver | str | None, *, msg: bool) -> pulp.LpSolver:
     """Resolve the ``solver`` argument to a concrete ``pulp.LpSolver``."""
     if solver is None:
-        return pulp.PULP_CBC_CMD(msg=msg, threads=1)
+        return default_solver(msg)
     if isinstance(solver, str):
         from lp2graph.solve.solvers import make_solver
 
@@ -416,6 +454,7 @@ __all__ = [
     "SolveResult",
     "UnsupportedModel",
     "build_problem",
+    "default_solver",
     "solve",
     "to_lp_string",
 ]

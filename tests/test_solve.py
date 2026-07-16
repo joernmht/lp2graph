@@ -38,8 +38,10 @@ def test_pipeline_equals_direct(instance_files):
 
 
 def test_cross_solver_agreement(instance_files):
+    from lp2graph.solve import default_solver
+
     f, inst, expected = _spec(next(p for p in instance_files if p.stem == "assignment_4x4"))
-    cbc = solve(f, inst, solver=pulp.PULP_CBC_CMD(msg=0, threads=1)).objective
+    cbc = solve(f, inst, solver=default_solver(msg=False)).objective
     highs = solve(f, inst, solver=pulp.HiGHS(msg=False)).objective
     assert math.isclose(cbc, highs, abs_tol=1e-6)
     assert math.isclose(cbc, expected, abs_tol=1e-4)
@@ -84,6 +86,20 @@ def test_unsupported_operator_raises():
     f = load("formulations/objectives/objective_abs_deviation.json")
     with pytest.raises(UnsupportedModel):
         solve(f, Instance(cardinalities={"I": 2}, parameters={"target": [0, 0]}))
+
+
+def test_solve_path_is_pulp4_clean(instance_files):
+    """The grounder must not trip any PuLP-4.0 DeprecationWarning so the
+    solve path survives the PuLP 4.0 upgrade (deprecated ``LpVariable(...)``
+    constructor, ``PULP_CBC_CMD``, and ``LpProblem.constraints`` mapping)."""
+    import warnings
+
+    f, inst, _ = _spec(next(p for p in instance_files if p.stem == "assignment_4x4"))
+    with warnings.catch_warnings():
+        warnings.filterwarnings("error", category=DeprecationWarning, module=r"pulp.*")
+        res = solve(f, inst)
+    assert res.objective is not None
+    assert res.n_vars > 0 and res.n_constraints > 0
 
 
 if __name__ == "__main__":
