@@ -2,7 +2,9 @@
 
 Subcommands:
 
-- ``lp2graph validate <file>`` — load and validate a formulation file.
+- ``lp2graph validate <file>`` — end-to-end validation of a model file in
+  any supported format (parse with fallbacks, semantic and structural
+  checks, optional solve smoke check); exit 0 unless invalid.
 - ``lp2graph view <file> --view {schema,hybrid,ground} [--card I=5 ...]``
   — derive a view and print a summary.
 - ``lp2graph render <file> --view ... --output graph.svg`` — render to
@@ -24,7 +26,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from lp2graph import load
-from lp2graph import validate as _validate
 from lp2graph import views as _views
 from lp2graph.metrics.flags import presence_flags
 from lp2graph.metrics.structural import structural_summary
@@ -39,8 +40,36 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="lp2graph")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p_validate = sub.add_parser("validate", help="Validate a formulation file.")
-    p_validate.add_argument("path", type=Path)
+    p_validate = sub.add_parser(
+        "validate",
+        help="Validate a model file end-to-end (any supported format): "
+        "parse with fallbacks, semantic + structural checks, solve smoke check.",
+    )
+    p_validate.add_argument(
+        "path",
+        type=Path,
+        help="Model file: .json (canonical), .tex, .lp, .mps, .gms, .mod, .jl; "
+        "unknown extensions are format-sniffed.",
+    )
+    p_validate.add_argument(
+        "--fmt",
+        default=None,
+        help="Explicit format override (json/latex/lp/mps/gams/ampl/jump).",
+    )
+    p_validate.add_argument("--json", action="store_true", help="Emit the report as JSON.")
+    p_validate.add_argument(
+        "--no-solve", action="store_true", help="Skip the grounding/solve smoke check."
+    )
+    p_validate.add_argument(
+        "--instance",
+        type=Path,
+        default=None,
+        help="Instance JSON for the solve check (default: synthesized smoke data).",
+    )
+    p_validate.add_argument("--solver", choices=("cbc", "highs", "gurobi"), default="cbc")
+    p_validate.add_argument(
+        "--time-limit", type=float, default=20.0, help="Solve-check time limit in seconds."
+    )
 
     p_view = sub.add_parser("view", help="Derive a view and print a summary.")
     p_view.add_argument("path", type=Path)
@@ -132,10 +161,23 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.cmd == "validate":
-        f = load(args.path)
-        _validate(f)
-        print(f"OK: {f.id} ({f.family})")
-        return 0
+        from lp2graph.validation import validate_path
+
+        inst = None
+        if args.instance is not None:
+            from lp2graph.solve import Instance
+
+            inst = Instance.load(args.instance)
+        report = validate_path(
+            args.path,
+            fmt=args.fmt,
+            solve_check=not args.no_solve,
+            instance=inst,
+            solver=args.solver,
+            time_limit=args.time_limit,
+        )
+        print(report.to_json() if args.json else report.summary())
+        return 0 if report.verdict != "invalid" else 1
 
     if args.cmd == "view":
         f = load(args.path)

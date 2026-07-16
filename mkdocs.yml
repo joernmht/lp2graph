@@ -44,6 +44,7 @@ nav:
   - Text ⇄ graph interface: text-graph-interface.md
   - Code ⇄ graph interop: interop.md
   - Metrics: metrics.md
+  - Validating generated models: validation.md
   - LP mining (M1–M6): mining.md
   - Add a formulation: add-a-formulation.md
   - Design context: design-context.md

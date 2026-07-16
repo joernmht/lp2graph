@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`lp2graph.validation`** — end-to-end validation of (LLM-)generated
+  LP/MILP artifacts. `validate_text` / `validate_path` / `validate_formulation`
+  accept raw text, bytes, files, or parsed models in any supported format
+  (canonical JSON, LaTeX, LP, MPS, GAMS, AMPL, JuMP) and return a structured
+  `ValidationReport` instead of raising: faulty-input detectors and repairs
+  (markdown fences, unicode look-alikes, truncation, NUL/encoding damage),
+  format sniffing with parse fallbacks, the semantic invariants, structural
+  detectors (completeness, coherence, duplicate/unused symbols, constant
+  constraints, bound conflicts), and an optional grounding smoke check on a
+  synthesized all-ones instance (CBC/HiGHS/Gurobi; skipped gracefully without
+  pulp). Reports are deterministic and stamped with a `pipeline_version`.
+- **`lp2graph validate` CLI** upgraded to run that pipeline on any supported
+  model file (previously canonical JSON only): `--fmt`, `--json`, `--no-solve`,
+  `--instance`, `--solver`, `--time-limit`; exit code 0 unless the verdict is
+  `invalid`. New docs page `docs/validation.md`.
+
 - **M1b big-operator wrapper rules** (`mining.ingest.latex_normalizer`) — four
   new rewrite rules driven by Paper-1 corpus evidence (3,668 of 8,957 Tier-2
   MathML-derived formulas): `underset_bigop` (`\underset{X}{\sum}` →
