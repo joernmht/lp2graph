@@ -105,3 +105,14 @@ LP-mining extensions on top of the core. Every frozen resource is versioned in
 When extending mining: keep pure-Python/deterministic, version any new frozen
 resource in `versions.py`, and add tests under `tests/mining/`. See
 `docs/mining.md`.
+
+## Literature reference
+
+The trilogy's curated literature lives at `~/LiteratureAssistant` (private repo). Use the
+**`literature` skill** for background/related work: `lit.py search <terms> --topic <code>`,
+`lit.py grep "<phrase>"` (full-text over all PDFs), `lit.py cite <bibkey>`, `lit.py pdf
+<query>` → Read tool. Especially relevant here: **`lit.py catalog <terms>`** queries the
+optimization-model catalog (published constraints/objectives/variables classified into
+canonical families) — evidence for relating the M1–M6 typed-graph taxonomy to the
+literature. Add papers via **`literature-intake`**. (A *literature* reference — NOT
+Paper 1's scientific corpus, which is unstarted.)

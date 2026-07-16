@@ -37,7 +37,7 @@ CLUSTERING_VERSION: Final = "cluster-2026.06.0"
 LABEL_LEXICON_VERSION: Final = "label-2026.06.0"
 
 #: LaTeX rewrite-rule table used by the non-canonical normalizer (M1).
-REWRITE_RULES_VERSION: Final = "rewrite-2026.06.0"
+REWRITE_RULES_VERSION: Final = "rewrite-2026.07.0"
 
 
 __all__ = [

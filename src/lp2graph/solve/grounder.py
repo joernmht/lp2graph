@@ -127,7 +127,13 @@ def build_problem(
     return prob, vmap
 
 
-def default_solver(msg: bool = False) -> pulp.LpSolver:
+def default_solver(
+    msg: bool = False,
+    *,
+    threads: int = 1,
+    time_limit: float | None = None,
+    gap_rel: float | None = None,
+) -> pulp.LpSolver:
     """Return the default CBC solver, forward-compatible with PuLP 4.0.
 
     PuLP 4.0 deprecates ``PULP_CBC_CMD`` in favour of ``COIN_CMD`` (the bundled
@@ -139,11 +145,16 @@ def default_solver(msg: bool = False) -> pulp.LpSolver:
     with ``pulp[cbc]`` installed, ``COIN_CMD`` finds CBC itself and the fallback
     path is unused. Deterministic: single-threaded, messages off by default.
     """
-    solver = pulp.COIN_CMD(msg=msg, threads=1)
+    opts: dict[str, object] = {"msg": msg, "threads": threads}
+    if time_limit is not None:
+        opts["timeLimit"] = time_limit
+    if gap_rel is not None:
+        opts["gapRel"] = gap_rel
+    solver = pulp.COIN_CMD(**opts)
     if not solver.available():
         path = getattr(pulp.PULP_CBC_CMD, "pulp_cbc_path", None)
         if path:
-            solver = pulp.COIN_CMD(path=path, msg=msg, threads=1)
+            solver = pulp.COIN_CMD(path=path, **opts)
     return solver
 
 
@@ -151,12 +162,17 @@ def solve(
     f: Formulation,
     instance: Instance,
     *,
-    solver: pulp.LpSolver | None = None,
+    solver: pulp.LpSolver | str | None = None,
     msg: bool = False,
 ) -> SolveResult:
-    """Ground ``f`` at ``instance`` and solve it. CBC by default."""
+    """Ground ``f`` at ``instance`` and solve it.
+
+    ``solver`` selects the back-end: a solver name (``"cbc"``, ``"highs"``,
+    ``"gurobi"`` — see :mod:`lp2graph.solve.solvers`), a pre-built
+    ``pulp.LpSolver`` instance, or ``None`` for the deterministic CBC default.
+    """
     prob, vmap = build_problem(f, instance)
-    s = solver or default_solver(msg)
+    s = _coerce_solver(solver, msg=msg)
     prob.solve(s)
     status = pulp.LpStatus[prob.status].lower()
     obj = pulp.value(prob.objective)
@@ -189,6 +205,17 @@ def to_lp_string(f: Formulation, instance: Instance) -> str:
 # ---------------------------------------------------------------------------
 # Internals
 # ---------------------------------------------------------------------------
+
+
+def _coerce_solver(solver: pulp.LpSolver | str | None, *, msg: bool) -> pulp.LpSolver:
+    """Resolve the ``solver`` argument to a concrete ``pulp.LpSolver``."""
+    if solver is None:
+        return default_solver(msg)
+    if isinstance(solver, str):
+        from lp2graph.solve.solvers import make_solver
+
+        return make_solver(solver, msg=msg)
+    return solver
 
 
 @dataclass
