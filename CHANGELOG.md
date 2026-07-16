@@ -89,6 +89,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   - **M6 `mining.isomorphism`** — per-cluster schema-graph isomorphism rate via
     the NetworkX export (`isomorphism_report`).
 
+### Fixed
+
+- **`interop.from_pulp` crashed on unnamed constraints** (`prob += expr <= rhs`
+  without a name label): the constraint's ``name`` is ``None`` and the
+  name-sanitizer raised ``TypeError``. Anonymous constraints now take the
+  deterministic ``c1``/``c2``/... fallback names.
+
 ### Changed
 
 - **PuLP 4.0 forward-compatibility** (`lp2graph.solve` + `lp2graph.interop`):

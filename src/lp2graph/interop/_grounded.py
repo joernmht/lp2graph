@@ -110,17 +110,21 @@ class NameMap:
     used: set[str] = field(default_factory=set)
     by_source: dict[str, str] = field(default_factory=dict)
 
-    def get(self, source_name: str, *, fallback: str) -> str:
-        if source_name in self.by_source:
+    def get(self, source_name: str | None, *, fallback: str) -> str:
+        # ``None`` = the source object was never named (e.g. a PuLP
+        # constraint added as ``prob += expr <= rhs``): use the fallback,
+        # and do not cache — distinct anonymous objects must not collide.
+        if source_name is not None and source_name in self.by_source:
             return self.by_source[source_name]
-        base = _sanitize(source_name) or fallback
+        base = (_sanitize(source_name) if source_name is not None else "") or fallback
         cand = base
         n = 2
         while cand in self.used:
             cand = f"{base}_{n}"
             n += 1
         self.used.add(cand)
-        self.by_source[source_name] = cand
+        if source_name is not None:
+            self.by_source[source_name] = cand
         return cand
 
 

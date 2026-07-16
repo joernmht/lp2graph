@@ -147,6 +147,22 @@ def test_pulp_to_graph_and_back():
     assert pulp.value(prob2.objective) == pytest.approx(44.0)
 
 
+def test_pulp_unnamed_constraints_get_fallback_names():
+    # ``prob += expr <= rhs`` without a name leaves the constraint's name
+    # as None; the importer must fall back to c1/c2/... instead of crashing.
+    pulp = pytest.importorskip("pulp")
+    prob = pulp.LpProblem("prod_mix", pulp.LpMaximize)
+    x = prob.add_variable("x", lowBound=0)
+    y = prob.add_variable("y", lowBound=0)
+    prob += 3 * x + 5 * y
+    prob += 2 * x + 4 * y <= 40
+    prob += 3 * x + 2 * y <= 30
+
+    f = from_pulp(prob)
+    assert [c.name for c in f.constraints] == ["c1", "c2"]
+    assert _models.solve_cbc(f) == pytest.approx(52.5)
+
+
 def test_graph_to_pulp_code_executes_and_solves(known_model):
     pulp = pytest.importorskip("pulp")
     f, optimum = known_model
