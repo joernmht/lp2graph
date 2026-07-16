@@ -103,6 +103,34 @@ REWRITE_RULES: tuple[RewriteRule, ...] = (
         _to_mathcal,
         "\\mathrm upper-case set to \\mathcal",
     ),
+    # --- big-operator wrapper forms (corpus evidence: 3,668/8,957 Tier-2
+    # MathML-derived formulas write aggregations via \underset/\mathop/
+    # \overset instead of the canonical \sum_{...} spelling) ----------------
+    _rule(
+        "underset_bigop",
+        r"\\underset\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}\s*"
+        r"\{\s*(\\sum|\\prod|\\min|\\max|\\int|\\bigcup|\\bigcap)\s*\}",
+        lambda m: m.group(2) + "_{" + m.group(1) + "}",
+        "\\underset{X}{\\sum} to \\sum_{X} (canonical aggregation spelling)",
+    ),
+    _rule(
+        "mathop_unwrap",
+        r"\\mathop\s*\{\s*(\\[a-zA-Z]+|[a-zA-Z]+)\s*\}",
+        lambda m: m.group(1),
+        "\\mathop{\\sum} to \\sum",
+    ),
+    _rule(
+        "underbrace_unwrap",
+        r"\\underbrace\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}",
+        lambda m: "{" + m.group(1) + "}",
+        "\\underbrace{X} to {X} (drop annotation brace)",
+    ),
+    _rule(
+        "overset_base",
+        r"\\overset\s*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}",
+        lambda m: "{" + m.group(1) + "}",
+        "\\overset{a}{b} to {b} (keep the base symbol)",
+    ),
     # --- whitespace hygiene (last) ----------------------------------------
     _rule("collapse_ws", r"[ \t]{2,}", " ", "collapse runs of spaces/tabs"),
 )

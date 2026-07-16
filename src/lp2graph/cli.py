@@ -227,15 +227,9 @@ def main(argv: list[str] | None = None) -> int:
         return _convert(args)
 
     if args.cmd == "solve":
-        import pulp
+        from lp2graph.solve import Instance, make_solver, solve
 
-        from lp2graph.solve import Instance, solve
-
-        solver = {
-            "cbc": lambda: pulp.PULP_CBC_CMD(msg=0, threads=1),
-            "highs": lambda: pulp.HiGHS(msg=False),
-            "gurobi": lambda: pulp.GUROBI(msg=0),
-        }[args.solver]()
+        solver = make_solver(args.solver, msg=False)
         res = solve(load(args.path), Instance.load(args.instance), solver=solver)
         print(
             json.dumps(

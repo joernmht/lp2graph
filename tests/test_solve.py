@@ -45,6 +45,28 @@ def test_cross_solver_agreement(instance_files):
     assert math.isclose(cbc, expected, abs_tol=1e-4)
 
 
+def test_make_solver_and_solve_by_name(instance_files):
+    """The library exposes the CBC/HiGHS/Gurobi back-end by name, and
+    `solve()` accepts a solver name string — agreeing across installed
+    back-ends."""
+    from lp2graph.solve import available_solvers, make_solver
+
+    assert "cbc" in available_solvers()  # CBC ships with pulp
+    assert isinstance(make_solver("highs"), pulp.LpSolver)
+
+    f, inst, expected = _spec(next(p for p in instance_files if p.stem == "assignment_4x4"))
+    objs = [solve(f, inst, solver=name).objective for name in available_solvers()]
+    assert all(math.isclose(o, expected, abs_tol=1e-4) for o in objs)
+    assert all(math.isclose(o, objs[0], abs_tol=1e-6) for o in objs)
+
+
+def test_make_solver_rejects_unknown():
+    from lp2graph.solve import make_solver
+
+    with pytest.raises(ValueError, match="unknown solver"):
+        make_solver("clp")
+
+
 def test_offset_constraints_skipped_at_boundary():
     """A `t_{i-1}` term at i=0 must drop the whole headway instance, not
     degrade it to `t_0 >= h`."""

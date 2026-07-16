@@ -12,6 +12,11 @@
 ``UnsupportedModel``) is loaded lazily on first access and requires the
 optional ``solver`` extra (``pip install "lp2graph[solver]"``). See
 :mod:`lp2graph.solve.grounder` for the supported feature set.
+
+The CBC / HiGHS / Gurobi back-end is selected by name through
+:func:`make_solver` (see :mod:`lp2graph.solve.solvers`); :func:`available_solvers`
+reports which are installed. CBC ships with pulp; HiGHS and Gurobi are
+optional extras imported only when requested.
 """
 
 from __future__ import annotations
@@ -19,6 +24,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from lp2graph.solve.instance import Instance
+
+# Pure-Python, pulp-free at import time — safe to expose eagerly.
+from lp2graph.solve.solvers import (
+    SOLVER_NAMES,
+    SolverName,
+    available_solvers,
+    make_solver,
+)
 
 if TYPE_CHECKING:  # for type checkers / IDEs only — no runtime pulp import
     from lp2graph.solve.grounder import (
@@ -41,10 +54,14 @@ def __getattr__(name: str) -> Any:
 
 
 __all__ = [
+    "SOLVER_NAMES",
     "Instance",
     "SolveResult",
+    "SolverName",
     "UnsupportedModel",
+    "available_solvers",
     "build_problem",
+    "make_solver",
     "solve",
     "to_lp_string",
 ]
