@@ -38,7 +38,7 @@ def test_render_groups_sum_operators_under_objective() -> None:
     out = render_svg(schema(f))
     # Two sum operators feed one objective; a bracket with the marker
     # opacity and an arrow label linking back to the objective should appear.
-    assert "fill-opacity=\"0.35\"" in out
+    assert 'fill-opacity="0.35"' in out
     assert "↑" in out
 
 
@@ -60,4 +60,4 @@ def test_render_omits_bracket_when_no_aggregation_operators(tmp_path: Path) -> N
     p.write_text(json.dumps(doc), encoding="utf-8")
     f = load(p)
     out = render_svg(schema(f))
-    assert "fill-opacity=\"0.35\"" not in out
+    assert 'fill-opacity="0.35"' not in out

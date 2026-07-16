@@ -22,8 +22,9 @@ Edges:
 - `var_in_constraint` — constraint to variable per term.
 - `var_in_objective` — objective to variable per term.
 - `uses_index` — variable / parameter to its shape index family.
-- `uses_parameter` — to be added in v0.2; currently parameters appear
-  only as term references.
+- `uses_parameter` — constraint / objective to a parameter used as a
+  symbolic coefficient (e.g. `T_period · k`); parameters appearing as
+  terms get `var_in_constraint`/`var_in_objective` edges instead.
 - `operator_input`, `operator_output` — connect operator nodes.
 
 Offsets are *not* shown in the schema view. Use this view for

@@ -50,6 +50,25 @@ Linux/macOS for Python 3.11–3.13. Keep all four green.
 Pre-existing lint debt in `examples/` and the untracked `ui/` is **not**
 yours — don't "fix" it in unrelated PRs; only keep `src/` and `tests/` clean.
 
+## Releasing to PyPI
+
+The package is on PyPI as `lp2graph` (first release v0.3.0, 2026-07-11) via
+**trusted publishing** (OIDC — no tokens anywhere). `release.yml` publishes
+whatever `main` is at the tag, and CI does **not** gate it, so only release
+when CI on `main` is green:
+
+1. Bump `version` in `pyproject.toml`, commit, push, wait for CI.
+2. `git tag vX.Y.Z && git push origin vX.Y.Z` — the tag must match the
+   pyproject version. `release.yml` builds sdist+wheel and publishes.
+3. `gh release create vX.Y.Z --title ... --notes ...` (the workflow does not
+   create the GitHub release entry).
+4. Verify: `pip install --target /tmp/t lp2graph && PYTHONPATH=/tmp/t python3
+   -c "import lp2graph; print(lp2graph.__version__)"`.
+
+The PyPI side is a *pending publisher* config owned by Joern (project
+`lp2graph`, repo `joernmht/lp2graph`, workflow `release.yml`, environment
+`pypi`) — if publishing 403s, that config is the first thing to check.
+
 ## Optional dependencies
 
 Core deps are only `pydantic` + `jsonschema`. Everything heavier is an

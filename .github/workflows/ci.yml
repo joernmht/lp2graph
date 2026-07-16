@@ -26,6 +26,8 @@ jobs:
           pip install -e ".[dev]"
       - name: Lint
         run: ruff check src tests
+      - name: Format check
+        run: ruff format --check src tests
       - name: Type check
         run: mypy src/lp2graph
       - name: Test

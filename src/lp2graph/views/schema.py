@@ -15,8 +15,9 @@ Edges:
 - ``var_in_constraint`` from constraint to variable template per term.
 - ``var_in_objective`` from objective to variable template per term.
 - ``uses_index`` from variable template to its shape index families.
-- ``uses_parameter`` from constraint or objective to parameters
-  appearing in their bodies.
+- ``uses_parameter`` from constraint or objective to a parameter used
+  as a symbolic coefficient (parameters appearing as terms already get
+  ``var_in_constraint``/``var_in_objective`` edges).
 
 Offsets are *not* shown in the schema view; that is the hybrid view's
 job. Every term, regardless of binding offsets, contributes a single
@@ -190,6 +191,7 @@ def _emit_term_edge(
                 "coefficient": term.coefficient,
             },
         )
+        _emit_coefficient_edge(g, src_id, term, position)
         return
 
     g.add_edge(
@@ -203,6 +205,16 @@ def _emit_term_edge(
             "coefficient": term.coefficient,
         },
     )
+    _emit_coefficient_edge(g, src_id, term, position)
+
+
+def _emit_coefficient_edge(g: Graph, src_id: str, term: Term, position: str) -> None:
+    """A symbolic coefficient references a parameter; expose that use as an edge."""
+    if not isinstance(term.coefficient, str):
+        return
+    coef_id = f"param:{term.coefficient}"
+    if g.has_node(coef_id):
+        g.add_edge(src_id, coef_id, "uses_parameter", role="coef", label=position)
 
 
 __all__ = ["schema"]

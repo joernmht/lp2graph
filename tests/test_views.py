@@ -80,7 +80,9 @@ def test_ground_view_applies_ordered_pair_restriction() -> None:
     f = load("formulations/constraints/mip_2_1_big_m.json")
     g = ground(f, {"I": 4})
     # order_pair quantifies (i, j) with i < j. For |I|=4, that is 6 instances.
-    cinst = [n for n in g.nodes_by_class("instance_constraint") if n.data["template"] == "order_pair"]
+    cinst = [
+        n for n in g.nodes_by_class("instance_constraint") if n.data["template"] == "order_pair"
+    ]
     assert len(cinst) == 6
 
 
@@ -102,9 +104,7 @@ def _where_doc(parameter_shape: list[str]) -> dict:
         "name": "where demo",
         "family": "lp",
         "indices": [{"name": "T"}],
-        "parameters": [
-            {"name": "is_local", "shape": parameter_shape, "kind": "vector"}
-        ],
+        "parameters": [{"name": "is_local", "shape": parameter_shape, "kind": "vector"}],
         "variables": [{"name": "x", "shape": ["T"], "domain": "non_negative"}],
         "constraints": [
             {
@@ -125,9 +125,7 @@ def _where_doc(parameter_shape: list[str]) -> dict:
                         "role": "lhs",
                     }
                 ],
-                "rhs": [
-                    {"ref": "one", "ref_kind": "literal", "coefficient": 1, "role": "rhs"}
-                ],
+                "rhs": [{"ref": "one", "ref_kind": "literal", "coefficient": 1, "role": "rhs"}],
             }
         ],
     }
@@ -140,9 +138,7 @@ def test_quantifier_where_filters_ground_view(tmp_path) -> None:
     p.write_text(json.dumps(_where_doc(["T"])), encoding="utf-8")
     f = load(p)
     g = ground(f, {"T": 4}, parameter_values={"is_local": [True, False, True, False]})
-    cinst = [
-        n for n in g.nodes_by_class("instance_constraint") if n.data["template"] == "c_local"
-    ]
+    cinst = [n for n in g.nodes_by_class("instance_constraint") if n.data["template"] == "c_local"]
     assert len(cinst) == 2
     quant_t = sorted(n.data["quantifiers"]["t"] for n in cinst)
     assert quant_t == [0, 2]
@@ -200,9 +196,7 @@ def test_validation_rejects_where_with_wrong_shape(tmp_path) -> None:
                         "role": "lhs",
                     }
                 ],
-                "rhs": [
-                    {"ref": "one", "ref_kind": "literal", "coefficient": 1, "role": "rhs"}
-                ],
+                "rhs": [{"ref": "one", "ref_kind": "literal", "coefficient": 1, "role": "rhs"}],
             }
         ],
     }
@@ -213,3 +207,21 @@ def test_validation_rejects_where_with_wrong_shape(tmp_path) -> None:
     with pytest.raises(ValidationError) as e:
         load(p)
     assert any("where-clause" in m and "shape" in m for m in e.value.errors)
+
+
+def test_symbolic_coefficient_produces_uses_parameter_edge() -> None:
+    f = load("formulations/constraints/mip_2_8_pesp.json")
+    for view in (schema, hybrid):
+        g = view(f)
+        coef_edges = [(e.src, e.dst) for e in g.edges if e.type == "uses_parameter"]
+        assert coef_edges == [
+            ("constraint:pesp_lower", "param:T_period"),
+            ("constraint:pesp_upper", "param:T_period"),
+        ]
+
+
+def test_pesp_schema_view_has_no_isolated_nodes() -> None:
+    f = load("formulations/constraints/mip_2_8_pesp.json")
+    g = schema(f)
+    touched = {n for e in g.edges for n in (e.src, e.dst)}
+    assert touched == {n.id for n in g.nodes}

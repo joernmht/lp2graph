@@ -10,6 +10,9 @@ Subcommands:
 - ``lp2graph metrics <file>`` — compute and print all metrics.
 - ``lp2graph export <file> --format {networkx,pyg,dgl,latex,pyomo}`` —
   export.
+- ``lp2graph convert <in> <out>`` — code ⇄ graph ⇄ code between modeling
+  languages, routed by file extension (.json/.tex/.lp/.mps/.gms/.mod/.jl,
+  plus .py output via ``--python-api``).
 """
 
 from __future__ import annotations
@@ -89,6 +92,37 @@ def main(argv: list[str] | None = None) -> int:
     p_describe.add_argument("path", type=Path)
     p_describe.add_argument("--instance", type=Path, default=None)
     p_describe.add_argument("--output", type=Path, default=None)
+
+    p_convert = sub.add_parser(
+        "convert",
+        help="Convert between modeling languages via the canonical graph "
+        "(code -> graph -> code), routed by file extension.",
+    )
+    p_convert.add_argument(
+        "input",
+        type=Path,
+        help="Source model: .json (canonical), .tex (canonical LaTeX), "
+        ".lp, .mps, .gms (GAMS), .mod (AMPL), .jl (JuMP).",
+    )
+    p_convert.add_argument(
+        "output",
+        type=Path,
+        help="Target file: .json, .tex, .lp, .mps, .gms, .mod, .jl, or .py "
+        "(solver-API script; pick the API with --python-api).",
+    )
+    p_convert.add_argument(
+        "--instance",
+        type=Path,
+        default=None,
+        help="Instance JSON (cardinalities + parameter values); required to "
+        "export a template-level formulation.",
+    )
+    p_convert.add_argument(
+        "--python-api",
+        choices=("gurobipy", "pulp", "pyomo"),
+        default="pulp",
+        help="Which solver API a .py output targets (default: pulp).",
+    )
 
     p_solve = sub.add_parser("solve", help="Ground with instance data and solve the MILP.")
     p_solve.add_argument("path", type=Path)
@@ -189,6 +223,9 @@ def main(argv: list[str] | None = None) -> int:
         _emit(out, args.output)
         return 0
 
+    if args.cmd == "convert":
+        return _convert(args)
+
     if args.cmd == "solve":
         from lp2graph.solve import Instance, make_solver, solve
 
@@ -209,6 +246,74 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     return 0
+
+
+def _convert(args: argparse.Namespace) -> int:
+    """Route ``convert`` by file extension through the canonical Formulation."""
+    f = _read_model(args.input)
+    instance = None
+    if args.instance is not None:
+        from lp2graph.solve import Instance
+
+        instance = Instance.load(args.instance)
+    text = _write_model(f, args.output.suffix.lower(), instance, args.python_api)
+    args.output.write_text(text, encoding="utf-8")
+    print(
+        f"wrote {args.output} ({f.id}: {len(f.variables)} variables, "
+        f"{len(f.constraints)} constraints)"
+    )
+    return 0
+
+
+def _read_model(path: Path) -> Formulation:
+    ext = path.suffix.lower()
+    if ext == ".json":
+        return load(path)
+    text = path.read_text(encoding="utf-8")
+    if ext == ".tex":
+        from lp2graph.codec import from_canonical_latex
+
+        return from_canonical_latex(text)
+    readers = {
+        ".lp": "from_lp_string",
+        ".mps": "from_mps_string",
+        ".gms": "from_gams",
+        ".mod": "from_ampl",
+        ".jl": "from_jump",
+    }
+    if ext not in readers:
+        raise SystemExit(f"cannot read {ext!r} files; supported: .json .tex {' '.join(readers)}")
+    import lp2graph.interop as interop
+
+    reader = getattr(interop, readers[ext])
+    return reader(text)  # type: ignore[no-any-return]
+
+
+def _write_model(f: Formulation, ext: str, instance: object, python_api: str) -> str:
+    if ext == ".json":
+        return f.model_dump_json(indent=2, exclude_defaults=True)
+    if ext == ".tex":
+        from lp2graph.codec import to_canonical_latex
+
+        return to_canonical_latex(f)
+    writers = {
+        ".lp": "to_lp_string",
+        ".mps": "to_mps_string",
+        ".gms": "to_gams",
+        ".mod": "to_ampl",
+        ".jl": "to_jump",
+        ".py": {
+            "gurobipy": "to_gurobipy_code",
+            "pulp": "to_pulp_code",
+            "pyomo": "to_pyomo_code",
+        }[python_api],
+    }
+    if ext not in writers:
+        raise SystemExit(f"cannot write {ext!r} files; supported: .json .tex {' '.join(writers)}")
+    import lp2graph.interop as interop
+
+    writer = getattr(interop, writers[ext])
+    return writer(f, instance)  # type: ignore[no-any-return]
 
 
 def _emit(text: str, output: Path | None) -> None:

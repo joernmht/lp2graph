@@ -109,9 +109,7 @@ def ground(
     return g
 
 
-def _check_where_parameters(
-    f: Formulation, pvals: Mapping[str, Any]
-) -> None:
+def _check_where_parameters(f: Formulation, pvals: Mapping[str, Any]) -> None:
     """Every ``where``-clause parameter must have a concrete value supplied."""
     for c in f.constraints:
         for q in c.quantifiers:
@@ -124,9 +122,7 @@ def _check_where_parameters(
                 )
 
 
-def _lookup_parameter_value(
-    values: Any, key: tuple[int, ...]
-) -> Any:
+def _lookup_parameter_value(values: Any, key: tuple[int, ...]) -> Any:
     """Read a value out of either a flat sequence (1-D) or a mapping."""
     if isinstance(values, Mapping):
         if key in values:
@@ -136,9 +132,7 @@ def _lookup_parameter_value(
         raise KeyError(key)
     if len(key) == 1:
         return values[key[0]]
-    raise TypeError(
-        "multi-index parameter values must be supplied as a Mapping"
-    )
+    raise TypeError("multi-index parameter values must be supplied as a Mapping")
 
 
 # ---------------------------------------------------------------------------
@@ -311,9 +305,7 @@ def _ground_constraint(
     pvals: Mapping[str, Any],
 ) -> None:
     for quant_binding in _enumerate_quantifiers(c.quantifiers, cards, pvals):
-        cinst_id = _constraint_instance_id(
-            c.name, tuple(sorted(quant_binding.items()))
-        )
+        cinst_id = _constraint_instance_id(c.name, tuple(sorted(quant_binding.items())))
         # Stable ID using declaration order of quantifiers, not sorted.
         cinst_id = _constraint_instance_id(
             c.name, tuple((q.index, quant_binding[q.index]) for q in c.quantifiers)
@@ -327,9 +319,7 @@ def _ground_constraint(
                     continue
                 # If the term is aggregated, expand the aggregation.
                 if term.operator == "sum":
-                    edge_specs = _ground_sum_term(
-                        term, quant_binding, cards, index_map
-                    )
+                    edge_specs = _ground_sum_term(term, quant_binding, cards, index_map)
                     for spec in edge_specs:
                         edges_to_add.append({**spec, "side": side, "pos": i})
                 else:

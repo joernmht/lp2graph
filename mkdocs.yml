@@ -1,6 +1,8 @@
 site_name: lp2graph
 site_description: Typed-graph representation of LP, MIP, and MILP formulations.
-site_url: https://joernmht.github.io/lp2graph/
+# The mkdocs site is the technical level, served under /docs/;
+# the mobile landing page (docs/demo/index.html) owns the site root.
+site_url: https://lp2graph.joernmaurischat.de/docs/
 repo_url: https://github.com/joernmht/lp2graph
 repo_name: joernmht/lp2graph
 
@@ -18,15 +20,34 @@ theme:
       primary: indigo
       accent: amber
 
+# The demo pages are static HTML deployed at the site root by the docs
+# workflow, not part of the mkdocs build.
+exclude_docs: |
+  demo/
+
+# The home page includes README.md verbatim (pymdownx.snippets). Its
+# repo-relative links (LICENSE, CONTRIBUTING.md, docs/*.md) cannot resolve
+# inside the rendered site, so missing link targets are downgraded from
+# warning to info to keep --strict builds green.
+validation:
+  links:
+    not_found: info
+    unrecognized_links: info
+
 nav:
   - Home: index.md
+  - Catalog: catalog.md
+  - "Demo (mobile)": https://lp2graph.joernmaurischat.de/
+  - "Corpus demo (Paper 1)": https://railpmining.joernmaurischat.de/
   - Data model: data-model.md
   - Views: views.md
   - Text ⇄ graph interface: text-graph-interface.md
+  - Code ⇄ graph interop: interop.md
   - Metrics: metrics.md
   - LP mining (M1–M6): mining.md
   - Add a formulation: add-a-formulation.md
   - Design context: design-context.md
+  - Software stack: STACK.md
   - Extraction report: extraction-report.md
   - v1 acceptance: v1-acceptance.md
   - ADRs:
@@ -35,6 +56,8 @@ nav:
       - "ADR-0003 license": adr/0003-license.md
       - "ADR-0004 schema versioning": adr/0004-schema-versioning.md
       - "ADR-0005 viewer hosting": adr/0005-viewer-hosting.md
+      - "ADR-0006 determinism": adr/0006-determinism.md
+      - "ADR-0007 optional deps lazy import": adr/0007-optional-deps-lazy-import.md
 
 markdown_extensions:
   - admonition
@@ -43,6 +66,8 @@ markdown_extensions:
   - pymdownx.highlight
   - pymdownx.superfences
   - pymdownx.details
+  - pymdownx.snippets:
+      check_paths: true
 
 plugins:
   - search

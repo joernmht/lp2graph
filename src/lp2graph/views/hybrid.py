@@ -22,6 +22,7 @@ from lp2graph.core.model import (
     Formulation,
     Term,
 )
+from lp2graph.views.schema import _emit_coefficient_edge
 
 
 def hybrid(f: Formulation) -> Graph:
@@ -159,6 +160,7 @@ def _emit_terms(
                     "offsets": offsets,
                 },
             )
+            _emit_coefficient_edge(g, src_id, term, position)
             continue
 
         g.add_edge(
@@ -173,6 +175,7 @@ def _emit_terms(
                 "offsets": offsets,
             },
         )
+        _emit_coefficient_edge(g, src_id, term, position)
 
 
 def _label_for_offsets(
@@ -182,8 +185,10 @@ def _label_for_offsets(
 ) -> str:
     coef = ""
     if coefficient not in (None, 1):
-        coef = f"{coefficient}·" if not isinstance(coefficient, (int, float)) else (
-            "" if coefficient == 1 else f"{coefficient}·"
+        coef = (
+            f"{coefficient}·"
+            if not isinstance(coefficient, (int, float))
+            else ("" if coefficient == 1 else f"{coefficient}·")
         )
     sgn = "" if sign == 1 else "-"
     if not offsets:

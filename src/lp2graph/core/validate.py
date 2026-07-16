@@ -53,17 +53,13 @@ def validate(f: Formulation) -> None:
     for v in f.variables:
         for s in v.shape:
             if s not in index_names:
-                errors.append(
-                    f"variable {v.name!r}: shape index {s!r} is not declared"
-                )
+                errors.append(f"variable {v.name!r}: shape index {s!r} is not declared")
 
     # 2. Parameter shapes reference declared indices.
     for p in f.parameters:
         for s in p.shape:
             if s not in index_names:
-                errors.append(
-                    f"parameter {p.name!r}: shape index {s!r} is not declared"
-                )
+                errors.append(f"parameter {p.name!r}: shape index {s!r} is not declared")
 
     # 3. Constraints: quantifiers, references, bindings.
     for c in f.constraints:
@@ -93,18 +89,12 @@ def validate(f: Formulation) -> None:
     if f.family == "lp":
         for v in f.variables:
             if v.domain in ("integer", "binary"):
-                errors.append(
-                    f"family is 'lp' but variable {v.name!r} has domain {v.domain!r}"
-                )
+                errors.append(f"family is 'lp' but variable {v.name!r} has domain {v.domain!r}")
     if f.family == "mip":
         # mip permits both integer and continuous; nothing to enforce.
         pass
-    if f.family == "milp" and not any(
-        v.domain in ("integer", "binary") for v in f.variables
-    ):
-        errors.append(
-            "family is 'milp' but no variable has integer or binary domain"
-        )
+    if f.family == "milp" and not any(v.domain in ("integer", "binary") for v in f.variables):
+        errors.append("family is 'milp' but no variable has integer or binary domain")
 
     if errors:
         raise ValidationError(
@@ -241,9 +231,7 @@ def _validate_term(
 
     # Coefficient: if string, must be a parameter name.
     if isinstance(term.coefficient, str) and term.coefficient not in parameter_names:
-        errors.append(
-            f"{where}: term coefficient {term.coefficient!r} is not a declared parameter"
-        )
+        errors.append(f"{where}: term coefficient {term.coefficient!r} is not a declared parameter")
 
 
 __all__ = ["ValidationError", "validate"]

@@ -65,7 +65,9 @@ def _render_term(t: Term) -> str:
     if t.ref_kind == "literal":
         return str(t.coefficient if t.coefficient is not None else 1)
     coef = ""
-    if isinstance(t.coefficient, str) or (isinstance(t.coefficient, (int, float)) and t.coefficient != 1):
+    if isinstance(t.coefficient, str) or (
+        isinstance(t.coefficient, (int, float)) and t.coefficient != 1
+    ):
         coef = f"{t.coefficient} \\cdot "
     body = t.ref
     if t.bindings:
@@ -102,9 +104,7 @@ def _render_quantifiers(quantifiers: tuple[Quantifier, ...]) -> str:
         elif q.restriction == "ordered_pair":
             restr.append(rf"{q.index} < {q.restriction_other}")
         if q.where is not None:
-            restr.append(
-                rf"{q.where.parameter}_{{{q.index}}} = {_render_value(q.where.equals)}"
-            )
+            restr.append(rf"{q.where.parameter}_{{{q.index}}} = {_render_value(q.where.equals)}")
     out = ", ".join(parts)
     if restr:
         out += ", " + ", ".join(restr)

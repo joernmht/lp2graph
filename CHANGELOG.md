@@ -14,6 +14,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `\sum_{X}`, likewise `\prod`/`\min`/`\max`/`\int`/`\bigcup`/`\bigcap`),
   `mathop_unwrap`, `underbrace_unwrap`, and `overset_base`. Rule-table version
   bumped to `rewrite-2026.07.0`.
+- **`lp2graph.interop`** — functional code ⇄ graph interfaces for the common
+  modeling languages, replacing the historic stubs. Importers build
+  coefficient-faithful flat `Formulation`s from **gurobipy** models
+  (`from_gurobipy`), **PuLP** problems (`from_pulp`), **Pyomo** concrete
+  models (`from_pyomo`, full linear term recovery via `standard_repn`;
+  ranged constraints split), and **LP / MPS / GAMS / AMPL / JuMP** text
+  (`from_lp_string` / `from_mps_string` / `from_gams` / `from_ampl` /
+  `from_jump`). Exporters emit every one of those targets from any
+  formulation (`to_gurobipy[_code]`, `to_pulp[_code]`, `to_pyomo[_code]`,
+  `to_lp_string`, `to_mps_string`, `to_gams`, `to_ampl`, `to_jump`) — flat
+  models directly, template-level models through the PuLP grounder with an
+  `Instance`. All emitters are deterministic fixpoints; unsupported
+  constructs raise `InteropError` instead of being dropped. Verified by a
+  `code → graph → code` round-trip matrix (`tests/interop/`, 100 tests)
+  that solves every path against hand-verified optima with CBC, HiGHS, and
+  Gurobi, including cross-reads of Gurobi-written `.lp`/`.mps` files.
+- **`lp2graph convert IN OUT`** — CLI conversion between modeling languages
+  through the canonical graph, routed by file extension
+  (`.json/.tex/.lp/.mps/.gms/.mod/.jl`, plus `.py` solver scripts via
+  `--python-api {gurobipy,pulp,pyomo}`).
+- **`mining.ingest`** now routes `.gms/.mod/.jl` to the real interop parsers
+  (previously honest stubs) and gained `.lp`/`.mps` support (`import_lp`,
+  `import_mps`); parse problems surface as structured `stage="parse"`
+  failures.
 
 - **`metrics.model_completeness`** — the second model-level well-formedness
   indicator described in *LP Mining with LP2Graph* (objective declared together
@@ -48,6 +72,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
     bibliographic key), and reproducible representative selection.
   - **M6 `mining.isomorphism`** — per-cluster schema-graph isomorphism rate via
     the NetworkX export (`isomorphism_report`).
+
+### Changed
+
+- **CI now gates formatting:** added a `ruff format --check src tests` step to
+  `ci.yml` (previously only `ruff check` ran, so format drift could land
+  undetected). Bumped the `ruff-pre-commit` pin v0.4.10 → v0.15.12 and the
+  `dev` extra to `ruff>=0.15.12,<0.16` so local, pre-commit, and CI agree;
+  reformatted 21 pre-existing files to the current ruff style.
+
+### Docs
+
+- Added `docs/STACK.md` (software-stack reference) and ADR-0006 (determinism as
+  a hard requirement) and ADR-0007 (optional dependencies are lazily imported),
+  wired into the MkDocs nav.
 
 ## [0.3.0] - 2026-06-01
 
