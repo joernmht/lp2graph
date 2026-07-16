@@ -6,8 +6,7 @@
   "description": "Periodic Event Scheduling Problem. For each event pair (i,j) with target offset l_{i,j} and tolerance window, the difference t_j - t_i mod T lies in [l_{i,j}, l_{i,j}+w_{i,j}]. Modeled with integer wrap variables k.",
   "tags": ["milp", "pesp", "cyclic", "modulo"],
   "indices": [
-    { "name": "E", "description": "Events." },
-    { "name": "T", "description": "Time slots within the period.", "ordered": true, "cyclic": true }
+    { "name": "E", "description": "Events." }
   ],
   "parameters": [
     { "name": "l", "shape": ["E", "E"], "kind": "matrix", "description": "Lower offset target." },

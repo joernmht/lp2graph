@@ -124,7 +124,7 @@ plugins = ["pydantic.mypy"]
 exclude = ["legacy/"]
 
 [[tool.mypy.overrides]]
-module = ["networkx.*", "torch.*", "torch_geometric.*", "dgl.*", "pyomo.*", "jsonschema.*", "pulp.*", "highspy.*", "nltk.*", "sklearn.*", "scipy.*", "hdbscan.*"]
+module = ["networkx.*", "torch.*", "torch_geometric.*", "dgl.*", "pyomo.*", "jsonschema.*", "pulp.*", "highspy.*", "nltk.*", "sklearn.*", "scipy.*", "hdbscan.*", "gurobipy.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

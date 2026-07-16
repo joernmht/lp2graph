@@ -13,7 +13,9 @@ Public surface:
   (:data:`REWRITE_RULES`).
 - :func:`from_pyomo` -- the M1a Pyomo importer.
 - The code-importer registry entries (:func:`import_gams`,
-  :func:`import_ampl`, :func:`import_jump`, :func:`import_python`).
+  :func:`import_ampl`, :func:`import_jump`, :func:`import_lp`,
+  :func:`import_mps`, :func:`import_python`) -- backed by the
+  deterministic parsers in :mod:`lp2graph.interop`.
 - The result types :class:`IngestionResult` / :class:`IngestionFailure`
   / :class:`IngestionError`.
 """
@@ -25,6 +27,8 @@ from lp2graph.mining.ingest.code_importers import (
     import_ampl,
     import_gams,
     import_jump,
+    import_lp,
+    import_mps,
     import_python,
 )
 from lp2graph.mining.ingest.dispatch import ingest
@@ -52,6 +56,8 @@ __all__ = [
     "import_ampl",
     "import_gams",
     "import_jump",
+    "import_lp",
+    "import_mps",
     "import_python",
     "ingest",
     "ingest_latex",
