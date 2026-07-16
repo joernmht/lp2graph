@@ -24,6 +24,13 @@ from lp2graph.interop import (
     to_pyomo_code,
 )
 
+
+def _default_solver():
+    from lp2graph.solve import default_solver
+
+    return default_solver()
+
+
 # ---------------------------------------------------------------------------
 # gurobipy
 # ---------------------------------------------------------------------------
@@ -136,7 +143,7 @@ def test_pulp_to_graph_and_back():
     assert _models.solve_cbc(f) == pytest.approx(44.0)
 
     prob2 = to_pulp(f)
-    prob2.solve(pulp.PULP_CBC_CMD(msg=False))
+    prob2.solve(_default_solver())
     assert pulp.value(prob2.objective) == pytest.approx(44.0)
 
 
@@ -148,7 +155,7 @@ def test_graph_to_pulp_code_executes_and_solves(known_model):
     ns: dict = {}
     exec(compile(code, "<generated pulp>", "exec"), ns)
     prob = ns["build_problem"]()
-    prob.solve(pulp.PULP_CBC_CMD(msg=False))
+    prob.solve(_default_solver())
     assert pulp.value(prob.objective) == pytest.approx(optimum)
 
 

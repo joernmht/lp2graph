@@ -8,6 +8,13 @@ import pytest
 from lp2graph.cli import main
 from lp2graph.interop import from_lp_string, to_lp_string
 
+
+def _default_solver():
+    from lp2graph.solve import default_solver
+
+    return default_solver()
+
+
 GAMS_KNAPSACK = """\
 Binary Variables a, b, c;
 Variables profit;
@@ -58,7 +65,7 @@ def test_convert_pulp_script_runs_to_optimum(tmp_path):
     ns: dict = {}
     exec(compile(dst.read_text(encoding="utf-8"), str(dst), "exec"), ns)
     prob = ns["build_problem"]()
-    prob.solve(pulp.PULP_CBC_CMD(msg=False))
+    prob.solve(_default_solver())
     assert pulp.value(prob.objective) == pytest.approx(44.0)
 
 

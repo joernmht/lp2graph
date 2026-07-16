@@ -69,6 +69,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **PuLP 4.0 forward-compatibility** (`lp2graph.solve` + `lp2graph.interop`):
+  migrated off the APIs PuLP 4.0 removes — variables are built with
+  `prob.add_variable(...)`, constraints counted with `prob.numConstraints()`,
+  and the default CBC solver is created by the new `solve.default_solver()`
+  (`COIN_CMD` with a bundled-CBC fallback) instead of the deprecated
+  `PULP_CBC_CMD`. `interop.grounded_from_pulp` lists constraints
+  version-agnostically, `to_pulp_code` emits scripts using the sanctioned
+  APIs, and the M1 ingest reader reports non-UTF-8 source files as
+  structured read-stage failures (ADR-0009) instead of raising.
+
 - **CI now gates formatting:** added a `ruff format --check src tests` step to
   `ci.yml` (previously only `ruff check` ran, so format drift could land
   undetected). Bumped the `ruff-pre-commit` pin v0.4.10 → v0.15.12 and the
