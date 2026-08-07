@@ -135,6 +135,12 @@ are visible.
 See [`CONTRIBUTING.md`](CONTRIBUTING.md). Bugs, new formulations, design
 decisions, and good-first-issues all have dedicated templates.
 
+## AI disclaimer
+
+This repository was developed with substantial assistance from AI coding tools
+(primarily Anthropic's Claude). Code, documentation and results have been
+reviewed by the author, who takes full responsibility for the content.
+
 ## License
 
 Apache 2.0. Portions adapted from
