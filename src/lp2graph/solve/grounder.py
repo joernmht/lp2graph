@@ -14,12 +14,25 @@ Supported (the linear core that covers LP/MIP/MILP and big-M models):
 - terms with numeric or parameter coefficients, signs, index offsets
   (``t-1``), and ``\\sum`` aggregation over index families;
 - parameter and literal terms as constants on either side;
-- objective with ``sum`` / ``weighted_sum`` combination.
+- objective with ``sum`` / ``weighted_sum`` combination;
+- ``abs`` terms, epigraph-lifted where the lifting is exact (see below);
+- ``lexicographic`` objectives, via :func:`solve_lexicographic`.
 
-Not yet supported (raise :class:`UnsupportedModel`): ``abs`` / ``max`` /
-``min`` / ``indicator`` / ``modulo`` *operators* on terms, indicator
-*trigger* constraints, and ``lexicographic`` objectives. Big-M and PESP
-modulo are expressible as plain linear constraints and ARE supported.
+``abs`` terms are linearized by replacing ``|e|`` with a fresh
+non-negative auxiliary ``d`` constrained by ``d >= e`` and ``d >= -e``.
+That relaxation is *exact* only where the model pushes ``d`` down onto
+``|e|``: in a minimized objective with a positive term sign, in the LHS
+of a ``<=`` constraint, and their mirror images. Anywhere else (a
+maximized objective, a ``>=`` bound on a magnitude, any ``==``) the
+lifted model would admit solutions the original forbids, so the
+grounder refuses rather than silently solving a different problem.
+Like ``\\sum``, an ``abs`` term aggregates over the index bases its
+bindings leave free, giving ``sum_i |e_i|``.
+
+Not yet supported (raise :class:`UnsupportedModel`): ``max`` / ``min`` /
+``indicator`` / ``modulo`` *operators* on terms, and indicator *trigger*
+constraints. Big-M and PESP modulo are expressible as plain linear
+constraints and ARE supported.
 """
 
 from __future__ import annotations
@@ -50,6 +63,13 @@ _CMP = {
     "ge": lambda a, b: a >= b,
     "eq": lambda a, b: a == b,
 }
+# Term sign for which epigraph-lifting an ``abs`` term is exact, per side and
+# comparator. ``d >= e, d >= -e`` only pins ``d`` down to ``|e|`` when the
+# model has an incentive to *shrink* it; where the constraint would instead be
+# relaxed by a larger ``d`` (and for every ``==``) there is no exact linear
+# lifting, and ``None`` makes the grounder say so.
+_ABS_LHS: dict[str, int | None] = {"le": 1, "ge": -1, "eq": None}
+_ABS_RHS: dict[str, int | None] = {"le": -1, "ge": 1, "eq": None}
 
 
 class UnsupportedModel(Exception):
@@ -66,6 +86,24 @@ class SolveResult:
     variables: dict[str, float]
 
 
+@dataclass
+class LexicographicResult:
+    """Outcome of a staged lexicographic solve.
+
+    ``objectives`` holds one value per priority level, in the order the
+    objective declares them; ``status`` is that of the *last* stage
+    solved. A stage that does not reach ``optimal`` stops the ladder, so
+    ``objectives`` may be shorter than the objective's term list.
+    """
+
+    status: str
+    objectives: tuple[float, ...]
+    n_vars: int
+    n_constraints: int
+    solver: str
+    variables: dict[str, float]
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -75,6 +113,16 @@ def build_problem(
     f: Formulation, instance: Instance, *, name: str | None = None
 ) -> tuple[pulp.LpProblem, dict[str, dict[tuple[int, ...], pulp.LpVariable]]]:
     """Build (but do not solve) a ``pulp.LpProblem`` for ``f`` at ``instance``."""
+    prob, vmap, _ = _build(f, instance, name=name)
+    return prob, vmap
+
+
+def _build(
+    f: Formulation, instance: Instance, *, name: str | None = None
+) -> tuple[pulp.LpProblem, dict[str, dict[tuple[int, ...], pulp.LpVariable]], _Ctx]:
+    """``build_problem`` plus the evaluation context, for callers that need to
+    re-express objective terms against this problem's variables (the staged
+    lexicographic solve)."""
     _check_supported(f)
     cards = _check_cards(f, instance)
     pvals = instance.parameters
@@ -102,7 +150,7 @@ def build_problem(
             cells[tup] = prob.add_variable(vname, lowBound=lo, upBound=v.upper, cat=cat)
         vmap[v.name] = cells
 
-    ctx = _Ctx(f=f, cards=cards, pvals=pvals, vmap=vmap, var_index=var_index)
+    ctx = _Ctx(f=f, cards=cards, pvals=pvals, vmap=vmap, var_index=var_index, prob=prob)
 
     # 2. Objective.
     if f.objective is not None:
@@ -111,8 +159,8 @@ def build_problem(
     # 3. Constraints.
     for c in f.constraints:
         for k, binding in enumerate(_enum_quantifiers(c.quantifiers, cards, pvals)):
-            expr_l, drop_l = _side_expr(ctx, c.lhs, binding)
-            expr_r, drop_r = _side_expr(ctx, c.rhs, binding)
+            expr_l, drop_l = _side_expr(ctx, c.lhs, binding, abs_sign=_ABS_LHS[c.comparator])
+            expr_r, drop_r = _side_expr(ctx, c.rhs, binding, abs_sign=_ABS_RHS[c.comparator])
             if drop_l or drop_r:
                 # A non-sum term referenced an out-of-range index (a boundary
                 # like ``t_{i-1}`` at ``i=0``): the constraint instance is
@@ -124,7 +172,7 @@ def build_problem(
             )
             prob += _CMP[c.comparator](expr_l, expr_r), cname[:255]
 
-    return prob, vmap
+    return prob, vmap, ctx
 
 
 def default_solver(
@@ -190,6 +238,88 @@ def solve(
     )
 
 
+def solve_lexicographic(
+    f: Formulation,
+    instance: Instance,
+    *,
+    solver: pulp.LpSolver | str | None = None,
+    msg: bool = False,
+    tolerance: float = 1e-9,
+) -> LexicographicResult:
+    """Solve a ``lexicographic`` objective one priority level at a time.
+
+    The objective's terms are its priority levels, highest first. Level
+    *k* is optimized subject to every higher-priority level being held at
+    the value it achieved, within ``tolerance``. The ladder stops at the
+    first level that does not reach optimality, and ``objectives`` then
+    reports only the levels that did.
+
+    ``tolerance`` is the slack on those held values. Exact equality is
+    the textbook statement, but pinning a floating-point optimum with an
+    equality can render the next stage infeasible on rounding alone; the
+    default is tight enough not to change the ordering and loose enough
+    to survive that.
+
+    Passing a pre-built ``pulp.LpSolver`` reuses it across stages. The
+    native-API back-ends are stateful (``pulp.GUROBI`` carries one
+    ``gurobipy.Model``), so prefer a solver *name* here, which builds a
+    fresh back-end per stage.
+    """
+    obj = f.objective
+    if obj is None or obj.combination != "lexicographic":
+        raise UnsupportedModel(
+            "solve_lexicographic requires an objective with combination='lexicographic'"
+        )
+    if not obj.terms:
+        raise UnsupportedModel("lexicographic objective declares no priority levels")
+
+    abs_sign = 1 if obj.sense == "min" else -1
+    achieved: list[float] = []
+    status = "not solved"
+    variables: dict[str, float] = {}
+    solver_name = ""
+    n_vars = n_constraints = 0
+
+    for k in range(len(obj.terms)):
+        prob, vmap, ctx = _build(
+            _stage_formulation(f, obj, k), instance, name=f"{_safe(f.id)}_lex{k}"
+        )
+        for j, held in enumerate(achieved):
+            expr, _ = _side_expr(ctx, (obj.terms[j],), {}, abs_sign=abs_sign)
+            prob += (expr <= held + tolerance), f"_lexfix{j}_up"
+            prob += (expr >= held - tolerance), f"_lexfix{j}_lo"
+
+        s = _coerce_solver(solver, msg=msg)
+        prob.solve(s)
+        status = pulp.LpStatus[prob.status].lower()
+        solver_name = type(s).__name__
+        n_vars, n_constraints = len(prob.variables()), prob.numConstraints()
+        variables = {v.name: v.value() for cells in vmap.values() for v in cells.values()}
+        if status != "optimal":
+            break
+        value = pulp.value(prob.objective)
+        achieved.append(0.0 if value is None else float(value))
+
+    return LexicographicResult(
+        status=status,
+        objectives=tuple(achieved),
+        n_vars=n_vars,
+        n_constraints=n_constraints,
+        solver=solver_name,
+        variables=variables,
+    )
+
+
+def _stage_formulation(f: Formulation, obj: Objective, k: int) -> Formulation:
+    """``f`` with its objective narrowed to priority level ``k`` alone.
+
+    ``model_copy`` rather than a dump/validate round-trip: both models are
+    already validated, and only the objective's term tuple changes.
+    """
+    stage_obj = obj.model_copy(update={"combination": "sum", "terms": (obj.terms[k],)})
+    return f.model_copy(update={"objective": stage_obj})
+
+
 def to_lp_string(f: Formulation, instance: Instance) -> str:
     """Ground and return the model in CPLEX LP format (for cross-solving)."""
     import tempfile
@@ -225,19 +355,28 @@ class _Ctx:
     pvals: Mapping[str, Any]
     vmap: dict[str, dict[tuple[int, ...], pulp.LpVariable]]
     var_index: dict[str, Any]
+    prob: pulp.LpProblem
+    n_aux: int = 0
 
 
 def _objective_expr(ctx: _Ctx, obj: Objective) -> Any:
     if obj.combination == "lexicographic":
         raise UnsupportedModel(
             "lexicographic objective is not solvable as a single LP; "
-            "optimize priorities sequentially instead"
+            "use lp2graph.solve.solve_lexicographic to optimize the "
+            "priorities sequentially"
         )
-    expr, _ = _side_expr(ctx, obj.terms, {})
+    expr, _ = _side_expr(ctx, obj.terms, {}, abs_sign=1 if obj.sense == "min" else -1)
     return expr
 
 
-def _side_expr(ctx: _Ctx, terms: tuple[Term, ...], binding: dict[str, int]) -> tuple[Any, bool]:
+def _side_expr(
+    ctx: _Ctx,
+    terms: tuple[Term, ...],
+    binding: dict[str, int],
+    *,
+    abs_sign: int | None = None,
+) -> tuple[Any, bool]:
     """Build a pulp affine expression for one side.
 
     Returns ``(expr, dropped)``. ``dropped`` is True if a *non-aggregated*
@@ -245,21 +384,29 @@ def _side_expr(ctx: _Ctx, terms: tuple[Term, ...], binding: dict[str, int]) -> t
     constraint instance is a degenerate boundary case and should be omitted.
     Aggregated (``\\sum``) terms silently drop out-of-range summands (a
     windowed sum), which is normal and does not set ``dropped``.
+
+    ``abs_sign`` is the term sign for which epigraph-lifting an ``abs`` term
+    in this position is exact (``None`` if no sign is).
     """
     expr = pulp.LpAffineExpression()
     dropped = False
     for t in terms:
-        contrib, d = _term_expr(ctx, t, binding)
+        contrib, d = _term_expr(ctx, t, binding, abs_sign=abs_sign)
         expr += contrib
         dropped = dropped or d
     return expr, dropped
 
 
-def _term_expr(ctx: _Ctx, t: Term, binding: dict[str, int]) -> tuple[Any, bool]:
+def _term_expr(
+    ctx: _Ctx, t: Term, binding: dict[str, int], *, abs_sign: int | None = None
+) -> tuple[Any, bool]:
     """Return ``(contribution, dropped)``. ``dropped`` is True only when a
     non-aggregated term's referenced index falls out of a non-cyclic range."""
-    if t.operator in ("abs", "max", "min", "indicator", "modulo"):
+    if t.operator in ("max", "min", "indicator", "modulo"):
         raise UnsupportedModel(f"term operator {t.operator!r} is not solvable")
+
+    if t.operator == "abs":
+        return _abs_expr(ctx, t, binding, abs_sign=abs_sign), False
 
     if t.operator == "sum":
         total = pulp.LpAffineExpression()
@@ -273,6 +420,42 @@ def _term_expr(ctx: _Ctx, t: Term, binding: dict[str, int]) -> tuple[Any, bool]:
     if idx is None:
         return pulp.LpAffineExpression(), True
     return _one_occurrence(ctx, t, binding, idx), False
+
+
+def _abs_expr(ctx: _Ctx, t: Term, binding: dict[str, int], *, abs_sign: int | None) -> Any:
+    """Epigraph-lift ``|e|``, aggregating over the term's free index bases.
+
+    Like ``\\sum``, an ``abs`` term loops over the bindings whose base is not
+    already bound by the enclosing scope, so ``|t_i|`` under a free ``i``
+    grounds to ``sum_i |t_i|``. Each occurrence gets its own auxiliary.
+    """
+    if abs_sign is None:
+        raise UnsupportedModel(
+            f"abs term on {t.ref!r} has no exact linearization in this position "
+            "(an equality, or a bound that a larger |e| would relax); "
+            "reformulate the model with explicit deviation variables"
+        )
+    if t.sign != abs_sign:
+        want = "minimized objective / <= upper bound" if abs_sign == 1 else "the mirrored form"
+        raise UnsupportedModel(
+            f"abs term on {t.ref!r} carries sign {t.sign:+d}, which the epigraph "
+            f"lifting would relax rather than tighten here; it is exact only for "
+            f"sign {abs_sign:+d} ({want})"
+        )
+    total = pulp.LpAffineExpression()
+    for scope in _sum_scopes(ctx, t, binding):
+        idx = _resolve_indices(ctx, t, scope)
+        if idx is None:
+            continue
+        # ``_one_occurrence`` folds the sign in; the sign belongs *outside*
+        # the magnitude, so undo it here and reapply it to the auxiliary.
+        inner = t.sign * _one_occurrence(ctx, t, scope, idx)
+        ctx.n_aux += 1
+        d = ctx.prob.add_variable(f"_abs{ctx.n_aux}_{_safe(t.ref)}", lowBound=0, cat="Continuous")
+        ctx.prob += (d >= inner), f"_absp{ctx.n_aux}"
+        ctx.prob += (d >= -inner), f"_absn{ctx.n_aux}"
+        total += t.sign * d
+    return total
 
 
 def _one_occurrence(ctx: _Ctx, t: Term, scope: dict[str, int], idx: tuple[int, ...]) -> Any:

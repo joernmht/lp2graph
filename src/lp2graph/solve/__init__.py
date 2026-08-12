@@ -8,8 +8,8 @@
     print(solve(f, inst).objective)
 
 ``Instance`` is importable without a solver installed; the grounder
-(``solve``, ``build_problem``, ``to_lp_string``, ``SolveResult``,
-``UnsupportedModel``) is loaded lazily on first access and requires the
+(``solve``, ``solve_lexicographic``, ``build_problem``, ``to_lp_string``,
+``SolveResult``, ``LexicographicResult``, ``UnsupportedModel``) is loaded lazily on first access and requires the
 optional ``solver`` extra (``pip install "lp2graph[solver]"``). See
 :mod:`lp2graph.solve.grounder` for the supported feature set.
 
@@ -35,20 +35,24 @@ from lp2graph.solve.solvers import (
 
 if TYPE_CHECKING:  # for type checkers / IDEs only — no runtime pulp import
     from lp2graph.solve.grounder import (
+        LexicographicResult,
         SolveResult,
         UnsupportedModel,
         build_problem,
         default_solver,
         solve,
+        solve_lexicographic,
         to_lp_string,
     )
 
 _LAZY = {
+    "LexicographicResult",
     "SolveResult",
     "UnsupportedModel",
     "build_problem",
     "default_solver",
     "solve",
+    "solve_lexicographic",
     "to_lp_string",
 }
 
@@ -64,6 +68,7 @@ def __getattr__(name: str) -> Any:
 __all__ = [
     "SOLVER_NAMES",
     "Instance",
+    "LexicographicResult",
     "SolveResult",
     "SolverName",
     "UnsupportedModel",
@@ -72,5 +77,6 @@ __all__ = [
     "default_solver",
     "make_solver",
     "solve",
+    "solve_lexicographic",
     "to_lp_string",
 ]
