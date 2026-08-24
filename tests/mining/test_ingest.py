@@ -294,3 +294,35 @@ def test_from_pyomo_without_pyomo_is_reported(monkeypatch):
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
+
+
+def test_greek_command_identifiers_become_mathit_names():
+    text, prov = normalize_latex(
+        r"\min \lambda \cdot x_{i} + \pi_{i} + \tau", source="d.tex"
+    )
+    assert text == r"\min \mathit{lambda} \cdot x_{i} + \mathit{pi}_{i} + \mathit{tau}"
+    assert "greek_ident" in {r.rule for r in prov.rewrites}
+
+
+def test_greek_rewrite_never_touches_non_greek_commands():
+    for untouched in (r"a \le b", r"x \neq y", r"\forall i \in \mathcal{I}", r"\left( x \right)"):
+        text, _ = normalize_latex(untouched, source="d.tex")
+        assert "mathit" not in text, text
+
+
+def test_ell_command_and_le_are_distinguished():
+    text, _ = normalize_latex(r"\ell \le \ell_{max}", source="d.tex")
+    assert text == r"\mathit{ell} \le \mathit{ell}_{max}"
+
+
+def test_unicode_greek_identifiers_become_mathit_names():
+    text, prov = normalize_latex("λ_{j} + Δ + ς + ℓ", source="d.tex")  # noqa: RUF001
+    assert (
+        text == r"\mathit{lambda}_{j} + \mathit{Delta} + \mathit{sigma} + \mathit{ell}"
+    )
+    assert "greek_unicode_ident" in {r.rule for r in prov.rewrites}
+
+
+def test_greek_rewrite_is_deterministic():
+    src = r"\min \varepsilon + λ \cdot x"
+    assert normalize_latex(src, source="d.tex")[0] == normalize_latex(src, source="d.tex")[0]

@@ -69,6 +69,20 @@ def _to_mathcal(m: re.Match[str]) -> str:
     return r"\mathcal{" + m.group(1) + "}"
 
 
+#: Unicode Greek codepoint -> canonical spelled-out name (final sigma folds
+#: into sigma: the positional variant is typography, not identity).
+_GREEK_UNICODE: dict[str, str] = {
+    "α": "alpha", "β": "beta", "γ": "gamma", "δ": "delta", "ε": "epsilon",  # noqa: RUF001
+    "ζ": "zeta", "η": "eta", "θ": "theta", "ι": "iota", "κ": "kappa",  # noqa: RUF001
+    "λ": "lambda", "μ": "mu", "ν": "nu", "ξ": "xi", "ο": "omicron",  # noqa: RUF001
+    "π": "pi", "ρ": "rho", "ς": "sigma", "σ": "sigma", "τ": "tau",  # noqa: RUF001
+    "υ": "upsilon", "φ": "phi", "χ": "chi", "ψ": "psi", "ω": "omega",  # noqa: RUF001
+    "Γ": "Gamma", "Δ": "Delta", "Θ": "Theta", "Λ": "Lambda", "Ξ": "Xi",
+    "Π": "Pi", "Σ": "Sigma", "Υ": "Upsilon", "Φ": "Phi", "Ψ": "Psi",  # noqa: RUF001
+    "Ω": "Omega", "ℓ": "ell",  # noqa: RUF001
+}
+
+
 #: The ordered rule table. Order matters: unicode/ascii operators are mapped
 #: to macros first, then ``*`` multiplication, then structural wrappers, then
 #: whitespace is collapsed last so spans of earlier rules stay meaningful.
@@ -130,6 +144,27 @@ REWRITE_RULES: tuple[RewriteRule, ...] = (
         r"\\overset\s*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}",
         lambda m: "{" + m.group(1) + "}",
         "\\overset{a}{b} to {b} (keep the base symbol)",
+    ),
+    # --- Greek identifiers (corpus evidence: Tier-2 formulas name symbols
+    # \lambda, \pi, \tau, ...; the canonical identifier grammar is
+    # [A-Za-z_]\w*, so a Greek command can never be a ref or binder index.
+    # The canonical spelling of a multi-character name is \mathit{name}, so
+    # the bijective rewrite \lambda -> \mathit{lambda} makes Greek-named
+    # models expressible without touching their meaning) -------------------
+    _rule(
+        "greek_ident",
+        r"\\(alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda"
+        r"|mu|nu|xi|omicron|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega"
+        r"|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega"
+        r"|varepsilon|vartheta|varpi|varrho|varsigma|varphi|ell)(?![a-zA-Z])",
+        lambda m: r"\mathit{" + m.group(1) + "}",
+        "Greek/\\ell command identifier to \\mathit{name}",
+    ),
+    _rule(
+        "greek_unicode_ident",
+        "[αβγδεζηθικλμνξοπρςστυφχψωΓΔΘΛΞΠΣΥΦΨΩℓ]",
+        lambda m: r"\mathit{" + _GREEK_UNICODE[m.group(0)] + "}",
+        "unicode Greek identifier to \\mathit{name}",
     ),
     # --- whitespace hygiene (last) ----------------------------------------
     _rule("collapse_ws", r"[ \t]{2,}", " ", "collapse runs of spaces/tabs"),
