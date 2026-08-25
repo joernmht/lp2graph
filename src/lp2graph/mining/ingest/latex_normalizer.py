@@ -104,6 +104,9 @@ REWRITE_RULES: tuple[RewriteRule, ...] = (
     _rule("ascii_eqeq", r"==", "=", "ascii == to ="),
     # --- multiplication: '*' between operands becomes \cdot ---------------
     _rule("star_cdot", r"\s*\*\s*", r" \cdot ", "'*' multiplication to \\cdot"),
+    # \times the COMMAND (the unicode char is mapped above); corpus evidence:
+    # weighted objectives write w_1 \times f_1.
+    _rule("times_cdot", r"\\times(?![a-zA-Z])", r"\cdot", "\\times to \\cdot"),
     # --- index-set wrapper macros to \mathcal -----------------------------
     _rule(
         "mathbb_mathcal",
