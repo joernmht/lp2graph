@@ -23,6 +23,14 @@ opaque: rewrites are confined to the algebraic ``align`` body so the
 header is never corrupted.
 """
 
+# This module's whole job is mapping unicode Greek and look-alike codepoints
+# to canonical ASCII names, so the "ambiguous character" lint fires on every
+# table entry by design. A file-level directive keeps the tables free to be
+# reformatted; the per-line `noqa: RUF001` comments this replaces were
+# orphaned whenever `ruff format` exploded the dict literals, which left the
+# CI format gate and the lint gate unable to pass at the same time.
+# ruff: noqa: RUF001
+
 from __future__ import annotations
 
 import re
@@ -69,17 +77,134 @@ def _to_mathcal(m: re.Match[str]) -> str:
     return r"\mathcal{" + m.group(1) + "}"
 
 
+def _pad(m: re.Match[str], repl: str) -> str:
+    """Space-guard a plain-identifier replacement so it never glues onto an
+    adjacent letter or digit (``x\\bar{t}`` must not become ``xt_bar``)."""
+    s = m.string
+    left = " " if m.start() > 0 and s[m.start() - 1].isalnum() else ""
+    right = " " if m.end() < len(s) and s[m.end()].isalnum() else ""
+    return left + repl + right
+
+
+def _plain_name(s: str) -> str:
+    """The plain ``\\w+`` spelling of an identifier: ``\\mathit`` unwrapped,
+    escaped underscores restored, MathML letter-spacing collapsed."""
+    s = s.strip()
+    mm = re.fullmatch(r"\\mathit\{([^{}]*)\}", s)
+    if mm:
+        s = mm.group(1)
+    return s.replace("\\_", "_").replace(" ", "")
+
+
+#: Accent spellings seen as the FIRST ``\overset``/``\underset`` argument in
+#: Tier-2 MathML-derived corpus formulas (combining characters included) →
+#: the standard accent command the pair collapses to. Only mapped arguments
+#: rewrite; ``\overset{def}{=}``-style annotations fall through to
+#: ``overset_base`` unchanged.
+_OVERSET_ACCENTS: dict[str, str] = {
+    "~": "tilde",
+    "\\sim": "tilde",
+    "\\tilde": "tilde",
+    "\u0303": "tilde",
+    "^": "hat",
+    "\\wedge": "hat",
+    "\\hat": "hat",
+    "\u0302": "hat",
+    "-": "bar",
+    "\\bar": "bar",
+    "\\overline": "bar",
+    "\u0304": "bar",
+    "¯": "bar",
+    "⃗": "vec",
+    "→": "vec",
+    "\\rightarrow": "vec",
+    "\\vec": "vec",
+}
+
+_UNDERSET_ACCENTS: dict[str, str] = {
+    "\\underline": "underline",
+    "_": "underline",
+    "-": "underline",
+    "\u0332": "underline",
+}
+
+
+def _accent_alts(table: dict[str, str]) -> str:
+    return "|".join(re.escape(k) for k in sorted(table, key=len, reverse=True))
+
+
+def _overset_accent_repl(m: re.Match[str]) -> str:
+    return "\\" + _OVERSET_ACCENTS[m.group(1).strip()] + "{" + m.group(2) + "}"
+
+
+def _underset_accent_repl(m: re.Match[str]) -> str:
+    return "\\" + _UNDERSET_ACCENTS[m.group(1).strip()] + "{" + m.group(2) + "}"
+
+
+def _accent_ident_repl(m: re.Match[str]) -> str:
+    inner = m.group(2) if m.group(2) is not None else m.group(3)
+    return _pad(m, _plain_name(inner) + "_" + m.group(1))
+
+
+def _prime_ident_repl(m: re.Match[str]) -> str:
+    deco = m.group(2)
+    n = deco.count("'") + deco.count("′") + deco.count("\\prime")
+    return _pad(m, _plain_name(m.group(1)) + "p" * n)
+
+
+_SUM_GROUP = re.compile(r"\\sum_\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}\s*")
+
+
+def _sum_merge_repl(m: re.Match[str]) -> str:
+    binders = [g.strip() for g in _SUM_GROUP.findall(m.group(0))]
+    return r"\sum_{" + ", ".join(binders) + "} "
+
+
+#: An accent's operand: a ``\mathit`` name or a (possibly MathML-spaced)
+#: letter run — never a compound expression, which stays untouched.
+_ACCENT_INNER = r"(?:\\mathit\{[^{}]*\}|[A-Za-z](?:\s?[A-Za-z0-9])*)"
+
+
 #: Unicode Greek codepoint -> canonical spelled-out name (final sigma folds
 #: into sigma: the positional variant is typography, not identity).
 _GREEK_UNICODE: dict[str, str] = {
-    "α": "alpha", "β": "beta", "γ": "gamma", "δ": "delta", "ε": "epsilon",  # noqa: RUF001
-    "ζ": "zeta", "η": "eta", "θ": "theta", "ι": "iota", "κ": "kappa",  # noqa: RUF001
-    "λ": "lambda", "μ": "mu", "ν": "nu", "ξ": "xi", "ο": "omicron",  # noqa: RUF001
-    "π": "pi", "ρ": "rho", "ς": "sigma", "σ": "sigma", "τ": "tau",  # noqa: RUF001
-    "υ": "upsilon", "φ": "phi", "χ": "chi", "ψ": "psi", "ω": "omega",  # noqa: RUF001
-    "Γ": "Gamma", "Δ": "Delta", "Θ": "Theta", "Λ": "Lambda", "Ξ": "Xi",
-    "Π": "Pi", "Σ": "Sigma", "Υ": "Upsilon", "Φ": "Phi", "Ψ": "Psi",  # noqa: RUF001
-    "Ω": "Omega", "ℓ": "ell",  # noqa: RUF001
+    "α": "alpha",
+    "β": "beta",
+    "γ": "gamma",
+    "δ": "delta",
+    "ε": "epsilon",
+    "ζ": "zeta",
+    "η": "eta",
+    "θ": "theta",
+    "ι": "iota",
+    "κ": "kappa",
+    "λ": "lambda",
+    "μ": "mu",
+    "ν": "nu",
+    "ξ": "xi",
+    "ο": "omicron",
+    "π": "pi",
+    "ρ": "rho",
+    "ς": "sigma",
+    "σ": "sigma",
+    "τ": "tau",
+    "υ": "upsilon",
+    "φ": "phi",
+    "χ": "chi",
+    "ψ": "psi",
+    "ω": "omega",
+    "Γ": "Gamma",
+    "Δ": "Delta",
+    "Θ": "Theta",
+    "Λ": "Lambda",
+    "Ξ": "Xi",
+    "Π": "Pi",
+    "Σ": "Sigma",
+    "Υ": "Upsilon",
+    "Φ": "Phi",
+    "Ψ": "Psi",
+    "Ω": "Omega",
+    "ℓ": "ell",
 }
 
 
@@ -93,9 +218,9 @@ REWRITE_RULES: tuple[RewriteRule, ...] = (
     _rule("u2260_neq", "≠", r"\neq", "U+2260 != to \\neq"),
     _rule("u2200_forall", "∀", r"\forall", "U+2200 for-all to \\forall"),
     _rule("u2208_in", "∈", r"\in", "U+2208 element-of to \\in"),
-    _rule("u00d7_cdot", "×", r"\cdot", "U+00D7 times to \\cdot"),  # noqa: RUF001
+    _rule("u00d7_cdot", "×", r"\cdot", "U+00D7 times to \\cdot"),
     _rule("u22c5_cdot", "⋅", r"\cdot", "U+22C5 dot operator to \\cdot"),
-    _rule("u2212_minus", "−", "-", "U+2212 minus sign to '-'"),  # noqa: RUF001
+    _rule("u2212_minus", "−", "-", "U+2212 minus sign to '-'"),
     _rule("u2211_sum", "∑", r"\sum", "U+2211 n-ary sum to \\sum"),
     # --- ascii comparison shorthands (before bare '<'/'>') ----------------
     _rule("ascii_le", r"<=", r"\le", "ascii <= to \\le"),
@@ -130,6 +255,16 @@ REWRITE_RULES: tuple[RewriteRule, ...] = (
         lambda m: m.group(2) + "_{" + m.group(1) + "}",
         "\\underset{X}{\\sum} to \\sum_{X} (canonical aggregation spelling)",
     ),
+    # An \underset whose SECOND argument is an accented base (the first is
+    # the accent) is a decoration, not a big operator; collapse it to the
+    # standard accent command so accent_ident (below) can rename it.
+    _rule(
+        "underset_accent",
+        r"\\underset\s*\{\s*(" + _accent_alts(_UNDERSET_ACCENTS) + r")\s*\}\s*"
+        r"\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}",
+        _underset_accent_repl,
+        "\\underset{\\underline}{X} to \\underline{X}",
+    ),
     _rule(
         "mathop_unwrap",
         r"\\mathop\s*\{\s*(\\[a-zA-Z]+|[a-zA-Z]+)\s*\}",
@@ -142,11 +277,32 @@ REWRITE_RULES: tuple[RewriteRule, ...] = (
         lambda m: "{" + m.group(1) + "}",
         "\\underbrace{X} to {X} (drop annotation brace)",
     ),
+    # An \overset carrying an ACCENT (tilde/hat/bar/vec spellings incl.
+    # combining characters) is a decorated identifier: collapse to the
+    # standard accent command BEFORE overset_base can drop the accent and
+    # silently merge \overset{~}{\beta} with a plain \beta.
+    _rule(
+        "overset_accent",
+        r"\\overset\s*\{\s*(" + _accent_alts(_OVERSET_ACCENTS) + r")\s*\}\s*"
+        r"\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}",
+        _overset_accent_repl,
+        "\\overset{~}{X} to \\tilde{X} (accent argument)",
+    ),
     _rule(
         "overset_base",
         r"\\overset\s*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}",
         lambda m: "{" + m.group(1) + "}",
         "\\overset{a}{b} to {b} (keep the base symbol)",
+    ),
+    # Consecutive big operators do not parse; the canonical spelling is ONE
+    # \sum with a comma-joined multi-binder (order preserved: the second
+    # binder set may reference the first index, \sum_{j \in T, a \in A^{j}}).
+    # Corpus evidence: 60 of 168 grammar-failing papers (2026-08 sprint).
+    _rule(
+        "sum_merge",
+        r"(?:\\sum_\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}\s*){2,}",
+        _sum_merge_repl,
+        "consecutive \\sum operators merge into one multi-binder \\sum",
     ),
     # --- Greek identifiers (corpus evidence: Tier-2 formulas name symbols
     # \lambda, \pi, \tau, ...; the canonical identifier grammar is
@@ -168,6 +324,29 @@ REWRITE_RULES: tuple[RewriteRule, ...] = (
         "[αβγδεζηθικλμνξοπρςστυφχψωΓΔΘΛΞΠΣΥΦΨΩℓ]",
         lambda m: r"\mathit{" + _GREEK_UNICODE[m.group(0)] + "}",
         "unicode Greek identifier to \\mathit{name}",
+    ),
+    # --- decorated identifiers (corpus evidence: 130 of 168 grammar-failing
+    # papers in the 2026-08 sprint decorate names with accents or primes;
+    # decorations are outside the identifier grammar but bijectively
+    # renameable. Targets are PLAIN \w+ names (tc_hat, kp) — the spelling
+    # the lab's repair convention already uses — because a plain name is
+    # valid in EVERY position (binder, quantifier index, subscript expr,
+    # referent), where \mathit{...} is not. Runs AFTER the Greek rules so
+    # \tilde{\beta} arrives here as \tilde{\mathit{beta}} -> beta_tilde) --
+    _rule(
+        "accent_ident",
+        r"\\(widehat|widetilde|overline|underline|mathring|tilde|check|breve"
+        r"|acute|grave|ddot|dot|bar|hat|vec)(?![a-zA-Z])"
+        r"\s*(?:\{\s*(" + _ACCENT_INNER + r")\s*\}|\s+([A-Za-z])(?![a-zA-Z]))",
+        _accent_ident_repl,
+        "accented identifier to plain name_accent (\\hat{tc} -> tc_hat)",
+    ),
+    _rule(
+        "prime_ident",
+        r"(?<![A-Za-z0-9_\\])((?:\\mathit\{[^{}]*\})|[A-Za-z]\w*)"
+        r"((?:['′])+|\^\{\s*(?:\\prime|['′])+\s*\}|\^\\prime(?![a-zA-Z]))",
+        _prime_ident_repl,
+        "primed identifier to plain p-suffixed name (t' -> tp, k^{'} -> kp)",
     ),
     # --- whitespace hygiene (last) ----------------------------------------
     _rule("collapse_ws", r"[ \t]{2,}", " ", "collapse runs of spaces/tabs"),

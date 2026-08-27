@@ -21,16 +21,34 @@ the right kind with the right index-family bindings.
 
 Grammar of a body term (one summand)::
 
-    term      := ['-'|'+'] [aggreg] [coef '\cdot'] referent
+    term      := ['-'|'+'] [numfactor] [aggreg] [coef '\cdot'] referent
     aggreg    := '\sum_{' binder (',' binder)* '}'
                | '\left|' ... '\right|'                 (abs)
                | '\max\left(' ... '\right)' | '\min\left(' ... '\right)'
                | '\mathbb{1}\left[' ... '\right]'       (indicator)
     binder    := ident '\in' '\mathcal{' SET '}'
-    coef      := number | symbol
+    numfactor := number | '\frac{' number '}{' number '}'
+    coef      := number | numfrac | symbol ['_{' expr (',' expr)* '}']
     referent  := symbol ['_{' expr (',' expr)* '}'] | number
     symbol    := letter | '\mathit{' name '}'
     expr      := ident ['-'|'+' integer]                (index, optional offset)
+
+The parser additionally accepts author spellings the emitter never
+produces, each resolved *exactly* or refused with a named error:
+
+- ``\leq``/``\geq``/``\leqslant``/``\geqslant`` as row comparators.
+- A chained same-direction inequality row ``l \le e \le u`` becomes two
+  constraints named ``<name>_lo`` and ``<name>_up`` sharing the row's
+  quantifiers (mixed-direction or equality chains are refused).
+- A subscripted coefficient ``w_{e} \cdot x_{e}`` resolves to the bare
+  parameter name when the written indices match what grounding will use
+  (the referent's bindings, or the unique in-scope binder/quantifier
+  index per declared shape slot); any other indexing is refused.
+- ``\frac{a}{b}`` with numeric arguments and a terminating decimal value
+  folds into the term's numeric coefficient; every other ``\frac`` is
+  refused by name (declare a ratio parameter instead).
+- Trailing ``^{...}``/``_{...}``/juxtaposed material after a referent's
+  subscript is refused by name — nothing is dropped silently.
 
 See :mod:`lp2graph.codec` for the round-trip guarantees.
 """
@@ -324,7 +342,7 @@ def from_canonical_latex(text: str) -> Formulation:
         if kind == "objective":
             objective = _parse_objective_row(row, ann, sym)
         else:
-            constraints.append(_parse_constraint_row(row, name, ann, sym))
+            constraints.extend(_parse_constraint_rows(row, name, ann, sym))
 
     meta = ann["meta"]
     kwargs: dict[str, object] = {
@@ -501,7 +519,7 @@ def _parse_objective_row(row: str, ann: dict[str, Any], sym: _SymTab) -> Objecti
     info = ann.get("obj", {})
     body = _strip_tag(row).replace("&", " ")
     body = re.sub(r"\\min\\quad|\\max\\quad|\\min|\\max|\\quad", " ", body).strip()
-    terms = _parse_term_sum(body, "objective", sym)
+    terms = _parse_term_sum(body, "objective", sym, {})
     return Objective(
         sense=info.get("sense", "min"),
         name=info.get("name", "objective"),
@@ -511,9 +529,12 @@ def _parse_objective_row(row: str, ann: dict[str, Any], sym: _SymTab) -> Objecti
     )
 
 
-def _parse_constraint_row(
+def _parse_constraint_rows(
     row: str, name: str, ann: dict[str, Any], sym: _SymTab
-) -> ConstraintTemplate:
+) -> list[ConstraintTemplate]:
+    """Parse one align row into one constraint — or two, for a chained
+    same-direction inequality ``l \\le e \\le u`` (``<name>_lo``/``<name>_up``,
+    both inheriting the row's quantifiers)."""
     info = ann["con"].get(name, {})
     body = _strip_tag(row)
     # Split body from quantifier on \qquad.
@@ -522,10 +543,16 @@ def _parse_constraint_row(
         body, qpart = body.split(r"\qquad", 1)
     body = body.replace("&", " ").strip()
 
-    cmp, lhs_s, rhs_s = _split_comparison(body)
-    lhs = _parse_term_sum(lhs_s, "lhs", sym)
-    rhs = _parse_term_sum(rhs_s, "rhs", sym)
     quantifiers = _parse_quantifiers(qpart)
+    env = {q.index: q.over for q in quantifiers}
+
+    rels = _find_relations(body)
+    if not rels:
+        raise ValueError(f"no comparator in constraint body: {body!r}")
+    if len(rels) > 2:
+        raise ValueError(
+            f"chained relation with {len(rels)} comparators is not supported: {body!r}"
+        )
 
     indicator = None
     ind = info.get("indicator")
@@ -535,31 +562,54 @@ def _parse_constraint_row(
 
         indicator = IndicatorTrigger(binary=binary, active_value=int(active))
 
-    return ConstraintTemplate(
-        name=name,
-        description=info.get("desc", ""),
-        quantifiers=tuple(quantifiers),
-        comparator=cmp,
-        lhs=tuple(lhs),
-        rhs=tuple(rhs),
-        kind=info.get("kind", "linear"),
-        domain_class=info.get("domain"),
-        indicator=indicator,
-    )
+    def build(cname: str, cmp: str, lhs_s: str, rhs_s: str) -> ConstraintTemplate:
+        return ConstraintTemplate(
+            name=cname,
+            description=info.get("desc", ""),
+            quantifiers=tuple(quantifiers),
+            comparator=cmp,
+            lhs=tuple(_parse_term_sum(lhs_s, "lhs", sym, env)),
+            rhs=tuple(_parse_term_sum(rhs_s, "rhs", sym, env)),
+            kind=info.get("kind", "linear"),
+            domain_class=info.get("domain"),
+            indicator=indicator,
+        )
+
+    if len(rels) == 1:
+        (start, end, cmp) = rels[0]
+        return [build(name, cmp, body[:start], body[end:])]
+
+    (s1, e1, cmp1), (s2, e2, cmp2) = rels
+    if cmp1 != cmp2 or cmp1 == "eq":
+        raise ValueError(f"mixed-direction or equality chained relation is not supported: {body!r}")
+    lo_seg, mid_seg, hi_seg = body[:s1], body[e1:s2], body[e2:]
+    if cmp1 == "le":
+        return [
+            build(f"{name}_lo", "le", lo_seg, mid_seg),
+            build(f"{name}_up", "le", mid_seg, hi_seg),
+        ]
+    return [
+        build(f"{name}_up", "ge", lo_seg, mid_seg),
+        build(f"{name}_lo", "ge", mid_seg, hi_seg),
+    ]
 
 
-def _split_comparison(body: str) -> tuple[str, str, str]:
-    for tok, cmp in ((r"\le", "le"), (r"\ge", "ge")):
-        idx = _find_top(body, tok)
-        if idx >= 0:
-            return cmp, body[:idx], body[idx + len(tok) :]
-    idx = _find_top_eq(body)
-    if idx >= 0:
-        return "eq", body[:idx], body[idx + 1 :]
-    raise ValueError(f"no comparator in constraint body: {body!r}")
+#: Comparator spellings accepted in a row body, longest first so ``\leq``
+#: is never read as ``\le`` followed by a stray ``q`` (and ``\left`` is
+#: never read as ``\le``): every match requires a non-letter follower.
+_CMP_TOKENS: tuple[tuple[str, str], ...] = (
+    (r"\leqslant", "le"),
+    (r"\geqslant", "ge"),
+    (r"\leq", "le"),
+    (r"\geq", "ge"),
+    (r"\le", "le"),
+    (r"\ge", "ge"),
+)
 
 
-def _find_top(body: str, tok: str) -> int:
+def _find_relations(body: str) -> list[tuple[int, int, str]]:
+    """All top-level comparator occurrences as ``(start, end, cmp)``."""
+    out: list[tuple[int, int, str]] = []
     depth = 0
     i = 0
     while i < len(body):
@@ -568,29 +618,27 @@ def _find_top(body: str, tok: str) -> int:
             depth += 1
         elif ch == "}":
             depth -= 1
-        elif depth == 0 and body.startswith(tok, i):
-            # avoid matching \leq/\geq tails when looking for \le/\ge is fine
-            return i
-        i += 1
-    return -1
-
-
-def _find_top_eq(body: str) -> int:
-    depth = 0
-    for i, ch in enumerate(body):
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
         elif depth == 0 and ch == "=":
-            return i
-    return -1
+            out.append((i, i + 1, "eq"))
+        elif depth == 0 and ch == "\\":
+            for tok, cmp in _CMP_TOKENS:
+                if body.startswith(tok, i):
+                    follower = body[i + len(tok) : i + len(tok) + 1]
+                    if not follower.isalpha():
+                        out.append((i, i + len(tok), cmp))
+                        i += len(tok)
+                        break
+            else:
+                i += 1
+            continue
+        i += 1
+    return out
 
 
 # --- term-sum parsing ------------------------------------------------------
 
 
-def _parse_term_sum(body: str, role: str, sym: _SymTab) -> list[Term]:
+def _parse_term_sum(body: str, role: str, sym: _SymTab, env: dict[str, str]) -> list[Term]:
     body = body.strip()
     if body == "" or body == "0":
         # An explicit "0" RHS carries no terms.
@@ -600,7 +648,7 @@ def _parse_term_sum(body: str, role: str, sym: _SymTab) -> list[Term]:
     pieces = _split_signed(body)
     terms = []
     for sign, text in pieces:
-        t = _parse_term(text, sign, role, sym)
+        t = _parse_term(text, sign, role, sym, env)
         if t is not None:
             terms.append(t)
     return terms
@@ -643,18 +691,69 @@ def _is_exponent(body: str, i: int) -> bool:
     return i > 0 and body[i - 1] in "eE" and (i >= 2 and body[i - 2].isdigit())
 
 
-def _parse_term(text: str, sign: int, role: str, sym: _SymTab) -> Term | None:
+_NUM_RE = re.compile(r"-?\d+(\.\d+)?")
+_FRAC_NUM_RE = re.compile(r"\\frac\s*\{\s*(-?\d+(?:\.\d+)?)\s*\}\s*\{\s*(-?\d+(?:\.\d+)?)\s*\}")
+_IDENT_RE = re.compile(r"[A-Za-z_]\w*")
+#: One ``binder \in \mathcal{SET}`` pair inside a ``\sum`` subscript.
+_BINDER_PAIR_RE = re.compile(r"([A-Za-z_]\w*)\s*\\in\s*\\mathcal\{([\w\\]+)\}")
+
+
+def _frac_value(num: str, den: str, origin: str) -> float:
+    """Exact value of a numeric ``\\frac`` — refused unless the decimal
+    terminates (an author could equivalently have written the decimal)."""
+    from fractions import Fraction
+
+    d = Fraction(den)
+    if d == 0:
+        raise ValueError(f"\\frac with zero denominator: {origin!r}")
+    frac = Fraction(num) / d
+    rest = frac.denominator
+    for p in (2, 5):
+        while rest % p == 0:
+            rest //= p
+    if rest != 1:
+        raise ValueError(
+            f"\\frac value {origin!r} has no terminating decimal; it cannot be folded "
+            "into a numeric coefficient exactly (declare a ratio parameter instead)"
+        )
+    return float(frac)
+
+
+def _take_numeric_prefactor(text: str) -> tuple[float | None, str]:
+    """Consume a leading numeric factor (``\\frac{a}{b}`` always; a plain
+    number only when a ``\\sum`` follows, so literal terms stay literal)."""
+    m = _FRAC_NUM_RE.match(text)
+    if m:
+        value = _frac_value(m.group(1), m.group(2), m.group(0))
+        rest = text[m.end() :].lstrip()
+        if rest.startswith(r"\cdot"):
+            rest = rest[len(r"\cdot") :].lstrip()
+        return value, rest
+    m2 = re.match(r"(-?\d+(?:\.\d+)?)\s+(?=\\sum_)", text)
+    if m2:
+        return float(m2.group(1)), text[m2.end() :]
+    return None, text
+
+
+def _parse_term(text: str, sign: int, role: str, sym: _SymTab, env: dict[str, str]) -> Term | None:
     text = text.strip()
     if not text:
         return None
     operator = "none"
     operator_over: tuple[str, ...] = ()
 
+    pre, text = _take_numeric_prefactor(text)
+    if pre is not None and not text:
+        # A bare numeric fraction is a literal term.
+        text = _num(pre)
+        pre = None
+
     # Aggregation wrappers.
     if text.startswith(r"\sum_"):
         sub, rest = _take_braced(text[len(r"\sum_") :])
         operator = "sum"
         operator_over = tuple(_setnames(sub))
+        env = {**env, **{v: f.replace(r"\_", "_") for v, f in _BINDER_PAIR_RE.findall(sub)}}
         text = rest.strip()
     elif text.startswith(r"\left|"):
         operator = "abs"
@@ -669,16 +768,37 @@ def _parse_term(text: str, sign: int, role: str, sym: _SymTab) -> Term | None:
         operator = "indicator"
         text = _between(text, r"\mathbb{1}\left[", r"\right]")
 
+    # A numeric factor may also sit after the wrapper: \sum_{..} \frac{1}{2} x.
+    pre2, text = _take_numeric_prefactor(text)
+    if pre2 is not None:
+        pre = pre2 if pre is None else pre * pre2
+
     # Coefficient / referent.
-    coefficient: float | str | None = 1
+    coef_s: str | None = None
     if r"\cdot" in text:
-        coef_s, ref_s = text.split(r"\cdot", 1)
-        coefficient = _parse_coef(coef_s.strip())
+        raw_coef, ref_s = text.split(r"\cdot", 1)
+        coef_s = raw_coef.strip()
         text = ref_s.strip()
 
     text = text.strip()
-    if re.fullmatch(r"-?\d+(\.\d+)?", text):
+    if r"\frac" in text:
+        raise ValueError(
+            f"\\frac in referent position is not in the canonical grammar: {text!r} "
+            "(only numeric fractions with a terminating decimal fold into a "
+            "coefficient; declare a ratio parameter for symbolic ratios)"
+        )
+    if _NUM_RE.fullmatch(text):
         value = float(text)
+        if coef_s is not None:
+            cv = _resolve_coef(coef_s, "_const", [], sym, env)
+            if isinstance(cv, str):
+                raise ValueError(
+                    f"symbolic coefficient {cv!r} on the literal {text!r} is not in the "
+                    "canonical grammar (write the parameter as the referent instead)"
+                )
+            value *= cv
+        if pre is not None:
+            value *= pre
         if value.is_integer():
             value = int(value)
         return Term(
@@ -692,6 +812,18 @@ def _parse_term(text: str, sign: int, role: str, sym: _SymTab) -> Term | None:
         )
 
     name, bindings = _parse_referent(text, sym)
+    coefficient: float | str | None = 1
+    if coef_s is not None:
+        coefficient = _resolve_coef(coef_s, name, bindings, sym, env)
+    if pre is not None:
+        if isinstance(coefficient, str):
+            raise ValueError(
+                f"cannot fold the numeric factor {pre!r} into the symbolic coefficient "
+                f"{coefficient!r} exactly (the canonical Term carries one coefficient; "
+                "introduce a scaled parameter instead)"
+            )
+        value = pre * float(coefficient if coefficient is not None else 1)
+        coefficient = int(value) if value.is_integer() else value
     return Term(
         ref=name,
         ref_kind=sym.kind(name),
@@ -704,38 +836,124 @@ def _parse_term(text: str, sign: int, role: str, sym: _SymTab) -> Term | None:
     )
 
 
-def _parse_coef(s: str) -> float | str:
-    s = s.strip()
-    if re.fullmatch(r"-?\d+(\.\d+)?", s):
+def _resolve_coef(
+    coef_s: str,
+    ref_name: str,
+    ref_bindings: list[Binding],
+    sym: _SymTab,
+    env: dict[str, str],
+) -> float | str:
+    """Resolve the text left of ``\\cdot`` to a numeric value or a bare
+    parameter name.
+
+    A subscripted coefficient like ``w_{e}`` resolves to ``w`` only when
+    the written indices are exactly what grounding will use for ``w``
+    (:func:`lp2graph.solve.grounder._coef_value`): the referent's binding
+    exprs when the shapes coincide, or the unique in-scope binder or
+    quantifier index of each declared shape family otherwise. Anything
+    else is refused by name — never silently reindexed.
+    """
+    s = coef_s.strip()
+    if _NUM_RE.fullmatch(s):
         v = float(s)
         return int(v) if v.is_integer() else v
-    return _read_sym(s)
+    m = _FRAC_NUM_RE.fullmatch(s)
+    if m:
+        return _frac_value(m.group(1), m.group(2), s)
+    if r"\frac" in s:
+        raise ValueError(
+            f"symbolic \\frac coefficient {s!r} is not in the canonical grammar "
+            "(declare a ratio parameter instead)"
+        )
+    base, sub, rest = _split_scripted(s)
+    if rest.strip():
+        raise ValueError(
+            f"coefficient {s!r}: trailing {rest.strip()!r} after the subscript is not "
+            "in the canonical grammar (superscript indices must be resolved upstream)"
+        )
+    name = _read_sym(base)
+    if not sub:
+        return name
+    exprs = [" ".join(e.split()) for e in _split_top_commas(sub)]
+    shape = sym.param_shape.get(name)
+    if name in sym.var_shape:
+        raise ValueError(
+            f"subscripted coefficient {s!r} names the variable {name!r}: a "
+            "variable-times-variable product is nonlinear and outside the grammar"
+        )
+    if shape is None:
+        raise ValueError(
+            f"subscripted coefficient {s!r} is not a declared parameter "
+            f"(declare {name!r} with an explicit shape)"
+        )
+    if len(shape) != len(exprs):
+        raise ValueError(
+            f"subscripted coefficient {s!r} writes {len(exprs)} indices but "
+            f"{name!r} is declared with shape {shape!r}"
+        )
+    ref_exprs = [" ".join(b.expr.split()) for b in ref_bindings]
+    if exprs == ref_exprs and tuple(shape) == tuple(sym.shape(ref_name)):
+        return name
+    fam_vars: dict[str, set[str]] = {}
+    for var, fam in env.items():
+        fam_vars.setdefault(fam, set()).add(var)
+    for b in ref_bindings:
+        if _IDENT_RE.fullmatch(b.expr):
+            fam_vars.setdefault(b.index, set()).add(b.expr)
+    if all(fam_vars.get(fam) == {expr} for fam, expr in zip(shape, exprs, strict=True)):
+        return name
+    raise ValueError(
+        f"subscripted coefficient {s!r} cannot be resolved exactly: its indices must "
+        f"match the referent's bindings {ref_exprs!r} or the unique in-scope index of "
+        f"each declared family in shape {shape!r} (in scope: {sorted(env)!r})"
+    )
 
 
 def _parse_referent(text: str, sym: _SymTab) -> tuple[str, list[Binding]]:
-    base, sub = _split_subscript(text)
+    base, sub, rest = _split_scripted(text)
+    if rest and not re.fullmatch(r"[\s.,;:]*", rest):
+        raise ValueError(
+            f"referent {text!r}: trailing {rest.strip()!r} after the subscript is not "
+            "part of the canonical grammar (superscript indices and juxtaposed factors "
+            "must be resolved upstream; nothing is dropped silently)"
+        )
     name = _read_sym(base)
     bindings: list[Binding] = []
     if sub:
         exprs = _split_top_commas(sub)
         shape = sym.shape(name)
         for pos, expr in enumerate(exprs):
-            fam = shape[pos] if pos < len(shape) else (exprs and expr)
+            if pos < len(shape):
+                fam = shape[pos]
+            else:
+                fam = expr.strip()
+                if not _IDENT_RE.fullmatch(fam):
+                    raise ValueError(
+                        f"referent {name!r}: subscript {expr.strip()!r} cannot serve as "
+                        f"an index family (declare {name!r} with an explicit shape; "
+                        "constant and offset subscripts resolve only against a "
+                        "declared shape)"
+                    )
             bindings.append(Binding(index=fam, expr=expr.strip(), offset=_offset(expr)))
     return name, bindings
 
 
-def _split_subscript(text: str) -> tuple[str, str]:
+def _split_scripted(text: str) -> tuple[str, str, str]:
+    """Split ``base_{sub}rest`` — ``sub`` and ``rest`` are ``''`` when absent."""
     m = re.search(r"_\{", text)
     if not m:
-        return text.strip(), ""
+        return text.strip(), "", ""
     base = text[: m.start()]
-    sub, _ = _take_braced(text[m.end() - 1 :])  # include the '{'
-    return base.strip(), sub
+    sub, rest = _take_braced(text[m.end() - 1 :])  # include the '{'
+    return base.strip(), sub, rest
 
 
 def _read_sym(s: str) -> str:
     s = s.strip()
+    m = re.fullmatch(r"\{([^{}]*)\}", s)
+    if m:
+        # A redundant brace group around a symbol ({a}_{k}) is transparent.
+        return _read_sym(m.group(1))
     m = re.fullmatch(r"\\mathit\{(.*)\}", s)
     if m:
         return m.group(1).replace(r"\_", "_")

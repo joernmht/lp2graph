@@ -8,6 +8,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Grammar holes #52–#57 closed deterministically** (issues filed from the
+  Paper-1 corpus promotion sprint; every fix is exact-or-refused-by-name,
+  nothing is dropped silently):
+  - *Codec parser* (`codec.latex`): `\leq`/`\geq`/`\leqslant`/`\geqslant`
+    accepted as row comparators with token guards (previously `\leq` was read
+    as `\le` plus a stray `q`, and `\left|` on a constraint LHS was read as
+    `\le` — both silently corrupted the relation split); chained
+    same-direction inequality rows `l \le e \le u` split into two constraints
+    `<name>_lo`/`<name>_up` inheriting the row's quantifiers (#53;
+    mixed-direction, equality, and 3+-comparator chains refused by name);
+    subscripted coefficients `w_{e} \cdot x_{e}` resolve to the bare
+    parameter exactly when the written indices match what grounding uses —
+    the referent's bindings, or the unique in-scope binder/quantifier index
+    per declared shape slot (#52); numeric `\frac{a}{b}` with a terminating
+    decimal folds into the numeric coefficient, every other `\frac` is
+    refused by name (#57); constant subscripts (`t_{0}`) get a named
+    diagnostic pointing at the missing shape declaration — with the family
+    declared they were already legal element references (#54); trailing
+    `^{...}` or juxtaposed factors after a referent's subscript are refused
+    by name instead of being **silently dropped** (previously
+    `p_{e} x_{e}` parsed with `x` discarded and `x_{e}^{k}` lost its
+    superscript index).
+  - *M1b normalizer* (`mining.ingest.latex_normalizer`): `sum_merge`
+    (consecutive `\sum` operators merge into one multi-binder `\sum`,
+    order-preserving, #56); `overset_accent`/`underset_accent` (accent-shaped
+    `\overset`/`\underset` pairs collapse to the standard accent command
+    before `overset_base` can drop the accent); `accent_ident` and
+    `prime_ident` (decorated identifiers rename bijectively to plain `\w+`
+    names — `\hat{tc}` → `tc_hat`, `t'`/`k^{'}` → `tp`/`kp` — valid in every
+    grammar position, #55). Rule-table version bumped to `rewrite-2026.08.1`.
+
 - **`lp2graph.validation`** — end-to-end validation of (LLM-)generated
   LP/MILP artifacts. `validate_text` / `validate_path` / `validate_formulation`
   accept raw text, bytes, files, or parsed models in any supported format
