@@ -313,7 +313,9 @@ def test_greek_rewrite_never_touches_non_greek_commands():
 
 def test_ell_command_and_le_are_distinguished():
     text, _ = normalize_latex(r"\ell \le \ell_{max}", source="d.tex")
-    assert text == r"\mathit{ell} \le \mathit{ell}_{max}"
+    # ``_{max}`` is a label subscript (no binder binds it), so it folds into
+    # the plain name; the \ell / \le distinction is what this test guards.
+    assert text == r"\mathit{ell} \le ell_max"
 
 
 def test_unicode_greek_identifiers_become_mathit_names():
@@ -335,7 +337,9 @@ def test_greek_rewrite_is_deterministic():
 
 def test_times_command_becomes_cdot():
     text, prov = normalize_latex(r"w_{1} \times f_{1} + a \times b", source="d.tex")
-    assert text == r"w_{1} \cdot f_{1} + a \cdot b"
+    # Without a declared shape a numeric subscript is a label: a weighted
+    # objective names distinct scalars w_1, w_2 (declaration-driven rules).
+    assert text == r"w_1 \cdot f_1 + a \cdot b"
     assert "times_cdot" in {r.rule for r in prov.rewrites}
 
 
@@ -399,8 +403,12 @@ def test_accent_rewrite_never_touches_lookalikes():
 
 
 def test_primed_identifiers_get_p_suffix():
-    text, prov = normalize_latex(r"t' + k^{'} + l^{\prime\prime} + x_{t'}", source="d.tex")
-    assert text == r"tp + kp + lpp + x_{tp}"
+    text, prov = normalize_latex(
+        r"t' + k^{'} + l^{\prime\prime} + x_{t'} \forall t' \in \mathcal{T}", source="d.tex"
+    )
+    # The renamed letter stays bound (the quantifier renames with it), so
+    # x_{tp} keeps its index; an unbound two-letter word would be a label.
+    assert text == r"tp + kp + lpp + x_{tp} \forall tp \in \mathcal{T}"
     assert "prime_ident" in {r.rule for r in prov.rewrites}
 
 
@@ -558,7 +566,10 @@ def test_symbolic_frac_is_refused_by_name():
 def test_trailing_superscript_is_refused_not_dropped():
     r = _probe(_PROBE_OBJ, r"  & x_{e}^{k} \le u \qquad \forall e \in \mathcal{E} \tag{cap} \\")
     assert not r.ok
-    assert "trailing" in r.failures[0].message
+    # ``k`` is bound nowhere, so the script rules read it as a label and the
+    # row names the undeclared symbol x_k; still refused by name, not dropped.
+    assert "x_k" in r.failures[0].message
+    assert "not a declared" in r.failures[0].message
 
 
 def test_juxtaposed_second_factor_is_refused_not_dropped():
@@ -581,3 +592,141 @@ def test_undeclared_constant_subscript_gets_a_named_error():
     r = _probe(_PROBE_OBJ, r"  & z_{0} \le u \tag{cap} \\")
     assert not r.ok
     assert "declare" in r.failures[0].message
+
+
+# ---------------------------------------------------------------------------
+# M1b rule batch rewrite-2026.09.0: declaration-driven script resolution
+# (issues #62 regression, #63; corpus evidence: 49 + 21 of 220 failing papers
+# in the 2026-09 promote re-run stall on superscripts and label subscripts)
+# ---------------------------------------------------------------------------
+
+_CTX_HEADER = """%@ meta id=ctx family=lp schema=0.1.0
+%@ name :: Context probe
+%@ index I ordered=0 cyclic=0 :: Items.
+%@ index T ordered=1 cyclic=0 :: Periods.
+%@ param B shape=T kind=vector domain=- :: Demand.
+%@ var w shape=T domain=continuous role=primary drole=- lo=- hi=- :: Waiting.
+%@ var t shape=I domain=continuous role=primary drole=- lo=- hi=- :: Time.
+%@ var x shape=I,T domain=continuous role=primary drole=- lo=- hi=- :: Flow.
+%@ var Z_1 shape=- domain=continuous role=primary drole=- lo=- hi=- :: Component.
+"""
+
+
+def _norm(row: str) -> tuple[str, set[str]]:
+    """Normalize one row under ``_CTX_HEADER``; return the row and the rules that fired."""
+    doc = _CTX_HEADER + "\\begin{align}\n  & " + row + " \\tag{r} \\\\\n\\end{align}\n"
+    text, prov = normalize_latex(doc, source="ctx.tex")
+    body = text.split("\\begin{align}", 1)[1].split(" \\tag{r}", 1)[0]
+    return body.strip(" &\n"), {r.rule for r in prov.rewrites}
+
+
+def test_unbraced_scripts_brace_against_declarations():
+    row, fired = _norm(
+        r"\sum_{u \in \mathcal{T}} B_u \cdot w_u + Z_1 + x_i \forall i \in \mathcal{I}"
+    )
+    assert (
+        row == r"\sum_{u \in \mathcal{T}} B_{u} \cdot w_{u} + Z_1 + x_{i} \forall i \in \mathcal{I}"
+    )
+    assert "bare_sub_brace" in fired
+
+
+def test_unbraced_subscript_on_an_unknown_symbol_is_left_alone():
+    # Neither ``q`` is shaped nor ``v`` bound: nothing to resolve against.
+    row, fired = _norm(r"q_v + x_{i} \forall i \in \mathcal{I}")
+    assert row.startswith("q_v")
+    assert "bare_sub_brace" not in fired
+
+
+def test_bound_superscripts_move_into_the_subscript():
+    row, fired = _norm(
+        r"x_{i}^{k} + p_{n}^{t + 1} + N_{b}^{i j} + \sum_{p = 1}^{f^{i}} y_{p}"
+        r" \forall i \in \mathcal{I}, k \in \mathcal{K}, t \in \mathcal{T}, j \in \mathcal{J}"
+    )
+    assert row.startswith(r"x_{i, k} + p_{n, t + 1} + N_{b, i, j} + \sum_{p = 1}^{f_{i}} y_{p}")
+    assert "superscript_index" in fired
+    assert "superscript_label" not in fired
+
+
+def test_label_superscripts_fold_into_plain_names():
+    row, fired = _norm(
+        r"t_{i}^{arr} + v_{i}^{c} + \mathit{tau}_{k}^{de} + x_{k}^{\text{end}}"
+        r" + t_{i,s}^{d e p} + Y_{i,s}^{1} + q^{*} + r^* \forall i \in \mathcal{I}, k \in \mathcal{K}, s \in \mathcal{S}"
+    )
+    assert row.startswith(
+        r"t_arr_{i} + v_c_{i} + tau_de_{k} + x_end_{k} + t_dep_{i,s} + Y_1_{i,s} + q_star + r_star"
+    )
+    assert {"superscript_label", "bare_sup_brace"} <= fired
+
+
+def test_label_subscripts_fold_into_plain_names():
+    row, fired = _norm(
+        r"h_{min} + Z_{1} + z_{1} + t_{0} + x_{i, \mathit{dep}} + f_{cost}"
+        r" \forall i \in \mathcal{I}"
+    )
+    # t is declared with a shape, so t_{0} is a fixed-element reference (#54)
+    # and stays; Z_{1}/z_{1} have no shape and become plain names.
+    assert row.startswith(r"h_min + Z_1 + z_1 + t_{0} + x_dep_{i} + f_cost")
+    assert "label_subscript" in fired
+
+
+def test_complex_scripts_are_left_for_the_parser_to_refuse():
+    src = r"a_{k}^{v \left(u\right)} + a_{i}^{m_{d}} + x_{u \rightarrow v}^{e} \forall i \in \mathcal{I}, k \in \mathcal{K}"
+    row, fired = _norm(src)
+    # Nested or delimited superscripts stay as written; a label superscript
+    # over an unresolvable subscript folds into the name and leaves the
+    # subscript for the parser to refuse.
+    assert row == (
+        r"a_{k}^{v \left(u\right)} + a_{i}^{m_{d}} + x_e_{u \rightarrow v}"
+        r" \forall i \in \mathcal{I}, k \in \mathcal{K}"
+    )
+    assert "superscript_index" not in fired
+    r = _probe(
+        r"  \min\quad & \sum_{e \in \mathcal{E}} c \cdot x_{e}^{k \left(e\right)} \tag{cost} \\"
+    )
+    assert not r.ok
+    assert "trailing" in r.failures[0].message
+
+
+def test_script_rules_never_touch_the_header_or_binders():
+    doc = (
+        _CTX_HEADER
+        + "\\begin{align}\n  & \\sum_{i \\in \\mathcal{I}} t_{i}^{arr} \\tag{r} \\\\\n\\end{align}\n"
+    )
+    text, _ = normalize_latex(doc, source="ctx.tex")
+    assert text.startswith(_CTX_HEADER)
+    assert r"\sum_{i \in \mathcal{I}} t_arr_{i}" in text
+
+
+def test_unbraced_subscript_regression_round_trips():
+    # Issue #62: B_u \cdot w_u used to ingest as a literal term with a string
+    # coefficient and not round-trip. Now the scripts brace against the
+    # declarations and the row is the ordinary bound product.
+    r = _probe(r"  \min\quad & \sum_{e \in \mathcal{E}} w_e \cdot x_e \tag{cost} \\")
+    assert r.ok, r.failures
+    (term,) = r.formulation.objective.terms
+    assert (term.ref, term.ref_kind, term.coefficient) == ("x", "variable", "w")
+    assert [b.expr for b in term.bindings] == ["e"]
+    again = from_canonical_latex(to_canonical_latex(r.formulation))
+    assert again.model_dump() == r.formulation.model_dump()
+
+
+def test_undeclared_referent_and_coefficient_are_refused_by_name():
+    r = _probe(r"  \min\quad & \sum_{e \in \mathcal{E}} c \cdot y_{e} \tag{cost} \\")
+    assert not r.ok
+    assert "not a declared variable or parameter" in r.failures[0].message
+    r = _probe(r"  \min\quad & \sum_{e \in \mathcal{E}} q \cdot x_{e} \tag{cost} \\")
+    assert not r.ok
+    assert "not a declared parameter" in r.failures[0].message
+    r = _probe(r"  \min\quad & \sum_{e \in \mathcal{E}} x \cdot x_{e} \tag{cost} \\")
+    assert not r.ok
+    assert "nonlinear" in r.failures[0].message
+
+
+def test_script_resolution_is_deterministic_and_versioned():
+    src = r"t_{i}^{arr} + x_{i}^{k} + h_{min} + B_u \forall i \in \mathcal{I}, k \in \mathcal{K}, u \in \mathcal{T}"
+    doc = _CTX_HEADER + "\\begin{align}\n  & " + src + " \\tag{r} \\\\\n\\end{align}\n"
+    a1, p1 = normalize_latex(doc, source="ctx.tex")
+    a2, p2 = normalize_latex(doc, source="ctx.tex")
+    assert a1 == a2
+    assert p1.rewrites == p2.rewrites
+    assert {r.rules_version for r in p1.rewrites} == {"rewrite-2026.09.0"}

@@ -812,6 +812,16 @@ def _parse_term(text: str, sign: int, role: str, sym: _SymTab, env: dict[str, st
         )
 
     name, bindings = _parse_referent(text, sym)
+    if sym.kind(name) == "literal":
+        # An undeclared identifier is refused by name: the only literal term
+        # is a numeric constant. Without this guard an unbraced subscript
+        # such as ``w_u`` reads as the plain identifier ``w_u`` and would be
+        # emitted as a literal ref that neither validates as a symbol nor
+        # round-trips (issue #62).
+        raise ValueError(
+            f"referent {name!r} is not a declared variable or parameter (declare it in "
+            "the %@ header; an unbraced subscript such as w_u must be written w_{u})"
+        )
     coefficient: float | str | None = 1
     if coef_s is not None:
         coefficient = _resolve_coef(coef_s, name, bindings, sym, env)
@@ -873,6 +883,18 @@ def _resolve_coef(
         )
     name = _read_sym(base)
     if not sub:
+        if name in sym.var_shape:
+            raise ValueError(
+                f"coefficient {s!r} names the variable {name!r}: a variable-times-variable "
+                "product is nonlinear and outside the grammar"
+            )
+        if name not in sym.param_shape:
+            # Same exact-or-refused rule as the subscripted path (issue #62):
+            # a bare symbolic coefficient must be a declared parameter.
+            raise ValueError(
+                f"coefficient {s!r} is not a declared parameter (declare {name!r} in the "
+                "%@ header; an unbraced subscript such as B_u must be written B_{u})"
+            )
         return name
     exprs = [" ".join(e.split()) for e in _split_top_commas(sub)]
     shape = sym.param_shape.get(name)

@@ -8,6 +8,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **M1b declaration-driven script resolution** (`rewrite-2026.09.0`,
+  issue #63; corpus evidence: 49 + 21 of the 220 papers still failing the
+  Paper-1 promotion after the #52–#57 batch stall on superscripts and
+  label subscripts). The canonical grammar has no superscripts and every
+  subscript position is an index, so the normalizer now decides what a
+  script is from the document itself — the `%@` header (declared names,
+  shapes) and the body's binders/quantifiers — and rewrites bijectively:
+  `bare_sub_brace`/`bare_sup_brace` brace unbraced scripts against the
+  declarations (`B_u \cdot w_u` -> `B_{u} \cdot w_{u}`, a declared plain
+  name such as `Z_1` stays); `superscript_index` moves bound-letter
+  superscripts into the subscript (`x_{i}^{k}` -> `x_{i, k}`,
+  `p_{n}^{t + 1}` -> `p_{n, t + 1}`, MathML-spaced `^{i j}` -> two
+  indices); `superscript_label` folds label superscripts into plain names
+  (`t_{i}^{arr}` -> `t_arr_{i}`, `v_{i}^{c}` -> `v_c_{i}`,
+  `\mathit{tau}_{k}^{de}` -> `tau_de_{k}`, `Y_{i,s}^{1}` -> `Y_1_{i,s}`,
+  `q^{*}` -> `q_star`); `label_subscript` folds label subscripts
+  (`h_{min}` -> `h_min`, `Z_{1}` -> `Z_1` when `Z` has no declared shape;
+  a numeric subscript on a shaped symbol stays a fixed-element reference).
+  Nested or delimited scripts are left untouched for the parser to refuse
+  by name. `RewriteRule` gained `ctx_replacement` (rules that read a
+  `DocContext`), and a rule that declines records no rewrite. The
+  declaration sidecar must declare the folded spellings.
+
+### Fixed
+
+- **Codec accepted undeclared identifiers silently** (issue #62): an
+  undeclared referent fell through `_SymTab.kind()` as a `literal` term
+  and a bare coefficient name was returned without checking it is a
+  declared parameter, so unbraced subscripts (`B_u \cdot w_u`) ingested
+  `ok=True` with `ref="w_u"`, `coefficient="B_u"` and did not round-trip
+  (surfaced by the lab's re-promoted `trc.2014.06.003`). Both paths now
+  refuse by name, pointing at the declaration and the braced form.
+
 - **Grammar holes #52–#57 closed deterministically** (issues filed from the
   Paper-1 corpus promotion sprint; every fix is exact-or-refused-by-name,
   nothing is dropped silently):

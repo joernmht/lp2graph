@@ -20,7 +20,10 @@ aggregations. Rules only ever rewrite *toward* those spellings.
 
 The ``%@`` annotation header carries the symbol table and is treated as
 opaque: rewrites are confined to the algebraic ``align`` body so the
-header is never corrupted.
+header is never corrupted. A few rules *read* the header (declared names
+and shapes) and the body's binders to resolve scripts deterministically:
+see :class:`DocContext` and the ``superscript_*`` / ``label_subscript``
+rules (issue #63).
 """
 
 # This module's whole job is mapping unicode Greek and look-alike codepoints
@@ -62,12 +65,28 @@ class RewriteRule:
     pattern: re.Pattern[str]
     replacement: str | Callable[[re.Match[str]], str]
     note: str = ""
+    #: A replacement that also sees the document context (declared names,
+    #: bound letters). When set, ``replacement`` is ignored. Returning the
+    #: match unchanged means "this rule does not apply here" and records
+    #: no rewrite.
+    ctx_replacement: Callable[[re.Match[str], DocContext], str] | None = None
 
 
 def _rule(
     rule_id: str, regex: str, repl: str | Callable[[re.Match[str]], str], note: str = ""
 ) -> RewriteRule:
     return RewriteRule(rule_id=rule_id, pattern=re.compile(regex), replacement=repl, note=note)
+
+
+def _ctx_rule(
+    rule_id: str,
+    pattern: re.Pattern[str],
+    repl: Callable[[re.Match[str], DocContext], str],
+    note: str = "",
+) -> RewriteRule:
+    return RewriteRule(
+        rule_id=rule_id, pattern=pattern, replacement="", note=note, ctx_replacement=repl
+    )
 
 
 # Index-set wrapper normalization: the parser only resolves binder/quantifier
@@ -208,6 +227,230 @@ _GREEK_UNICODE: dict[str, str] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Declaration-driven script resolution (issue #63)
+# ---------------------------------------------------------------------------
+#
+# The canonical grammar has no superscripts, and every subscript position is
+# an index. Authors use scripts for two unrelated things: INDICES
+# (``x_{i}^{k}`` with ``k`` bound by a binder or quantifier) and LABELS
+# (``t_{i}^{arr}``, ``v_{i}^{c}``, ``h_{min}``, ``Z_{1}``). Which one a
+# script is, is decidable from the document itself: the ``%@`` header says
+# which names exist and which carry a shape, and the ``align`` body says
+# which letters are bound. So these rules resolve scripts deterministically
+# and bijectively: an index script moves into the subscript, a label script
+# folds into a plain ``\w+`` name (the same convention as ``accent_ident``:
+# ``t_arr``, ``v_c``, ``tau_de``, ``h_min``), and anything else is left
+# untouched for the parser to refuse by name. The declaration sidecar has
+# to declare the folded spellings; that is the lab's vocabulary step.
+
+
+@dataclass(frozen=True, slots=True)
+class DocContext:
+    r"""What a document declares and binds, read once per context rule.
+
+    ``declared`` holds every ``%@ index``/``param``/``var`` name,
+    ``shaped`` the param/var names declared with a non-empty shape, and
+    ``bound`` every letter the body binds through ``\in`` binders and
+    quantifiers, tuple binders ``(i, j) \in``, ``\forall i, j`` lists and
+    big-operator ranges ``\sum_{i = 1}^{n}``.
+    """
+
+    declared: frozenset[str]
+    shaped: frozenset[str]
+    bound: frozenset[str]
+
+    @classmethod
+    def build(cls, text: str, body: str) -> DocContext:
+        declared: set[str] = set()
+        shaped: set[str] = set()
+        for line in text.splitlines():
+            dm = _DECL_RE.match(line)
+            if dm is None:
+                continue
+            kind, name, rest = dm.groups()
+            declared.add(name)
+            if kind != "index":
+                sm = re.search(r"\bshape=(\S+)", rest)
+                if sm is not None and sm.group(1) != "-":
+                    shaped.add(name)
+        bound: set[str] = set()
+        for bm in _BOUND_IN_RE.finditer(body):
+            bound.update(_plain_name(t) for t in _split_top_commas(bm.group(1)))
+        for bm in _BOUND_TUPLE_RE.finditer(body):
+            inner = bm.group(1) if bm.group(1) is not None else bm.group(2)
+            for t in _split_top_commas(inner):
+                if re.fullmatch(_TOK, t.strip()):
+                    bound.add(_plain_name(t))
+        for bm in _BOUND_FORALL_RE.finditer(body):
+            bound.update(_plain_name(t) for t in _split_top_commas(bm.group(1)))
+        for bm in _BIGOP_SUB_RE.finditer(body):
+            for rm in _RANGE_BINDER_RE.finditer(bm.group(1)):
+                bound.add(_plain_name(rm.group(1)))
+        return cls(declared=frozenset(declared), shaped=frozenset(shaped), bound=frozenset(bound))
+
+
+_DECL_RE = re.compile(r"^\s*%@\s*(index|param|var)\s+([A-Za-z_]\w*)(.*)$")
+_TOK = r"(?:\\mathit\{[^{}]*\}|[A-Za-z]\w*)"
+_BOUND_IN_RE = re.compile(r"(" + _TOK + r"(?:\s*,\s*" + _TOK + r")*)\s*\\in(?![A-Za-z])")
+_BOUND_TUPLE_RE = re.compile(
+    r"\\left\(\s*([^()]*?)\s*\\right\)\s*\\in(?![A-Za-z])|\(\s*([^()]*?)\s*\)\s*\\in(?![A-Za-z])"
+)
+_BOUND_FORALL_RE = re.compile(r"\\forall\s*(" + _TOK + r"(?:\s*,\s*" + _TOK + r")*)")
+_BIGOP_SUB_RE = re.compile(
+    r"\\(?:sum|prod|max|min|bigcup|bigcap)_\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}"
+)
+_RANGE_BINDER_RE = re.compile(r"(" + _TOK + r")\s*=")
+_SCRIPT_GRP = r"\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}"
+_BASE = r"(?<![\\A-Za-z0-9_])(\\mathit\{[^{}]*\}|[A-Za-z]\w*)"
+_BARE_SUB_RE = re.compile(
+    r"(?<![\\A-Za-z0-9_])(\\mathit\{[^{}]*\}|[A-Za-z][A-Za-z0-9]*)_([A-Za-z0-9])(?![A-Za-z0-9_])"
+)
+_BARE_SUP_RE = re.compile(
+    r"(?<![\\A-Za-z0-9_])(\\mathit\{[^{}]*\}|[A-Za-z]\w*(?:_\{[^{}]*\})?)\^([A-Za-z0-9*])"
+    r"(?![A-Za-z0-9_{])"
+)
+_SUP_RULE_RE = re.compile(
+    _BASE + r"(?:_" + _SCRIPT_GRP + r")?\^" + _SCRIPT_GRP + r"(?:_" + _SCRIPT_GRP + r")?"
+)
+_SUB_RULE_RE = re.compile(_BASE + r"_" + _SCRIPT_GRP + r"(?!\s*\^)")
+_WRAP_RE = re.compile(
+    r"\\(?:text|textrm|mathit|mathrm|mathtt|mathsf|mathbf|operatorname)\s*\{([^{}]*)\}"
+)
+_OFFSET_RE = re.compile(r"(" + _TOK + r")\s*([+-])\s*(\d+)")
+
+
+def _split_top_commas(s: str) -> list[str]:
+    """Split on commas outside braces/parentheses (``a, b_{c,d}`` -> 2)."""
+    out: list[str] = []
+    depth = 0
+    cur: list[str] = []
+    for ch in s:
+        if ch in "{(":
+            depth += 1
+        elif ch in "})":
+            depth -= 1
+        if ch == "," and depth == 0:
+            out.append("".join(cur))
+            cur = []
+        else:
+            cur.append(ch)
+    out.append("".join(cur))
+    return out
+
+
+def _piece_word(piece: str) -> str | None:
+    """The plain word a simple script piece spells, or ``None`` when the
+    piece is not a simple token (nested scripts, delimiters, sums ...)."""
+    q = piece.strip()
+    wm = _WRAP_RE.fullmatch(q)
+    if wm is not None:
+        q = wm.group(1).strip()
+    if q in ("*", r"\star", r"\ast"):
+        return "star"
+    if q in (r"\max", r"\min"):
+        return q[1:]
+    if re.fullmatch(r"[A-Za-z0-9](?:\s+[A-Za-z0-9])+", q):
+        q = q.replace(" ", "")  # MathML letter spacing: d e p -> dep
+    if re.fullmatch(r"[A-Za-z][A-Za-z0-9]*|[0-9]+", q):
+        return q
+    return None
+
+
+def _index_pieces(piece: str, ctx: DocContext) -> list[str] | None:
+    """The index expressions a script piece denotes, or ``None`` if the
+    piece is not made of bound letters (a label, or something else)."""
+    q = piece.strip()
+    w = _piece_word(q)
+    if w is not None and w in ctx.bound:
+        return [w]
+    om = _OFFSET_RE.fullmatch(q)
+    if om is not None and _plain_name(om.group(1)) in ctx.bound:
+        return [f"{_plain_name(om.group(1))} {om.group(2)} {om.group(3)}"]
+    if re.fullmatch(r"[A-Za-z](?:\s+[A-Za-z])+", q):
+        letters = q.split()
+        if all(ch in ctx.bound for ch in letters):
+            return letters
+    return None
+
+
+def _bare_sub_repl(m: re.Match[str], ctx: DocContext) -> str:
+    base, suffix = m.group(1), m.group(2)
+    name = _plain_name(base)
+    if f"{name}_{suffix}" in ctx.declared:
+        return m.group(0)  # a declared plain name such as Z_1 or tc_hat
+    if name in ctx.shaped or suffix in ctx.bound:
+        return base + "_{" + suffix + "}"
+    return m.group(0)
+
+
+def _bare_sup_repl(m: re.Match[str], ctx: DocContext) -> str:
+    return m.group(1) + "^{" + m.group(2) + "}"
+
+
+def _superscript_repl(m: re.Match[str], ctx: DocContext, *, want: str) -> str:
+    base, sub_a, sup, sub_b = m.group(1), m.group(2), m.group(3), m.group(4)
+    if sub_a is not None and sub_b is not None:
+        return m.group(0)  # two subscripts: not a plain scripted symbol
+    sub = sub_a if sub_a is not None else sub_b
+    pieces = _split_top_commas(sup)
+    idx = [_index_pieces(q, ctx) for q in pieces]
+    if all(ip is not None for ip in idx):
+        if want != "index":
+            return m.group(0)
+        new_sub = [q.strip() for q in _split_top_commas(sub)] if sub and sub.strip() else []
+        for ip in idx:
+            new_sub.extend(ip or [])
+        return _pad(m, base + "_{" + ", ".join(new_sub) + "}")
+    labels = [_piece_word(q) for q in pieces]
+    if all(lb is not None for lb in labels):
+        if want != "label":
+            return m.group(0)
+        name = _plain_name(base) + "_" + "_".join(lb or "" for lb in labels)
+        tail = "_{" + sub.strip() + "}" if sub and sub.strip() else ""
+        return _pad(m, name + tail)
+    return m.group(0)
+
+
+def _superscript_index_repl(m: re.Match[str], ctx: DocContext) -> str:
+    return _superscript_repl(m, ctx, want="index")
+
+
+def _superscript_label_repl(m: re.Match[str], ctx: DocContext) -> str:
+    return _superscript_repl(m, ctx, want="label")
+
+
+def _label_subscript_repl(m: re.Match[str], ctx: DocContext) -> str:
+    base, sub = m.group(1), m.group(2)
+    bname = _plain_name(base)
+    keep: list[str] = []
+    labels: list[str] = []
+    for q in _split_top_commas(sub):
+        qs = q.strip()
+        if not qs:
+            return m.group(0)
+        if _index_pieces(qs, ctx) is not None:
+            keep.append(qs)
+            continue
+        w = _piece_word(qs)
+        if w is None:
+            return m.group(0)  # unresolvable piece: the parser refuses it by name
+        if w.isdigit():
+            if bname in ctx.shaped:
+                keep.append(qs)  # fixed-element reference against a declared shape
+            else:
+                labels.append(w)
+            continue
+        if len(w) == 1:
+            keep.append(qs)  # a lone letter is an index by convention
+            continue
+        labels.append(w)
+    if not labels:
+        return m.group(0)
+    name = bname + "_" + "_".join(labels)
+    return _pad(m, name + ("_{" + ", ".join(keep) + "}" if keep else ""))
+
+
 #: The ordered rule table. Order matters: unicode/ascii operators are mapped
 #: to macros first, then ``*`` multiplication, then structural wrappers, then
 #: whitespace is collapsed last so spans of earlier rules stay meaningful.
@@ -228,7 +471,14 @@ REWRITE_RULES: tuple[RewriteRule, ...] = (
     _rule("ascii_ne", r"!=", r"\neq", "ascii != to \\neq"),
     _rule("ascii_eqeq", r"==", "=", "ascii == to ="),
     # --- multiplication: '*' between operands becomes \cdot ---------------
-    _rule("star_cdot", r"\s*\*\s*", r" \cdot ", "'*' multiplication to \\cdot"),
+    # A '*' that is itself a script (x^*, q^{*}) is a label, not a product;
+    # the script rules below fold it into the name (q_star).
+    _rule(
+        "star_cdot",
+        r"\s*(?<![\^_]\{)(?<!\^)\*(?!\})\s*",
+        r" \cdot ",
+        "'*' multiplication to \\cdot",
+    ),
     # \times the COMMAND (the unicode char is mapped above); corpus evidence:
     # weighted objectives write w_1 \times f_1.
     _rule("times_cdot", r"\\times(?![a-zA-Z])", r"\cdot", "\\times to \\cdot"),
@@ -348,6 +598,42 @@ REWRITE_RULES: tuple[RewriteRule, ...] = (
         _prime_ident_repl,
         "primed identifier to plain p-suffixed name (t' -> tp, k^{'} -> kp)",
     ),
+    # --- declaration-driven script resolution (issue #63; corpus evidence:
+    # 49 + 21 of 220 grammar-failing papers in the 2026-09 re-run stall on
+    # superscripts and label subscripts, and unbraced scripts B_u \cdot w_u
+    # read as plain identifiers, issue #62). Order: brace bare scripts,
+    # move index superscripts into the subscript, fold label superscripts
+    # and label subscripts into plain names ----------------------------------
+    _ctx_rule(
+        "bare_sub_brace",
+        _BARE_SUB_RE,
+        _bare_sub_repl,
+        "unbraced subscript on a shaped or bound symbol to the braced form (B_u -> B_{u})",
+    ),
+    _ctx_rule(
+        "bare_sup_brace",
+        _BARE_SUP_RE,
+        _bare_sup_repl,
+        "unbraced single-character superscript to the braced form (x^k -> x^{k})",
+    ),
+    _ctx_rule(
+        "superscript_index",
+        _SUP_RULE_RE,
+        _superscript_index_repl,
+        "superscript made of bound letters moves into the subscript (x_{i}^{k} -> x_{i, k})",
+    ),
+    _ctx_rule(
+        "superscript_label",
+        _SUP_RULE_RE,
+        _superscript_label_repl,
+        "label superscript folds into a plain name (t_{i}^{arr} -> t_arr_{i})",
+    ),
+    _ctx_rule(
+        "label_subscript",
+        _SUB_RULE_RE,
+        _label_subscript_repl,
+        "label subscript folds into a plain name (h_{min} -> h_min, Z_{1} -> Z_1)",
+    ),
     # --- whitespace hygiene (last) ----------------------------------------
     _rule("collapse_ws", r"[ \t]{2,}", " ", "collapse runs of spaces/tabs"),
 )
@@ -402,12 +688,22 @@ def normalize_latex(text: str, *, source: str) -> tuple[str, ProvenanceMap]:
         new_chars: list[str] = []
         new_offsets: list[int] = []
         pos = 0
+        # Context rules read the header and the CURRENT body (earlier rules
+        # may have renamed a bound letter, t' -> tp), so build it per rule.
+        ctx = DocContext.build(text, cur) if rule.ctx_replacement is not None else None
         for m in rule.pattern.finditer(cur):
+            before = m.group(0)
+            if rule.ctx_replacement is not None and ctx is not None:
+                after = rule.ctx_replacement(m, ctx)
+            elif callable(rule.replacement):
+                after = rule.replacement(m)
+            else:
+                after = rule.replacement
+            if after == before:
+                continue  # the rule declined: no text change, no rewrite record
             new_chars.append(cur[pos : m.start()])
             new_offsets.extend(offset_map[pos : m.start()])
 
-            before = m.group(0)
-            after = rule.replacement(m) if callable(rule.replacement) else rule.replacement
             orig_start = lo + offset_map[m.start()]
             orig_end = lo + offset_map[m.end()]
             prov = prov.with_rewrite(
@@ -482,6 +778,7 @@ def ingest_latex(text: str, *, source: str) -> IngestionResult:
 
 __all__ = [
     "REWRITE_RULES",
+    "DocContext",
     "RewriteRule",
     "ingest_latex",
     "normalize_latex",
