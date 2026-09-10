@@ -24,6 +24,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
+from lp2graph._optional import require
 from lp2graph.mining.cluster.agglomerative import agglomerative
 from lp2graph.mining.cluster.distance import distance_matrix, is_zero
 from lp2graph.mining.cluster.silhouette import select_k, silhouette_score
@@ -118,7 +119,7 @@ def _name_clusters(
 
 
 def _hdbscan_labels(dist: Sequence[Sequence[float]], min_cluster_size: int) -> list[int]:
-    import hdbscan  # local import; optional dependency
+    hdbscan = require("hdbscan", feature="CN(algorithm='hdbscan')")
 
     clusterer = hdbscan.HDBSCAN(metric="precomputed", min_cluster_size=max(2, min_cluster_size))
     rows = [[float(x) for x in row] for row in dist]

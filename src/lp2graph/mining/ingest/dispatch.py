@@ -3,6 +3,7 @@
 :func:`ingest` is the single entry point. It routes a path or raw text to
 the right importer by file extension, or by an explicit ``fmt`` override:
 
+- ``.json`` -> canonical ``Formulation`` JSON (:mod:`lp2graph.core.loader`)
 - ``.py``  -> Python-hosted model source (reported unsupported; build the
   model object and use ``lp2graph.interop.from_gurobipy`` / ``from_pulp``
   / ``from_pyomo``)
@@ -24,28 +25,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lp2graph.mining.ingest.code_importers import (
-    import_ampl,
-    import_gams,
-    import_jump,
-    import_lp,
-    import_mps,
-    import_python,
-)
+from lp2graph.formats import EXT_FMT, normalize_format
+from lp2graph.mining.ingest.code_importers import CODE_IMPORTERS
 from lp2graph.mining.ingest.latex_normalizer import ingest_latex
 from lp2graph.mining.ingest.result import IngestionResult
 
-#: File extension -> format key.
-_EXT_FMT: dict[str, str] = {
-    ".py": "python",
-    ".gms": "gams",
-    ".mod": "ampl",
-    ".jl": "jump",
-    ".lp": "lp",
-    ".mps": "mps",
-    ".tex": "latex",
-    ".pdf": "pdf",
-}
+#: File extension -> format key. Re-exported from :mod:`lp2graph.formats`,
+#: the single source of truth; do not redefine the table here.
+_EXT_FMT: dict[str, str] = EXT_FMT
 
 
 def _looks_like_path(s: str) -> bool:
@@ -61,10 +48,10 @@ def ingest(path_or_text: str | Path, *, fmt: str | None = None) -> IngestionResu
     Args:
         path_or_text: A filesystem path (``str``/``Path``) to a source
             artifact, or raw source text (requires ``fmt``).
-        fmt: Explicit format override -- one of ``"python"``, ``"gams"``,
-            ``"ampl"``, ``"jump"``, ``"lp"``, ``"mps"``, ``"latex"``,
-            ``"pdf"``. When omitted, the format is inferred from the
-            path's extension.
+        fmt: Explicit format override -- a key from
+            :data:`lp2graph.formats.FORMATS` (or one of its file-extension
+            aliases). When omitted, the format is inferred from the path's
+            extension.
 
     Returns:
         An :class:`IngestionResult`. Routing problems (missing file,
@@ -79,23 +66,14 @@ def ingest(path_or_text: str | Path, *, fmt: str | None = None) -> IngestionResu
             source=source,
             stage="unsupported",
             message="could not determine format; pass an explicit fmt= or use "
-            "a recognized file extension (.py/.gms/.mod/.jl/.lp/.mps/.tex/.pdf).",
+            "a recognized file extension " + "/".join(sorted(EXT_FMT)) + ".",
         )
+
+    # Accept the file-extension spellings too (fmt="tex", fmt="gms", ...).
+    resolved_fmt = normalize_format(resolved_fmt) or resolved_fmt
 
     if resolved_fmt == "latex":
         return ingest_latex(text, source=source)
-    if resolved_fmt == "python":
-        return import_python(text, source=source)
-    if resolved_fmt == "gams":
-        return import_gams(text, source=source)
-    if resolved_fmt == "ampl":
-        return import_ampl(text, source=source)
-    if resolved_fmt == "jump":
-        return import_jump(text, source=source)
-    if resolved_fmt == "lp":
-        return import_lp(text, source=source)
-    if resolved_fmt == "mps":
-        return import_mps(text, source=source)
     if resolved_fmt == "pdf":
         return IngestionResult.single_failure(
             source=source,
@@ -103,6 +81,9 @@ def ingest(path_or_text: str | Path, *, fmt: str | None = None) -> IngestionResu
             message="PDF math extraction is out of scope for the deterministic "
             "ingestion core. Extract the author LaTeX and ingest it as .tex.",
         )
+    importer = CODE_IMPORTERS.get(resolved_fmt)
+    if importer is not None:
+        return importer(text, source=source)
     return IngestionResult.single_failure(
         source=source,
         stage="unsupported",

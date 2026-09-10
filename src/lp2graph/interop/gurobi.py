@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from lp2graph._optional import require
 from lp2graph.core.model import Formulation
 from lp2graph.interop._grounded import (
     GroundedConstraint,
@@ -42,8 +43,8 @@ _SENSE_IN = {"<": "le", ">": "ge", "=": "eq"}
 
 def from_gurobipy(model: Any) -> Formulation:
     """Read a built ``gurobipy.Model`` into a flat canonical formulation."""
-    import gurobipy as gp
-    from gurobipy import GRB
+    gp = require("gurobipy", feature="from_gurobipy")
+    GRB = gp.GRB
 
     if not isinstance(model, gp.Model):
         raise InteropError(f"expected gurobipy.Model, got {type(model).__name__}")
@@ -112,8 +113,8 @@ def to_gurobipy(f: Formulation, instance: Instance | None = None, *, env: Any = 
     """Build a live ``gurobipy.Model`` from ``f`` (solve it with
     ``model.optimize()``). Pass ``env=gurobipy.Env(params={"OutputFlag": 0})``
     for a quiet model."""
-    import gurobipy as gp
-    from gurobipy import GRB
+    gp = require("gurobipy", feature="to_gurobipy")
+    GRB = gp.GRB
 
     gm = ground(f, instance)
     model = gp.Model(gm.id, env=env) if env is not None else gp.Model(gm.id)

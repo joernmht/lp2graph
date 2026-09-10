@@ -34,3 +34,34 @@ jobs:
         run: pytest --cov=lp2graph --cov-report=term-missing
       - name: Schema validation
         run: python -m lp2graph.cli validate formulations/constraints/lp_1_1_fixed_sequence.json
+
+  backends:
+    # The `test` job installs only `[dev]`, which carries none of pulp /
+    # pyomo / nltk / hdbscan — so ~19% of the suite (every optional-backend
+    # path: the solver back-ends, the Pyomo importer, the mining
+    # accelerators) silently skipped on every run and could regress
+    # unnoticed. This job installs those extras so they actually execute.
+    #
+    # `[all]` is deliberately NOT used: it pulls torch + dgl (~2 GB, and dgl
+    # wheels lag new Python releases), which would make CI slow and brittle
+    # for little extra coverage. The torch/dgl exporters stay importorskip-ed.
+    name: optional backends
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install with solver / pyomo / mining extras
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,solver,pyomo,mining]"
+      - name: Test
+        run: pytest -rs
+      - name: Fail if optional backends still skipped for a missing dep
+        run: |
+          pytest -rs 2>&1 | tee /tmp/out.txt
+          if grep -qE "could not import '(pulp|pyomo|nltk|hdbscan|networkx)" /tmp/out.txt; then
+            echo "::error::an optional backend skipped despite its extra being installed"
+            exit 1
+          fi

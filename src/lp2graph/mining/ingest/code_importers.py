@@ -84,6 +84,36 @@ def import_mps(text: str, *, source: str) -> IngestionResult:
     return _run_parser(from_mps_string, text, source=source, fmt="MPS")
 
 
+def import_canonical_json(text: str, *, source: str) -> IngestionResult:
+    """Canonical-``Formulation`` JSON importer.
+
+    lp2graph's own serialization is a first-class ingestion input: a corpus
+    is routinely assembled from a mix of third-party solver code and
+    formulations already canonicalized by an earlier pass. Without this
+    entry the M1 front-end could not re-ingest its own output.
+
+    Schema and semantic validation happen in :func:`lp2graph.core.loader.loads`;
+    a malformed document is reported as a ``stage="validate"`` failure, never
+    raised.
+    """
+    from lp2graph.core.loader import loads
+
+    try:
+        formulation = loads(text)
+    except Exception as exc:  # loader raises ValidationError / ValueError / JSON errors
+        return IngestionResult.single_failure(
+            source=source,
+            stage="validate",
+            message=f"canonical JSON did not validate: {exc}",
+            detail=type(exc).__name__,
+        )
+    return IngestionResult.success(
+        source=source,
+        formulation=formulation,
+        provenance=ProvenanceMap(source=source),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Honest stub (executing arbitrary Python is out of scope by design)
 # ---------------------------------------------------------------------------
@@ -112,6 +142,7 @@ def import_python(text: str, *, source: str) -> IngestionResult:
 #: (:mod:`lp2graph.mining.ingest.dispatch`) routes by file extension or an
 #: explicit ``fmt`` into this table.
 CODE_IMPORTERS: dict[str, Callable[..., IngestionResult]] = {
+    "json": import_canonical_json,
     "python": import_python,
     "gams": import_gams,
     "ampl": import_ampl,
@@ -124,6 +155,7 @@ CODE_IMPORTERS: dict[str, Callable[..., IngestionResult]] = {
 __all__ = [
     "CODE_IMPORTERS",
     "import_ampl",
+    "import_canonical_json",
     "import_gams",
     "import_jump",
     "import_lp",

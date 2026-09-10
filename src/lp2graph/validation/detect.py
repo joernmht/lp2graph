@@ -15,33 +15,24 @@ from __future__ import annotations
 
 import re
 
+from lp2graph.formats import FMT_ALIASES as _FMT_ALIASES
+from lp2graph.formats import SNIFFABLE_EXT_FMT, SNIFFABLE_FORMATS
 from lp2graph.validation.report import Check
 
 #: Formats the pipeline can route to a parser. ``python`` is included so
 #: solver-API source is *recognized* and reported with actionable guidance
-#: (the deterministic core does not execute code).
-FORMATS = ("json", "latex", "lp", "mps", "gams", "ampl", "jump", "python")
+#: (the deterministic core does not execute code). ``pdf`` is excluded --
+#: the sniffer only ever sees text.
+#:
+#: Re-exported from :mod:`lp2graph.formats`, the single source of truth for
+#: format identity; do not redefine the table here.
+FORMATS = SNIFFABLE_FORMATS
 
 #: Aliases accepted for the ``fmt=`` argument (file-extension spellings).
-FMT_ALIASES = {
-    "tex": "latex",
-    "gms": "gams",
-    "mod": "ampl",
-    "jl": "jump",
-    "py": "python",
-}
+FMT_ALIASES = _FMT_ALIASES
 
-#: File extension -> format key (superset of mining.ingest's table: adds .json).
-EXT_FMT = {
-    ".json": "json",
-    ".tex": "latex",
-    ".lp": "lp",
-    ".mps": "mps",
-    ".gms": "gams",
-    ".mod": "ampl",
-    ".jl": "jump",
-    ".py": "python",
-}
+#: File extension -> format key, for the sniffable (text) formats.
+EXT_FMT = SNIFFABLE_EXT_FMT
 
 #: Fence language tag -> format key (a tag is strong evidence).
 _TAG_FMT = {

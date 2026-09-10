@@ -34,14 +34,21 @@ pyg = ["torch>=2.0", "torch_geometric>=2.4"]
 dgl = ["dgl>=2.0", "torch>=2.0"]
 pyomo = ["pyomo>=6.7"]
 solver = ["pulp>=2.8", "highspy>=1.7"]
+# `lp2graph.interop.from_gurobipy` / `to_gurobipy` drive a live gurobipy
+# model. Gurobi is commercial and needs a licence, so it is deliberately
+# NOT part of `all`; `pip install "lp2graph[gurobi]"` opts in explicitly.
+gurobi = ["gurobipy>=11.0"]
 # Optional accelerators for the lp2graph.mining extensions (M1-M6). The mining
 # package imports and runs without these; they only enable optional backends
 # (M1 Pyomo import, M3 HDBSCAN, M2 WordNet, M6 NetworkX isomorphism).
 mining = ["networkx>=3.0", "pyomo>=6.7", "nltk>=3.8", "hdbscan>=0.8"]
+# Every non-commercial optional backend. Keep in sync with the extras above
+# (gurobi is excluded on purpose -- commercial, licence-gated).
 all = [
     "networkx>=3.0",
     "torch>=2.0",
     "torch_geometric>=2.4",
+    "dgl>=2.0",
     "pyomo>=6.7",
     "pulp>=2.8",
     "highspy>=1.7",
@@ -124,7 +131,7 @@ plugins = ["pydantic.mypy"]
 exclude = ["legacy/"]
 
 [[tool.mypy.overrides]]
-module = ["networkx.*", "torch.*", "torch_geometric.*", "dgl.*", "pyomo.*", "jsonschema.*", "pulp.*", "highspy.*", "nltk.*", "sklearn.*", "scipy.*", "hdbscan.*", "gurobipy.*"]
+module = ["networkx.*", "torch.*", "torch_geometric.*", "dgl.*", "pyomo.*", "jsonschema.*", "pulp.*", "highspy.*", "nltk.*", "hdbscan.*", "gurobipy.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from lp2graph._optional import require
 from lp2graph.core.model import Formulation
 from lp2graph.interop._grounded import (
     GroundedVar,
@@ -32,6 +33,10 @@ def from_pulp(problem: Any) -> Formulation:
 
 def to_pulp(f: Formulation, instance: Instance | None = None) -> Any:
     """Build a live ``pulp.LpProblem`` from ``f`` (solve with ``prob.solve()``)."""
+    # The grounder imports pulp at module scope, so resolve the dependency
+    # here first -- otherwise a missing pulp surfaces as a bare
+    # ModuleNotFoundError from inside the import (ADR-0007, clause 3).
+    require("pulp", feature="to_pulp")
     from lp2graph.solve.grounder import build_problem
 
     prob, _ = build_problem(f, instance or Instance(cardinalities={}))

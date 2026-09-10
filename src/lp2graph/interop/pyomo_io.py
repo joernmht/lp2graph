@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from lp2graph._optional import require
 from lp2graph.core.model import Formulation
 from lp2graph.interop._grounded import (
     GroundedConstraint,
@@ -42,6 +43,7 @@ __all__ = ["from_pyomo", "to_pyomo", "to_pyomo_code"]
 
 def from_pyomo(model: Any) -> Formulation:
     """Read a built (concrete) Pyomo model, coefficient-faithfully."""
+    require("pyomo", feature="from_pyomo")
     from pyomo.core.expr.numvalue import value as pyo_value
     from pyomo.environ import Constraint, Objective, Var, maximize
     from pyomo.repn.standard_repn import generate_standard_repn
@@ -131,6 +133,7 @@ def from_pyomo(model: Any) -> Formulation:
 
 def to_pyomo(f: Formulation, instance: Instance | None = None) -> Any:
     """Build a live ``pyomo.environ.ConcreteModel`` with real bodies."""
+    require("pyomo", feature="to_pyomo")
     import pyomo.environ as pyo
 
     gm = ground(f, instance)

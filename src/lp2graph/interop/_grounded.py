@@ -22,6 +22,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from lp2graph._optional import require
 from lp2graph.core.model import (
     ConstraintTemplate,
     Formulation,
@@ -393,7 +394,7 @@ def grounded_from_pulp(
     prob: object, *, model_id: str | None = None, model_name: str | None = None
 ) -> GroundedModel:
     """Read a ``pulp.LpProblem`` into the flat interchange struct."""
-    import pulp
+    pulp = require("pulp", feature="from_pulp")
 
     if not isinstance(prob, pulp.LpProblem):
         raise InteropError(f"expected pulp.LpProblem, got {type(prob).__name__}")
@@ -448,7 +449,7 @@ def _pulp_constraint_items(prob: object) -> list[tuple[str, Any]]:
 
 
 def _pulp_var(v: object) -> GroundedVar:
-    import pulp
+    pulp = require("pulp", feature="from_pulp")
 
     assert isinstance(v, pulp.LpVariable)
     if v.cat == pulp.LpBinary or (v.cat == pulp.LpInteger and v.lowBound == 0 and v.upBound == 1):

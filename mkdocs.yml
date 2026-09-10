@@ -59,6 +59,11 @@ nav:
       - "ADR-0005 viewer hosting": adr/0005-viewer-hosting.md
       - "ADR-0006 determinism": adr/0006-determinism.md
       - "ADR-0007 optional deps lazy import": adr/0007-optional-deps-lazy-import.md
+      - "ADR-0008 PuLP 4 forward-compatible solver": adr/0008-pulp4-forward-compatible-solver.md
+      - "ADR-0009 ingest untrusted-input hardening": adr/0009-ingest-untrusted-input-hardening.md
+      - "ADR-0010 codec round-trip fidelity": adr/0010-codec-roundtrip-fidelity.md
+      - "ADR-0011 canonical Formulation as interchange pivot": adr/0011-canonical-formulation-as-interchange-pivot.md
+      - "ADR-0012 single format registry": adr/0012-single-format-registry.md
 
 markdown_extensions:
   - admonition
