@@ -647,6 +647,8 @@ def test_label_superscripts_fold_into_plain_names():
     assert row.startswith(
         r"t_arr_{i} + v_c_{i} + tau_de_{k} + x_end_{k} + t_dep_{i,s} + Y_1_{i,s} + q_star + r_star"
     )
+    row, _ = _norm(r"d_{i}^{+} - d_{i}^{-} + e^+ \forall i \in \mathcal{I}")
+    assert row.startswith(r"d_plus_{i} - d_minus_{i} + e_plus")
     assert {"superscript_label", "bare_sup_brace"} <= fired
 
 
@@ -721,7 +723,7 @@ def test_script_resolution_is_deterministic_and_versioned():
     a2, p2 = normalize_latex(doc, source="ctx.tex")
     assert a1 == a2
     assert p1.rewrites == p2.rewrites
-    assert {r.rules_version for r in p1.rewrites} == {"rewrite-2026.09.0"}
+    assert {r.rules_version for r in p1.rewrites} == {"rewrite-2026.09.1"}
 
 
 def test_glued_bound_letters_are_indices_not_labels():

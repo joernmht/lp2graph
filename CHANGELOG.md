@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **M1b declaration-driven script resolution** (`rewrite-2026.09.0`,
+- **M1b declaration-driven script resolution** (`rewrite-2026.09.1`,
   issue #63; corpus evidence: 49 + 21 of the 220 papers still failing the
   Paper-1 promotion after the #52–#57 batch stall on superscripts and
   label subscripts). The canonical grammar has no superscripts and every
@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   indices); `superscript_label` folds label superscripts into plain names
   (`t_{i}^{arr}` -> `t_arr_{i}`, `v_{i}^{c}` -> `v_c_{i}`,
   `\mathit{tau}_{k}^{de}` -> `tau_de_{k}`, `Y_{i,s}^{1}` -> `Y_1_{i,s}`,
-  `q^{*}` -> `q_star`); `label_subscript` folds label subscripts
+  `q^{*}` -> `q_star`, `d^{+}`/`d^{-}` -> `d_plus`/`d_minus`); `label_subscript` folds label subscripts
   (`h_{min}` -> `h_min`, `Z_{1}` -> `Z_1` when `Z` has no declared shape;
   a numeric subscript on a shaped symbol stays a fixed-element reference).
   Nested or delimited scripts are left untouched for the parser to refuse

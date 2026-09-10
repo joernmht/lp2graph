@@ -317,7 +317,7 @@ _BARE_SUB_RE = re.compile(
     r"(?<![\\A-Za-z0-9_])(\\mathit\{[^{}]*\}|[A-Za-z][A-Za-z0-9]*)_([A-Za-z0-9])(?![A-Za-z0-9_])"
 )
 _BARE_SUP_RE = re.compile(
-    r"(?<![\\A-Za-z0-9_])(\\mathit\{[^{}]*\}|[A-Za-z]\w*(?:_\{[^{}]*\})?)\^([A-Za-z0-9*])"
+    r"(?<![\\A-Za-z0-9_])(\\mathit\{[^{}]*\}|[A-Za-z]\w*(?:_\{[^{}]*\})?)\^([A-Za-z0-9*+-])"
     r"(?![A-Za-z0-9_{])"
 )
 _SUP_RULE_RE = re.compile(
@@ -358,6 +358,8 @@ def _piece_word(piece: str) -> str | None:
         q = wm.group(1).strip()
     if q in ("*", r"\star", r"\ast"):
         return "star"
+    if q in ("+", "-"):
+        return "plus" if q == "+" else "minus"  # positive/negative parts: d^{+}, d^{-}
     if q in (r"\max", r"\min"):
         return q[1:]
     if re.fullmatch(r"[A-Za-z0-9](?:\s+[A-Za-z0-9])+", q):
