@@ -259,6 +259,11 @@ class DocContext:
     declared: frozenset[str]
     shaped: frozenset[str]
     bound: frozenset[str]
+    #: Whether the document carries any ``%@`` declaration at all. Without
+    #: one there is nothing to resolve scripts against, so every context
+    #: rule leaves a bare snippet untouched (the repo converter normalizes
+    #: header-less rows and applies its own symbol table afterwards).
+    has_header: bool
 
     @classmethod
     def build(cls, text: str, body: str) -> DocContext:
@@ -287,7 +292,12 @@ class DocContext:
         for bm in _BIGOP_SUB_RE.finditer(body):
             for rm in _RANGE_BINDER_RE.finditer(bm.group(1)):
                 bound.add(_plain_name(rm.group(1)))
-        return cls(declared=frozenset(declared), shaped=frozenset(shaped), bound=frozenset(bound))
+        return cls(
+            declared=frozenset(declared),
+            shaped=frozenset(shaped),
+            bound=frozenset(bound),
+            has_header=bool(declared),
+        )
 
 
 _DECL_RE = re.compile(r"^\s*%@\s*(index|param|var)\s+([A-Za-z_]\w*)(.*)$")
@@ -371,10 +381,17 @@ def _index_pieces(piece: str, ctx: DocContext) -> list[str] | None:
         letters = q.split()
         if all(ch in ctx.bound for ch in letters):
             return letters
+    if re.fullmatch(r"[A-Za-z]{2,}", q) and all(ch in ctx.bound for ch in q):
+        # Glued single-letter indices (x_{ij} with i and j bound): the
+        # dominant hand-written spelling. A word is a label only when at
+        # least one of its letters is not bound (h_{min} with i bound).
+        return list(q)
     return None
 
 
 def _bare_sub_repl(m: re.Match[str], ctx: DocContext) -> str:
+    if not ctx.has_header:
+        return m.group(0)
     base, suffix = m.group(1), m.group(2)
     name = _plain_name(base)
     if f"{name}_{suffix}" in ctx.declared:
@@ -385,10 +402,14 @@ def _bare_sub_repl(m: re.Match[str], ctx: DocContext) -> str:
 
 
 def _bare_sup_repl(m: re.Match[str], ctx: DocContext) -> str:
+    if not ctx.has_header:
+        return m.group(0)
     return m.group(1) + "^{" + m.group(2) + "}"
 
 
 def _superscript_repl(m: re.Match[str], ctx: DocContext, *, want: str) -> str:
+    if not ctx.has_header:
+        return m.group(0)
     base, sub_a, sup, sub_b = m.group(1), m.group(2), m.group(3), m.group(4)
     if sub_a is not None and sub_b is not None:
         return m.group(0)  # two subscripts: not a plain scripted symbol
@@ -421,16 +442,22 @@ def _superscript_label_repl(m: re.Match[str], ctx: DocContext) -> str:
 
 
 def _label_subscript_repl(m: re.Match[str], ctx: DocContext) -> str:
+    if not ctx.has_header:
+        return m.group(0)
     base, sub = m.group(1), m.group(2)
     bname = _plain_name(base)
     keep: list[str] = []
     labels: list[str] = []
+    expanded = False
     for q in _split_top_commas(sub):
         qs = q.strip()
         if not qs:
             return m.group(0)
-        if _index_pieces(qs, ctx) is not None:
-            keep.append(qs)
+        idx = _index_pieces(qs, ctx)
+        if idx is not None:
+            # Spaced or glued bound letters (i j, ij) become one index each.
+            expanded = expanded or len(idx) > 1
+            keep.extend(idx if len(idx) > 1 else [qs])
             continue
         w = _piece_word(qs)
         if w is None:
@@ -446,7 +473,9 @@ def _label_subscript_repl(m: re.Match[str], ctx: DocContext) -> str:
             continue
         labels.append(w)
     if not labels:
-        return m.group(0)
+        if not expanded:
+            return m.group(0)
+        return base + "_{" + ", ".join(keep) + "}"
     name = bname + "_" + "_".join(labels)
     return _pad(m, name + ("_{" + ", ".join(keep) + "}" if keep else ""))
 
@@ -632,7 +661,8 @@ REWRITE_RULES: tuple[RewriteRule, ...] = (
         "label_subscript",
         _SUB_RULE_RE,
         _label_subscript_repl,
-        "label subscript folds into a plain name (h_{min} -> h_min, Z_{1} -> Z_1)",
+        "label subscript folds into a plain name (h_{min} -> h_min, Z_{1} -> Z_1); "
+        "glued bound letters split into indices (x_{ij} -> x_{i, j})",
     ),
     # --- whitespace hygiene (last) ----------------------------------------
     _rule("collapse_ws", r"[ \t]{2,}", " ", "collapse runs of spaces/tabs"),

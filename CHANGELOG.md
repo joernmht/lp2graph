@@ -27,7 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   (`h_{min}` -> `h_min`, `Z_{1}` -> `Z_1` when `Z` has no declared shape;
   a numeric subscript on a shaped symbol stays a fixed-element reference).
   Nested or delimited scripts are left untouched for the parser to refuse
-  by name. `RewriteRule` gained `ctx_replacement` (rules that read a
+  by name, glued bound letters split into indices (`x_{ij}` -> `x_{i, j}`),
+  and a document without any `%@` declaration is left untouched by all
+  five rules (nothing to resolve against). `RewriteRule` gained `ctx_replacement` (rules that read a
   `DocContext`), and a rule that declines records no rewrite. The
   declaration sidecar must declare the folded spellings.
 

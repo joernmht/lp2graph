@@ -313,9 +313,7 @@ def test_greek_rewrite_never_touches_non_greek_commands():
 
 def test_ell_command_and_le_are_distinguished():
     text, _ = normalize_latex(r"\ell \le \ell_{max}", source="d.tex")
-    # ``_{max}`` is a label subscript (no binder binds it), so it folds into
-    # the plain name; the \ell / \le distinction is what this test guards.
-    assert text == r"\mathit{ell} \le ell_max"
+    assert text == r"\mathit{ell} \le \mathit{ell}_{max}"
 
 
 def test_unicode_greek_identifiers_become_mathit_names():
@@ -337,9 +335,7 @@ def test_greek_rewrite_is_deterministic():
 
 def test_times_command_becomes_cdot():
     text, prov = normalize_latex(r"w_{1} \times f_{1} + a \times b", source="d.tex")
-    # Without a declared shape a numeric subscript is a label: a weighted
-    # objective names distinct scalars w_1, w_2 (declaration-driven rules).
-    assert text == r"w_1 \cdot f_1 + a \cdot b"
+    assert text == r"w_{1} \cdot f_{1} + a \cdot b"
     assert "times_cdot" in {r.rule for r in prov.rewrites}
 
 
@@ -403,12 +399,8 @@ def test_accent_rewrite_never_touches_lookalikes():
 
 
 def test_primed_identifiers_get_p_suffix():
-    text, prov = normalize_latex(
-        r"t' + k^{'} + l^{\prime\prime} + x_{t'} \forall t' \in \mathcal{T}", source="d.tex"
-    )
-    # The renamed letter stays bound (the quantifier renames with it), so
-    # x_{tp} keeps its index; an unbound two-letter word would be a label.
-    assert text == r"tp + kp + lpp + x_{tp} \forall tp \in \mathcal{T}"
+    text, prov = normalize_latex(r"t' + k^{'} + l^{\prime\prime} + x_{t'}", source="d.tex")
+    assert text == r"tp + kp + lpp + x_{tp}"
     assert "prime_ident" in {r.rule for r in prov.rewrites}
 
 
@@ -730,3 +722,29 @@ def test_script_resolution_is_deterministic_and_versioned():
     assert a1 == a2
     assert p1.rewrites == p2.rewrites
     assert {r.rules_version for r in p1.rewrites} == {"rewrite-2026.09.0"}
+
+
+def test_glued_bound_letters_are_indices_not_labels():
+    # x_{wj} with both letters bound expands to two indices (the repo corpus
+    # writes this spelling); h_{min} with only i bound stays a label.
+    row, fired = _norm(
+        r"c_{wj} \cdot x_{wj} + h_{min} \forall w \in \mathcal{W}, j \in \mathcal{J}, i \in \mathcal{I}"
+    )
+    assert row.startswith(r"c_{w, j} \cdot x_{w, j} + h_min")
+    assert "label_subscript" in fired
+
+
+def test_script_rules_leave_header_less_snippets_alone():
+    # No %@ declarations -> nothing to resolve against: a bare row keeps its
+    # spelling (the repo converter normalizes such rows and applies its own
+    # symbol table afterwards).
+    src = r"\sum_{j \in J} x_{wj} + t_{i}^{arr} + h_{min} + B_u"
+    text, prov = normalize_latex(src, source="d.tex")
+    assert text == src
+    assert not {r.rule for r in prov.rewrites} & {
+        "bare_sub_brace",
+        "bare_sup_brace",
+        "superscript_index",
+        "superscript_label",
+        "label_subscript",
+    }
