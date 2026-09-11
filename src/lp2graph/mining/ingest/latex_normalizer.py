@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from lp2graph.codec import from_canonical_latex
 from lp2graph.core.validate import ValidationError, validate
@@ -262,6 +262,8 @@ class DocContext:
     #: ``%@ param`` names and ``%@ var`` names (for the product rule).
     params: frozenset[str] = frozenset()
     variables: frozenset[str] = frozenset()
+    #: Declared shape (index families per subscript position) of params/vars.
+    shapes: dict[str, tuple[str, ...]] = field(default_factory=dict)
     #: Whether the document carries any ``%@`` declaration at all. Without
     #: one there is nothing to resolve scripts against, so every context
     #: rule leaves a bare snippet untouched (the repo converter normalizes
@@ -274,6 +276,7 @@ class DocContext:
         shaped: set[str] = set()
         params: set[str] = set()
         variables: set[str] = set()
+        shapes: dict[str, tuple[str, ...]] = {}
         for line in text.splitlines():
             dm = _DECL_RE.match(line)
             if dm is None:
@@ -288,6 +291,7 @@ class DocContext:
                 sm = re.search(r"\bshape=(\S+)", rest)
                 if sm is not None and sm.group(1) != "-":
                     shaped.add(name)
+                    shapes[name] = tuple(f for f in sm.group(1).split(",") if f)
         bound: set[str] = set()
         for bm in _BOUND_IN_RE.finditer(body):
             bound.update(_plain_name(t) for t in _split_top_commas(bm.group(1)))
@@ -307,6 +311,7 @@ class DocContext:
             bound=frozenset(bound),
             params=frozenset(params),
             variables=frozenset(variables),
+            shapes=shapes,
             has_header=bool(declared),
         )
 
@@ -412,6 +417,185 @@ _PRODUCT_TOK = (
 _DECLARED_PRODUCT_RE = re.compile(
     r"(?<![\\A-Za-z0-9_])(" + _PRODUCT_TOK + r")([ \t]+)(" + _PRODUCT_TOK + r")(?![A-Za-z0-9_{])"
 )
+
+
+_ENV_WRAPPER_RE = re.compile(
+    r"\\(?:begin|end)\{(?:matrix|aligned|gathered|split|array)\}(?:\{[^{}]*\})?"
+)
+_MATHBF_SET_RE = re.compile(r"\\mathbf\s*\{\s*(\\mathcal\{[^{}]*\}|[A-Za-z][A-Za-z0-9]*)\s*\}")
+_TEXT_SYMBOL_RE = re.compile(r"\\(?:text|textrm|mathrm)\s*\{\s*([A-Za-z][A-Za-z0-9]*)\s*\}")
+_FORALL_TAIL_RE = re.compile(r"\\forall\s*([^\n]*?)(?=\s*\\tag\{)")
+_PAREN_SYMBOL_RE = re.compile(
+    r"\\left\(\s*(\\mathit\{[^{}]*\}|[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)*)\s*\\right\)"
+)
+_STRICT_RE = re.compile(r"(?<![<>=\\])([<>])(?![<>=])")
+_ROW_RE = re.compile(r"^([ \t]*&)([^\n]*?)([ \t]*\\tag\{[^{}]*\}[ \t]*\\\\)[ \t]*$", re.MULTILINE)
+_SYMBOL_SUB_RE = re.compile(
+    r"(?<![\\A-Za-z0-9_])(\\mathit\{[^{}]*\}|[A-Za-z][A-Za-z0-9]*(?:_(?!\{)[A-Za-z0-9]+)*)"
+    r"_\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}"
+)
+_ROW_BINDER_RE = re.compile(r"(\\mathit\{[^{}]*\}|[A-Za-z]\w*)\s*(?:\\in|=)")
+
+
+def _row_algebra_span(text: str, pos: int) -> tuple[int, int]:
+    """(row start, tail start) of the row containing ``pos``: the tail begins
+    at the first top-level ``\\forall``/``\\qquad`` after the row's ``&``."""
+    start = text.rfind("\n", 0, pos) + 1
+    amp = text.find("&", start, pos)
+    start = amp + 1 if amp >= 0 else start
+    depth = 0
+    i = start
+    end = text.find("\n", pos)
+    end = len(text) if end < 0 else end
+    while i < end:
+        ch = text[i]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+        elif (
+            depth == 0
+            and ch == "\\"
+            and (text.startswith(r"\forall", i) or text.startswith(r"\qquad", i))
+        ):
+            return start, i
+        i += 1
+    return start, end
+
+
+def _paren_symbol_repl(m: re.Match[str], ctx: DocContext) -> str:
+    prefix = m.string[: m.start()]
+    if prefix.count("{") != prefix.count("}"):
+        return m.group(0)  # inside a script, (u) is a function argument, not a symbol
+    return m.group(1)
+
+
+def _mathbf_set_repl(m: re.Match[str], ctx: DocContext) -> str:
+    if not ctx.has_header:
+        return m.group(0)
+    inner = m.group(1)
+    before = m.string[max(0, m.start() - 12) : m.start()]
+    # bold calligraphic is a set anywhere; a bold identifier only in set
+    # position (after \in): a bold vector x is not the scalar x
+    if inner.startswith(r"\mathcal") or re.search(r"\\in\s*$", before):
+        return inner
+    return m.group(0)
+
+
+def _text_symbol_repl(m: re.Match[str], ctx: DocContext) -> str:
+    if not ctx.has_header:
+        return m.group(0)
+    ident = m.group(1)
+    after = m.string[m.end() : m.end() + 6]
+    before = m.string[max(0, m.start() - 12) : m.start()]
+    if (
+        ident in ctx.declared
+        or re.match(r"\s*(?:\\in|_\{|\^\{)", after)
+        or re.search(r"\\in\s*$", before)
+    ):
+        return _pad(m, ident)
+    return m.group(0)
+
+
+def _bare_letter_families(body: str, ctx: DocContext) -> dict[str, str] | None:
+    """Family of every free index letter of a row's algebra, from the declared
+    shapes; ``None`` when a letter is undecidable (two families, or a
+    position past the declared shape)."""
+    bound = {_plain_name(b) for b in _ROW_BINDER_RE.findall(body)}
+    families: dict[str, str] = {}
+    for sm in _SYMBOL_SUB_RE.finditer(body):
+        prefix = body[: sm.start()]
+        if prefix.count("{") != prefix.count("}"):
+            continue
+        name = _plain_name(sm.group(1))
+        shape = ctx.shapes.get(name)
+        if shape is None:
+            continue
+        pieces = _split_top_commas(sm.group(2))
+        if len(pieces) == 1 and re.fullmatch(r"[A-Za-z](?:\s+[A-Za-z])+", pieces[0].strip()):
+            pieces = pieces[0].split()
+        for k, piece in enumerate(pieces):
+            om = _OFFSET_RE.fullmatch(piece.strip())
+            letter = _plain_name(om.group(1) if om else piece.strip())
+            if not re.fullmatch(r"[A-Za-z]\w*", letter):
+                continue
+            if letter in bound or letter in ctx.params or letter in ctx.variables:
+                continue
+            if k >= len(shape):
+                return None
+            if families.setdefault(letter, shape[k]) != shape[k]:
+                return None
+    return families
+
+
+def _forall_lone_letters_repl(m: re.Match[str], ctx: DocContext) -> str:
+    """``\\forall i, j \\in J`` / ``\\forall f``: a lone letter in the tail gets
+    the family the declared shapes give it in this row's algebra."""
+    if not ctx.has_header:
+        return m.group(0)
+    tail = m.group(1)
+    clauses = [c.strip() for c in _split_top_commas(tail)]
+    if not any(re.fullmatch(r"[A-Za-z]\w*", c) for c in clauses):
+        return m.group(0)
+    row_start = m.string.rfind("\n", 0, m.start()) + 1
+    families = _bare_letter_families(m.string[row_start : m.start()], ctx)
+    if families is None:
+        return m.group(0)
+    out: list[str] = []
+    for i, cl in enumerate(clauses):
+        if re.fullmatch(r"[A-Za-z]\w*", cl):
+            if cl in families:
+                out.append(rf"{cl} \in \mathcal{{{families[cl]}}}")
+                continue
+            nxt = clauses[i + 1] if i + 1 < len(clauses) else ""
+            if re.match(r"[A-Za-z]\w*\s*\\in\b", nxt):
+                out.append(cl)  # ``i, j \in J``: i shares j's set, handled downstream
+                continue
+            return m.group(0)
+        else:
+            out.append(cl)
+    return r"\forall " + ", ".join(out)
+
+
+def _strict_relaxed_repl(m: re.Match[str], ctx: DocContext) -> str:
+    if not ctx.has_header:
+        return m.group(0)
+    start, tail = _row_algebra_span(m.string, m.start())
+    if not (start <= m.start() < tail):
+        return m.group(0)  # a restriction in the quantifier tail keeps its <
+    prefix = m.string[start : m.start()]
+    if prefix.count("{") != prefix.count("}"):
+        return m.group(0)  # inside a binder or set: not a row relation
+    return r"\le" if m.group(1) == "<" else r"\ge"
+
+
+def _implicit_quantifier_repl(m: re.Match[str], ctx: DocContext) -> str:
+    if not ctx.has_header:
+        return m.group(0)
+    body = m.group(2)
+    if r"\forall" in body or r"\qquad" in body or r"\min" in m.group(1) or r"\max" in m.group(1):
+        return m.group(0)
+    families = _bare_letter_families(body, ctx)
+    if not families:
+        return m.group(0)
+    tail = ", ".join(rf"{letter} \in \mathcal{{{fam}}}" for letter, fam in families.items())
+    return m.group(1) + body.rstrip() + r" \qquad \forall " + tail + m.group(3)
+
+
+_RESTRICTED_SET_RE = re.compile(
+    r"(\\in\s*)((?:\\mathcal\{[^{}]*\}|\\mathit\{[^{}]*\}|[A-Za-z][A-Za-z0-9]*))"
+    r"("
+    r"(?:\s*[_^](?:\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}|[A-Za-z0-9]))+"  # S_{i}, S^{+}
+    r"|\s*\\left\((?:(?!\\right\)).)*\\right\)"  # H \left(e\right): the set H of e
+    r"|\s*(?:\\backslash|\\setminus|\\cap)\s*[^,;:\n&]*?(?=\s*(?:,|;|:|\\tag|\\qquad|\\forall|$))"
+    r")"
+)
+
+
+def _restricted_set_widen_repl(m: re.Match[str], ctx: DocContext) -> str:
+    if not ctx.has_header:
+        return m.group(0)
+    return m.group(1) + m.group(2)
 
 
 def _text_ident_script_repl(m: re.Match[str], ctx: DocContext) -> str:
@@ -675,6 +859,46 @@ REWRITE_RULES: tuple[RewriteRule, ...] = (
         _prime_ident_repl,
         "primed identifier to plain p-suffixed name (t' -> tp, k^{'} -> kp)",
     ),
+    # A parenthesised single symbol is that symbol: (\bar{a})_{ik} arrives here
+    # as \left(a_bar\right)_{i k} after accent_ident and becomes a_bar_{i k}.
+    # Display-environment wrappers the extraction left inside one row
+    # (\begin{matrix} ... \end{matrix}) carry no algebra.
+    _rule(
+        "env_wrapper_strip",
+        _ENV_WRAPPER_RE.pattern,
+        " ",
+        "\\begin/\\end of matrix, aligned, gathered, split, array dropped",
+    ),
+    _ctx_rule(
+        "mathbf_set_unwrap",
+        _MATHBF_SET_RE,
+        _mathbf_set_repl,
+        "\\mathbf{\\mathcal{E}} / \\in \\mathbf{I} is the set itself",
+    ),
+    _ctx_rule(
+        "text_ident_symbol",
+        _TEXT_SYMBOL_RE,
+        _text_symbol_repl,
+        "\\text{u} that names a declared or bound symbol is the identifier u",
+    ),
+    # A binder or quantifier over a RESTRICTED set (S_{i}: the stations of
+    # train i; \mathcal{E}^{+}) is widened to its base family. The canonical
+    # model binds an index over one declared family; the restriction is kept
+    # here, in the recorded rewrite, never in the model — a reader of the
+    # provenance sees exactly which binders were widened (the repo converter
+    # records the same approximation as a remark, ADR-0015).
+    _ctx_rule(
+        "restricted_set_widen",
+        _RESTRICTED_SET_RE,
+        _restricted_set_widen_repl,
+        "binder/quantifier over a subscripted or superscripted set widened to the base family",
+    ),
+    _ctx_rule(
+        "paren_symbol_unwrap",
+        _PAREN_SYMBOL_RE,
+        _paren_symbol_repl,
+        "\\left(SYM\\right) to SYM (a parenthesised single symbol, outside scripts)",
+    ),
     # --- declaration-driven script resolution (issue #63; corpus evidence:
     # 49 + 21 of 220 grammar-failing papers in the 2026-09 re-run stall on
     # superscripts and label subscripts, and unbraced scripts B_u \cdot w_u
@@ -727,6 +951,33 @@ REWRITE_RULES: tuple[RewriteRule, ...] = (
         _DECLARED_PRODUCT_RE,
         _declared_product_repl,
         "juxtaposed declared symbols get \\cdot (c_{i} x_{i} -> c_{i} \\cdot x_{i})",
+    ),
+    # A strict inequality has no exact linear counterpart; the model keeps the
+    # direction and drops the strictness. RECORDED here as a rewrite so the
+    # provenance says which rows were relaxed (restrictions in a quantifier
+    # tail, i < j, are untouched: they are exact there).
+    _ctx_rule(
+        "strict_relaxed",
+        _STRICT_RE,
+        _strict_relaxed_repl,
+        "strict < / > relation relaxed to \\le / \\ge (recorded approximation)",
+    ),
+    # A row without any quantifier binds its free index letters implicitly;
+    # the declared shapes say which family each subscript position ranges
+    # over, so the quantifier is synthesized from the declarations and
+    # recorded. Rows where a letter would get two families, or sits past the
+    # declared shape, are left alone for the parser to refuse.
+    _ctx_rule(
+        "forall_lone_letters",
+        _FORALL_TAIL_RE,
+        _forall_lone_letters_repl,
+        "\\forall f without a set gets the family the declared shapes give f in the row",
+    ),
+    _ctx_rule(
+        "implicit_quantifier",
+        _ROW_RE,
+        _implicit_quantifier_repl,
+        "row without a quantifier gets \\forall over the declared families of its free letters",
     ),
     # --- whitespace hygiene (last) ----------------------------------------
     _rule("collapse_ws", r"[ \t]{2,}", " ", "collapse runs of spaces/tabs"),

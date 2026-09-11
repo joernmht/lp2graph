@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Implicit structure the corpus leaves unsaid** (`rewrite-2026.09.3`,
+  measured against the lab corpus after `rewrite-2026.09.2`): a row without
+  any quantifier gets `\\forall` over the families the declared shapes give
+  its free index letters (`implicit_quantifier`, recorded; a letter that would
+  get two families leaves the row untouched); `\\forall f` / `\\forall i, j
+  \\in J` resolve lone letters the same way (`forall_lone_letters`);
+  memberships listed after the algebra without `\\forall` are the
+  quantifier tail (codec); an equality chain `a = b = c` and a same-direction
+  chain with three or more comparators split into consecutive rows, and an
+  interval membership `t \\in [a, b]` into its two bounds (codec, exact);
+  strict `<`/`>` in the algebra relax to `\\le`/`\\ge` as a recorded
+  approximation (restrictions in a tail keep `<`); a parenthesised single
+  symbol `(\\bar{a})_{ik}` is that symbol (`paren_symbol_unwrap`);
+  `\\begin{matrix}`-style wrappers inside a row are dropped
+  (`env_wrapper_strip`); `\\mathbf{\\mathcal{E}}` and `\\in \\mathbf{I}`
+  are the set (`mathbf_set_unwrap`); `\\text{u}` naming a declared or bound
+  symbol is the identifier (`text_ident_symbol`); `restricted_set_widen` also
+  widens function-style sets `H(e)` and set differences/intersections
+  (`S \\setminus T`, `S \\cap T`) to the base family, recorded; unions are
+  refused.
 - **Row conventions the corpus writes** (`rewrite-2026.09.2`, issue #64;
   lab measurement: 55 of 6,207 accepted rows parsed before this). Codec: the
   quantifier tail starts at `\qquad` OR the first top-level `\forall`
@@ -20,7 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `\text{l}`/`\mathrm{l}` inside a script; `declared_product` inserts the
   `\cdot` between a declared parameter and a declared symbol written side by
   side (coefficient first, `x_{i} c_{i}` -> `c_{i} \cdot x_{i}`), leaving
-  undeclared names for the parser to refuse.
+  undeclared names for the parser to refuse. `restricted_set_widen` widens a
+  binder or quantifier over a subscripted/superscripted set (`\\mathcal{S}_{i}`)
+  to its base family and records the widening as a rewrite (the same recorded
+  approximation the repository converter makes); Greek index letters
+  (`\\mathit{delta} \\in T`) bind, and a `:` in a quantifier tail separates a
+  restriction clause.
 - **M1b declaration-driven script resolution** (`rewrite-2026.09.1`,
   issue #63; corpus evidence: 49 + 21 of the 220 papers still failing the
   Paper-1 promotion after the #52–#57 batch stall on superscripts and

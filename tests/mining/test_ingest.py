@@ -730,7 +730,7 @@ def test_script_resolution_is_deterministic_and_versioned():
     a2, p2 = normalize_latex(doc, source="ctx.tex")
     assert a1 == a2
     assert p1.rewrites == p2.rewrites
-    assert {r.rules_version for r in p1.rewrites} == {"rewrite-2026.09.2"}
+    assert {r.rules_version for r in p1.rewrites} == {"rewrite-2026.09.3"}
 
 
 def test_glued_bound_letters_are_indices_not_labels():
@@ -795,11 +795,12 @@ def test_several_letters_over_one_family_expand():
 
 def test_unsupported_quantifier_and_binder_forms_are_refused_by_name():
     cases = {
-        r"  & x_{e} \le u \forall e \in \mathcal{E}_{j} \tag{cap} \\": "subscripted index set",
         r"  & x_{e} \le u \forall (e, f) \in \mathcal{E} \tag{cap} \\": "tuple quantifier",
         r"  & x_{e} \le u \forall e = 1 \tag{cap} \\": "not understood",
-        r"  & x_{e} \le u \forall e \in \mathcal{E} : e \ne f \tag{cap} \\": "not understood",
     }
+    # a restriction against a letter no quantifier binds is caught by validation
+    r = _probe(_PROBE_OBJ, r"  & x_{e} \le u \forall e \in \mathcal{E} : e \ne f \tag{cap} \\")
+    assert not r.ok and r.failures[0].stage == "validate"
     for row, expected in cases.items():
         r = _probe(_PROBE_OBJ, row)
         assert not r.ok, row
@@ -835,3 +836,147 @@ def test_declared_juxtaposition_gets_cdot_with_the_coefficient_first():
     # inside a binder group two names are never a product
     row, _ = _norm(r"\sum_{u \in T, B \in T} w_{u} \forall u \in \mathcal{T}")
     assert row.startswith(r"\sum_{u \in T, B \in T} w_{u}")
+
+
+def test_restricted_sets_are_widened_and_recorded():
+    r = _probe(
+        r"  \min\quad & \sum_{e \in \mathcal{E}_{j}} c \cdot x_{e} \tag{cost} \\",
+        r"  & x_{e} \le u \forall e \in \mathcal{E}^{+} \tag{cap} \\",
+    )
+    assert r.ok, r.failures
+    assert r.formulation.objective.terms[0].operator_over == ("E",)
+    assert r.formulation.constraints[0].quantifiers[0].over == "E"
+    widened = [rw for rw in r.provenance.rewrites if rw.rule == "restricted_set_widen"]
+    assert [w.before for w in widened] == [r"\in \mathcal{E}_{j}", r"\in \mathcal{E}^{+}"]
+
+
+def test_greek_index_letters_and_colon_predicates_in_quantifiers():
+    r = _probe(
+        _PROBE_OBJ,
+        r"  & x_{e} \le u \forall \mathit{delta} \in \mathcal{E}, e \in \mathcal{E}"
+        r" : \mathit{delta} \ne e \tag{cap} \\",
+    )
+    assert r.ok, r.failures
+    q, _e = r.formulation.constraints[0].quantifiers
+    assert (q.index, q.over, q.restriction, q.restriction_other) == ("delta", "E", "ne_other", "e")
+
+
+def test_equality_and_long_chains_split_into_consecutive_rows():
+    r = _probe(
+        _PROBE_OBJ,
+        r"  & l \le x_{e} \le u \le b_{j} \forall e \in \mathcal{E}, j \in \mathcal{J} \tag{cap} \\",
+        r"  & x_{e} = l = u \forall e \in \mathcal{E} \tag{fix} \\",
+    )
+    assert r.ok, r.failures
+    names = [c.name for c in r.formulation.constraints]
+    assert names == ["cap_1", "cap_2", "cap_3", "fix_1", "fix_2"]
+    assert {c.comparator for c in r.formulation.constraints[:3]} == {"le"}
+    assert {c.comparator for c in r.formulation.constraints[3:]} == {"eq"}
+    r = _probe(_PROBE_OBJ, r"  & l \le x_{e} \ge u \forall e \in \mathcal{E} \tag{cap} \\")
+    assert not r.ok and "mixed-direction" in r.failures[0].message
+
+
+def test_interval_membership_is_the_pair_of_bounds():
+    r = _probe(
+        _PROBE_OBJ,
+        r"  & x_{e} \in \left[l , u\right] \forall e \in \mathcal{E} \tag{box} \\",
+    )
+    assert r.ok, r.failures
+    lo, up = r.formulation.constraints
+    assert (lo.name, up.name) == ("box_lo", "box_up")
+    assert lo.lhs[0].ref == "l" and up.rhs[0].ref == "u"
+
+
+# ---------------------------------------------------------------------------
+# rewrite-2026.09.3: implicit quantifiers, membership tails, wrappers, set algebra
+# ---------------------------------------------------------------------------
+
+_SHAPE_HEADER = """%@ meta id=shp family=milp schema=0.1.0
+%@ name :: Shapes
+%@ index I ordered=0 cyclic=0 :: items
+%@ index K ordered=1 cyclic=0 :: periods
+%@ index H ordered=0 cyclic=0 :: hubs
+%@ param c shape=I kind=vector domain=- :: cost
+%@ param T shape=- kind=scalar domain=- :: horizon
+%@ param a_bar shape=I,K kind=matrix domain=- :: bound
+%@ var x shape=I,K domain=binary role=primary drole=- lo=- hi=- :: choice
+%@ var u shape=H domain=continuous role=primary drole=- lo=- hi=- :: use
+%@ obj sense=min name=objective combination=sum :: cost
+"""
+_SHAPE_OBJ = (
+    r"  \min\quad & \sum_{i \in \mathcal{I}, k \in \mathcal{K}} c_{i} \cdot x_{i, k} \tag{obj} \\"
+)
+
+
+def _shaped(*rows: str) -> IngestionResult:
+    doc = _SHAPE_HEADER + "\\begin{align}\n" + "\n".join([_SHAPE_OBJ, *rows]) + "\n\\end{align}\n"
+    return ingest_latex(doc, source="shaped.tex")
+
+
+def _quants(r: IngestionResult, name: str) -> list[tuple[str, str]]:
+    (c,) = [c for c in r.formulation.constraints if c.name == name]
+    return [(q.index, q.over) for q in c.quantifiers]
+
+
+def test_rows_without_quantifier_bind_free_letters_from_declared_shapes():
+    r = _shaped(
+        r"  & x_{i, k} \le a_bar_{i, k} \tag{r1} \\",
+        r"  & \sum_{i \in \mathcal{I}} x_{i, k} \le T \tag{r2} \\",
+        r"  & x_{i, k + 1} \le T , i \in I , k \in K \tag{r3} \\",
+        r"  & u_{h} \ge x_{i, k} \forall h, i \in \mathcal{I}, k \tag{r4} \\",
+    )
+    assert r.ok, r.failures
+    assert _quants(r, "r1") == [("i", "I"), ("k", "K")]
+    assert _quants(r, "r2") == [("k", "K")]  # i is bound by the sum, only k is free
+    assert _quants(r, "r3") == [("i", "I"), ("k", "K")]  # membership tail without \forall
+    assert _quants(r, "r4") == [("h", "H"), ("i", "I"), ("k", "K")]  # lone letters get their family
+    fired = {rw.rule for rw in r.provenance.rewrites}
+    assert {"implicit_quantifier", "forall_lone_letters"} <= fired
+
+
+def test_undecidable_free_letters_are_left_for_the_parser():
+    # k sits in x's second position (family K) and in c's first (family I):
+    # no quantifier is synthesized (the parser keeps the row with its free letters)
+    r = _shaped(r"  & x_{i, k} \le c_{k} \tag{bad} \\")
+    assert r.ok and _quants(r, "bad") == []
+    assert "implicit_quantifier" not in {rw.rule for rw in r.provenance.rewrites}
+
+
+def test_wrappers_bold_sets_text_symbols_and_set_algebra_are_normalized():
+    r = _shaped(
+        r"  & \begin{matrix} x_{i, k} \le \left(\bar{a}\right)_{i k} \end{matrix} \forall i \in \mathbf{\mathcal{I}}, k \in \mathbf{K} \tag{r1} \\",
+        r"  & \text{u}_{h} \le T \forall \text{h} \in \text{H} \backslash \left\{h_{0}\right\} \tag{r2} \\",
+        r"  & u_{h} \le T \forall h \in H \left(k\right), k \in \mathcal{K} \cap \mathcal{K}_{h} \tag{r3} \\",
+    )
+    assert r.ok, r.failures
+    assert _quants(r, "r1") == [("i", "I"), ("k", "K")]
+    assert _quants(r, "r2") == [("h", "H")]
+    assert _quants(r, "r3") == [("h", "H"), ("k", "K")]
+    widened = [rw.before for rw in r.provenance.rewrites if rw.rule == "restricted_set_widen"]
+    assert len(widened) == 3
+    fired = {rw.rule for rw in r.provenance.rewrites}
+    assert {
+        "env_wrapper_strip",
+        "mathbf_set_unwrap",
+        "text_ident_symbol",
+        "paren_symbol_unwrap",
+    } <= fired
+
+
+def test_set_union_is_not_widened():
+    r = _shaped(r"  & u_{h} \le T \forall h \in \mathcal{H} \cup \mathcal{K} \tag{r} \\")
+    assert not r.ok and "not understood" in r.failures[0].message
+
+
+def test_strict_inequalities_relax_only_in_the_algebra():
+    r = _shaped(
+        r"  & 0 < \sum_{i \in \mathcal{I}} x_{i, k} - T \tag{r1} \\",
+        r"  & x_{i, k} \le x_{j, k} \forall i \in \mathcal{I}, j \in \mathcal{I}, k \in \mathcal{K} : i < j \tag{r2} \\",
+    )
+    assert r.ok, r.failures
+    (r1,) = [c for c in r.formulation.constraints if c.name == "r1"]
+    assert r1.comparator == "le"
+    (r2,) = [c for c in r.formulation.constraints if c.name == "r2"]
+    assert (r2.quantifiers[0].restriction, r2.quantifiers[0].restriction_other) == ("lt_other", "j")
+    relaxed = [rw for rw in r.provenance.rewrites if rw.rule == "strict_relaxed"]
+    assert len(relaxed) == 1

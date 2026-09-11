@@ -83,6 +83,14 @@ _RESTR_OUT = {
     "ordered_pair": r"\prec",
 }
 _RESTR_IN = {v: k for k, v in _RESTR_OUT.items()}
+#: Accepted restriction spellings, longest first (``\\neq`` before ``\\ne``);
+#: the emitter writes the canonical one, authors also write the short forms.
+_RESTR_SPELLINGS: tuple[tuple[str, str], ...] = tuple(
+    sorted(
+        {**_RESTR_IN, r"\ne": "ne_other", r"\le": "le_other", r"\ge": "ge_other"}.items(),
+        key=lambda kv: -len(kv[0]),
+    )
+)
 
 # ===========================================================================
 # Emitter
@@ -543,13 +551,13 @@ def _parse_constraint_rows(
     quantifiers = _parse_quantifiers(qpart)
     env = {q.index: q.over for q in quantifiers}
 
+    interval = _INTERVAL_RE.match(body)
+    if interval is not None:
+        # t \in [a, b] is exactly the pair of bounds a <= t and t <= b.
+        body = f"{interval.group(2)} \\le {interval.group(1)} \\le {interval.group(3)}"
     rels = _find_relations(body)
     if not rels:
         raise ValueError(f"no comparator in constraint body: {body!r}")
-    if len(rels) > 2:
-        raise ValueError(
-            f"chained relation with {len(rels)} comparators is not supported: {body!r}"
-        )
 
     indicator = None
     ind = info.get("indicator")
@@ -576,21 +584,35 @@ def _parse_constraint_rows(
         (start, end, cmp) = rels[0]
         return [build(name, cmp, body[:start], body[end:])]
 
-    (s1, e1, cmp1), (s2, e2, cmp2) = rels
-    if cmp1 != cmp2 or cmp1 == "eq":
-        raise ValueError(f"mixed-direction or equality chained relation is not supported: {body!r}")
-    lo_seg, mid_seg, hi_seg = body[:s1], body[e1:s2], body[e2:]
-    if cmp1 == "le":
+    cmps = {cmp for _, _, cmp in rels}
+    if len(cmps) != 1:
+        raise ValueError(f"mixed-direction chained relation is not supported: {body!r}")
+    (cmp,) = cmps
+    # Segments between consecutive comparators; a chain a R b R c is exactly
+    # the conjunction a R b and b R c, so every chain splits into pairs.
+    bounds = [0, *[i for s, e, _ in rels for i in (s, e)], len(body)]
+    segments = [body[bounds[k] : bounds[k + 1]] for k in range(0, len(bounds), 2)]
+    if len(rels) == 2 and cmp != "eq":
+        lo_seg, mid_seg, hi_seg = segments
+        if cmp == "le":
+            return [
+                build(f"{name}_lo", "le", lo_seg, mid_seg),
+                build(f"{name}_up", "le", mid_seg, hi_seg),
+            ]
         return [
-            build(f"{name}_lo", "le", lo_seg, mid_seg),
-            build(f"{name}_up", "le", mid_seg, hi_seg),
+            build(f"{name}_up", "ge", lo_seg, mid_seg),
+            build(f"{name}_lo", "ge", mid_seg, hi_seg),
         ]
     return [
-        build(f"{name}_up", "ge", lo_seg, mid_seg),
-        build(f"{name}_lo", "ge", mid_seg, hi_seg),
+        build(f"{name}_{k + 1}", cmp, segments[k], segments[k + 1])
+        for k in range(len(segments) - 1)
     ]
 
 
+#: ``t \\in \\left[a, b\\right]`` / ``t \\in [a, b]``: an interval membership row.
+_INTERVAL_RE = re.compile(
+    r"^(.+?)\s*\\in\s*(?:\\left)?\[\s*([^,\[\]]+?)\s*,\s*([^,\[\]]+?)\s*(?:\\right)?\]\s*$"
+)
 _TRAILING_PUNCT_RE = re.compile(r"(?:[\s.,;:]|\\quad|\\;|\\,)+$")
 
 
@@ -626,8 +648,22 @@ def _split_quantifier_tail(body: str) -> tuple[str, str]:
                 break
         i += 1
     if cut < 0:
-        return body, ""
+        return _membership_tail(body)
     return body[:cut], _strip_trailing_punctuation(body[cut:])
+
+
+def _membership_tail(body: str) -> tuple[str, str]:
+    """``x_{i} \\le u , i \\in I , j \\in J``: memberships listed after the
+    algebra without any ``\\forall`` are the quantifier tail."""
+    pieces = _split_top_commas(body)
+    if len(pieces) < 2:
+        return body, ""
+    k = len(pieces)
+    while k > 1 and _SET_FORMS_RE.match(pieces[k - 1].strip()):
+        k -= 1
+    if k == len(pieces):
+        return body, ""
+    return ", ".join(pieces[:k]), r"\forall " + ", ".join(pieces[k:])
 
 
 #: Comparator spellings accepted in a row body, longest first so ``\leq``
@@ -1079,13 +1115,13 @@ def _apply_extra(cl: str, quants: dict[str, dict[str, Any]]) -> bool:
             )
             return True
     # restriction:  idx OP other
-    for tok, restr in _RESTR_IN.items():
-        m = re.match(rf"^(\w+)\s*{re.escape(tok)}\s*(\w+)$", cl)
+    for tok, restr in _RESTR_SPELLINGS:
+        m = re.match(rf"^({_INDEX_TOKEN})\s*{re.escape(tok)}\s*({_INDEX_TOKEN})$", cl)
         if m:
-            idx = m.group(1)
+            idx = _read_sym(m.group(1))
             if idx in quants:
                 quants[idx]["restriction"] = restr
-                quants[idx]["other"] = m.group(2)
+                quants[idx]["other"] = _read_sym(m.group(2))
             return True
     return False
 
@@ -1133,8 +1169,9 @@ def _between(text: str, open_t: str, close_t: str) -> str:
     return inner.strip()
 
 
+_INDEX_TOKEN = r"(?:\\mathit\{[A-Za-z_]\w*\}|[A-Za-z_]\w*)"
 _SET_FORMS_RE = re.compile(
-    r"^(?P<vars>[A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*\\in\s*"
+    r"^(?P<vars>" + _INDEX_TOKEN + r"(?:\s*,\s*" + _INDEX_TOKEN + r")*)\s*\\in\s*"
     r"(?:\\mathcal\{(?P<cal>[\w\\]+)\}|\\mathit\{(?P<mit>\w+)\}|(?P<bare>[A-Za-z_]\w*))$"
 )
 
@@ -1148,7 +1185,7 @@ def _merge_shared_family_clauses(clauses: list[str]) -> list[str]:
         cl = clause.strip()
         if not cl:
             continue
-        if re.fullmatch(r"[A-Za-z_]\w*", cl):
+        if re.fullmatch(_INDEX_TOKEN, cl):
             pending.append(cl)
             continue
         if pending and r"\in" in cl:
@@ -1196,7 +1233,7 @@ def _binder_pairs(sub: str, *, where: str) -> list[tuple[str, str]]:
             raise ValueError(f"{where} clause not understood: {cl!r}")
         family = (m.group("cal") or m.group("mit") or m.group("bare")).replace(r"\_", "_")
         for var in re.split(r"\s*,\s*", m.group("vars")):
-            pairs.append((var, family))
+            pairs.append((_read_sym(var), family))
     return pairs
 
 
@@ -1224,9 +1261,25 @@ def _split_top_commas(s: str) -> list[str]:
 
 
 def _split_clauses(s: str) -> list[str]:
-    """Split quantifier clauses on top-level commas (``\\;`` already in text)."""
+    """Split quantifier clauses on top-level commas, ``\\;`` and ``:`` (authors
+    write ``\\forall i \\in I : i \\ne j``; the predicate after the colon is
+    then a restriction clause, or is refused by name like any other)."""
     s = s.replace(r"\;", ",")
-    return _split_top_commas(s)
+    out: list[str] = []
+    depth = 0
+    cur: list[str] = []
+    for ch in s:
+        if ch in "{(":
+            depth += 1
+        elif ch in "})":
+            depth -= 1
+        if ch in ",:" and depth == 0:
+            out.append("".join(cur))
+            cur = []
+        else:
+            cur.append(ch)
+    out.append("".join(cur))
+    return [x.strip() for x in out]
 
 
 __all__ = ["from_canonical_latex", "to_canonical_latex"]
