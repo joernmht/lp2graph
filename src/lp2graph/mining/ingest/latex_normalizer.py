@@ -557,6 +557,75 @@ def _forall_lone_letters_repl(m: re.Match[str], ctx: DocContext) -> str:
     return r"\forall " + ", ".join(out)
 
 
+_LONE_BINDER_RE = re.compile(r"(\\(?:sum|prod)_\{)\s*([A-Za-z]\w*(?:\s*,\s*[A-Za-z]\w*)*)\s*\}")
+_TERM_PIECE = r"(?:\\mathit\{[^{}]*\}|[A-Za-z][A-Za-z0-9]*(?:_(?!\{)[A-Za-z0-9]+)*|\d+(?:\.\d+)?)(?:_\{[^{}]*\})?"
+_DISTRIBUTE_RE = re.compile(
+    r"(?<![\\A-Za-z0-9_])(" + _PRODUCT_TOK + r")\s*(?:\\cdot\s*)?"
+    r"\\left\(\s*([-+]?\s*" + _TERM_PIECE + r"(?:\s*(?:\\cdot\s*)?" + _TERM_PIECE + r")?"
+    r"(?:\s*[-+]\s*" + _TERM_PIECE + r"(?:\s*(?:\\cdot\s*)?" + _TERM_PIECE + r")?)*)\s*\\right\)"
+)
+
+
+def _lone_binder_repl(m: re.Match[str], ctx: DocContext) -> str:
+    """``\\sum_{n} x_{n}``: a binder letter without a set gets the family the
+    declared shapes give it in this row."""
+    if not ctx.has_header:
+        return m.group(0)
+    letters = [x.strip() for x in m.group(2).split(",")]
+    row_start = m.string.rfind("\n", 0, m.start()) + 1
+    row_end = m.string.find("\n", m.end())
+    row = m.string[row_start : row_end if row_end >= 0 else len(m.string)]
+    families = _bare_letter_families(row, ctx)
+    if not families or any(letter not in families for letter in letters):
+        return m.group(0)
+    return m.group(1) + ", ".join(rf"{x} \in \mathcal{{{families[x]}}}" for x in letters) + "}"
+
+
+def _distribute_repl(m: re.Match[str], ctx: DocContext) -> str:
+    """``M \\left(1 - x_{i}\\right)`` with M a declared parameter is exactly
+    ``M - M \\cdot x_{i}``: the coefficient distributes over the sum."""
+    if not ctx.has_header:
+        return m.group(0)
+    prefix = m.string[: m.start()]
+    if prefix.count("{") != prefix.count("}"):
+        return m.group(0)
+    start, tail = _row_algebra_span(m.string, m.start())
+    if not (start <= m.start() < tail):
+        return m.group(0)
+    coef = m.group(1)
+    cname = _plain_name(re.split(r"_\{", coef, maxsplit=1)[0])
+    if cname not in ctx.params:
+        return m.group(0)
+    inner = m.group(2).strip()
+    # split the parenthesised sum at top-level +/- keeping signs
+    pieces: list[tuple[str, str]] = []
+    sign = "+"
+    cur: list[str] = []
+    depth = 0
+    for ch in inner:
+        if ch in "{":
+            depth += 1
+        elif ch in "}":
+            depth -= 1
+        if ch in "+-" and depth == 0:
+            if "".join(cur).strip():
+                pieces.append((sign, "".join(cur).strip()))
+            sign = ch
+            cur = []
+        else:
+            cur.append(ch)
+    if "".join(cur).strip():
+        pieces.append((sign, "".join(cur).strip()))
+    out: list[str] = []
+    for k, (sg, term) in enumerate(pieces):
+        if re.fullmatch(r"\d+(?:\.\d+)?", term):
+            prod = coef if term in ("1", "1.0") else f"{term} \\cdot {coef}"
+        else:
+            prod = f"{coef} \\cdot {term}"
+        out.append((sg if (k or sg == "-") else "") + (" " if k else "") + prod)
+    return " ".join(out).replace("  ", " ")
+
+
 def _strict_relaxed_repl(m: re.Match[str], ctx: DocContext) -> str:
     if not ctx.has_header:
         return m.group(0)
@@ -587,7 +656,8 @@ _RESTRICTED_SET_RE = re.compile(
     r"("
     r"(?:\s*[_^](?:\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}|[A-Za-z0-9]))+"  # S_{i}, S^{+}
     r"|\s*\\left\((?:(?!\\right\)).)*\\right\)"  # H \left(e\right): the set H of e
-    r"|\s*(?:\\backslash|\\setminus|\\cap)\s*[^,;:\n&]*?(?=\s*(?:,|;|:|\\tag|\\qquad|\\forall|$))"
+    r"|\s*(?:\\backslash|\\setminus|\\cap)\s*(?:\{(?:[^{}]|\{[^{}]*\})*\}|[^,;:\n&{}])*?"
+    r"(?=\s*(?:,|;|:|\}|\\tag|\\qquad|\\forall|$))"
     r")"
 )
 
@@ -611,6 +681,9 @@ def _declared_product_repl(m: re.Match[str], ctx: DocContext) -> str:
     prefix = m.string[: m.start()]
     if prefix.count("{") != prefix.count("}"):
         return m.group(0)  # inside a script or set: never a product
+    start, tail = _row_algebra_span(m.string, m.start())
+    if not (start <= m.start() < tail):
+        return m.group(0)  # a quantifier tail lists sets, never products
     left, right = m.group(1), m.group(3)
     lname = _plain_name(re.split(r"_\{", left, maxsplit=1)[0])
     rname = _plain_name(re.split(r"_\{", right, maxsplit=1)[0])
@@ -946,6 +1019,14 @@ REWRITE_RULES: tuple[RewriteRule, ...] = (
     # between them is a product: the canonical spelling carries \cdot, and the
     # coefficient goes first (corpus evidence: ~84% of rows write products by
     # juxtaposition). Undeclared names are left alone for the parser to refuse.
+    # A declared parameter times a parenthesised sum distributes exactly
+    # (M (1 - x) -> M - M x); the canonical Term carries one coefficient.
+    _ctx_rule(
+        "distribute_param",
+        _DISTRIBUTE_RE,
+        _distribute_repl,
+        "declared parameter distributed over a parenthesised sum (M \\left(1 - x\\right) -> M - M \\cdot x)",
+    ),
     _ctx_rule(
         "declared_product",
         _DECLARED_PRODUCT_RE,
@@ -967,6 +1048,12 @@ REWRITE_RULES: tuple[RewriteRule, ...] = (
     # over, so the quantifier is synthesized from the declarations and
     # recorded. Rows where a letter would get two families, or sits past the
     # declared shape, are left alone for the parser to refuse.
+    _ctx_rule(
+        "bigop_lone_binder",
+        _LONE_BINDER_RE,
+        _lone_binder_repl,
+        "\\sum_{n} without a set binds n over the family the declared shapes give it",
+    ),
     _ctx_rule(
         "forall_lone_letters",
         _FORALL_TAIL_RE,

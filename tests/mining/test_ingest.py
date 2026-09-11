@@ -730,7 +730,7 @@ def test_script_resolution_is_deterministic_and_versioned():
     a2, p2 = normalize_latex(doc, source="ctx.tex")
     assert a1 == a2
     assert p1.rewrites == p2.rewrites
-    assert {r.rules_version for r in p1.rewrites} == {"rewrite-2026.09.3"}
+    assert {r.rules_version for r in p1.rewrites} == {"rewrite-2026.09.4"}
 
 
 def test_glued_bound_letters_are_indices_not_labels():
@@ -980,3 +980,36 @@ def test_strict_inequalities_relax_only_in_the_algebra():
     assert (r2.quantifiers[0].restriction, r2.quantifiers[0].restriction_other) == ("lt_other", "j")
     relaxed = [rw for rw in r.provenance.rewrites if rw.rule == "strict_relaxed"]
     assert len(relaxed) == 1
+
+
+def test_bare_binder_letters_and_set_algebra_inside_binder_groups():
+    r = _shaped(
+        r"  & \sum_{i} x_{i, k} \le T \forall k \in \mathcal{K} \tag{r1} \\",
+        r"  & \sum_{i \in \mathcal{I} \cap \mathcal{I}_{k}^{p}} x_{i, k} \le T \forall k \in \mathcal{K} \tag{r2} \\",
+    )
+    assert r.ok, r.failures
+    (r1,) = [c for c in r.formulation.constraints if c.name == "r1"]
+    assert r1.lhs[0].operator_over == ("I",)
+    (r2,) = [c for c in r.formulation.constraints if c.name == "r2"]
+    assert r2.lhs[0].operator_over == ("I",)
+    fired = {rw.rule for rw in r.provenance.rewrites}
+    assert {"bigop_lone_binder", "restricted_set_widen"} <= fired
+
+
+def test_parameter_distributes_over_a_parenthesised_sum_exactly():
+    r = _shaped(
+        r"  & u_{h} \le T \left(1 - x_{i, k}\right) \forall h \in \mathcal{H}, i \in \mathcal{I}, k \in \mathcal{K} \tag{r1} \\",
+        r"  & u_{h} \ge c_{i} \left(x_{i, k} + 2\right) \forall h \in \mathcal{H}, i \in \mathcal{I}, k \in \mathcal{K} \tag{r2} \\",
+    )
+    assert r.ok, r.failures
+    (r1,) = [c for c in r.formulation.constraints if c.name == "r1"]
+    assert [(t.ref, t.coefficient, t.sign) for t in r1.rhs] == [("T", 1, 1), ("x", "T", -1)]
+    (r2,) = [c for c in r.formulation.constraints if c.name == "r2"]
+    assert [(t.ref, t.coefficient) for t in r2.rhs] == [("x", "c"), ("c", 2)]
+    assert "distribute_param" in {rw.rule for rw in r.provenance.rewrites}
+
+
+def test_products_are_not_inserted_inside_quantifier_tails():
+    row, fired = _norm(r"x_{i} \le u \forall i \in \mathcal{I} : B u \ne w")
+    assert row.endswith(r"\forall i \in \mathcal{I} : B u \ne w")
+    assert "declared_product" not in fired

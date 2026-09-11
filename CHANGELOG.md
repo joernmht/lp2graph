@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Binder letters, big-M products, set algebra in binders**
+  (`rewrite-2026.09.4`): `bigop_lone_binder` gives `\\sum_{n}` the family the
+  declared shapes assign to `n` in the row; `distribute_param` distributes a
+  declared parameter over a parenthesised sum exactly (`M \\left(1 -
+  x\\right)` -> `M - M \\cdot x`, numeric pieces become `2 \\cdot M`);
+  `restricted_set_widen` handles set differences/intersections inside binder
+  groups (brace-aware); `declared_product` and `distribute_param` never fire
+  inside a quantifier tail.
 - **Implicit structure the corpus leaves unsaid** (`rewrite-2026.09.3`,
   measured against the lab corpus after `rewrite-2026.09.2`): a row without
   any quantifier gets `\\forall` over the families the declared shapes give
