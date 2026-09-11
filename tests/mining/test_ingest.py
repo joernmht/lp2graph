@@ -566,10 +566,17 @@ def test_trailing_superscript_is_refused_not_dropped():
 
 def test_juxtaposed_second_factor_is_refused_not_dropped():
     # Regression lock: p_{e} x_{e} used to parse "successfully" with the
-    # second factor silently discarded (ADR-0015's silent-loss class).
+    # second factor silently discarded (ADR-0015's silent-loss class). A
+    # juxtaposition of two DECLARED symbols is now an exact, recorded rewrite
+    # to a product (rewrite-2026.09.2); an undeclared one is still refused.
     r = _probe(r"  \min\quad & \sum_{e \in \mathcal{E}} w_{e} x_{e} \tag{cost} \\")
+    assert r.ok, r.failures
+    (term,) = r.formulation.objective.terms
+    assert (term.coefficient, term.ref) == ("w", "x")
+    assert "declared_product" in {rw.rule for rw in r.provenance.rewrites}
+    r = _probe(r"  \min\quad & \sum_{e \in \mathcal{E}} q_{e} x_{e} \tag{cost} \\")
     assert not r.ok
-    assert "trailing" in r.failures[0].message
+    assert "not a declared" in r.failures[0].message or "trailing" in r.failures[0].message
 
 
 def test_declared_constant_subscript_parses_as_element_reference():
@@ -723,7 +730,7 @@ def test_script_resolution_is_deterministic_and_versioned():
     a2, p2 = normalize_latex(doc, source="ctx.tex")
     assert a1 == a2
     assert p1.rewrites == p2.rewrites
-    assert {r.rules_version for r in p1.rewrites} == {"rewrite-2026.09.1"}
+    assert {r.rules_version for r in p1.rewrites} == {"rewrite-2026.09.2"}
 
 
 def test_glued_bound_letters_are_indices_not_labels():
@@ -750,3 +757,81 @@ def test_script_rules_leave_header_less_snippets_alone():
         "superscript_label",
         "label_subscript",
     }
+
+
+# ---------------------------------------------------------------------------
+# rewrite-2026.09.2 / codec: the row conventions the corpus writes (issue #64)
+# ---------------------------------------------------------------------------
+
+
+def test_quantifier_tail_after_a_comma_or_without_qquad():
+    for row in (
+        r"  & x_{e} \le u , \forall e \in \mathcal{E} \tag{cap} \\",
+        r"  & x_{e} \le u \forall e \in \mathcal{E} \tag{cap} \\",
+        r"  & x_{e} \le u \quad \forall e \in \mathcal{E} . \tag{cap} \\",
+    ):
+        r = _probe(_PROBE_OBJ, row)
+        assert r.ok, (row, r.failures)
+        (cap,) = r.formulation.constraints
+        assert [(q.index, q.over) for q in cap.quantifiers] == [("e", "E")]
+        assert cap.comparator == "le"
+
+
+def test_bare_and_mathit_families_bind_in_quantifiers_and_binders():
+    r = _probe(
+        r"  \min\quad & \sum_{e \in E} c \cdot x_{e} \tag{cost} \\",
+        r"  & x_{e} \le u \qquad \forall e \in \mathit{E} \tag{cap} \\",
+    )
+    assert r.ok, r.failures
+    assert r.formulation.objective.terms[0].operator_over == ("E",)
+    assert r.formulation.constraints[0].quantifiers[0].over == "E"
+
+
+def test_several_letters_over_one_family_expand():
+    r = _probe(_PROBE_OBJ, r"  & x_{e} \le x_{f} \forall e, f \in \mathcal{E} \tag{cap} \\")
+    assert r.ok, r.failures
+    assert [q.index for q in r.formulation.constraints[0].quantifiers] == ["e", "f"]
+
+
+def test_unsupported_quantifier_and_binder_forms_are_refused_by_name():
+    cases = {
+        r"  & x_{e} \le u \forall e \in \mathcal{E}_{j} \tag{cap} \\": "subscripted index set",
+        r"  & x_{e} \le u \forall (e, f) \in \mathcal{E} \tag{cap} \\": "tuple quantifier",
+        r"  & x_{e} \le u \forall e = 1 \tag{cap} \\": "not understood",
+        r"  & x_{e} \le u \forall e \in \mathcal{E} : e \ne f \tag{cap} \\": "not understood",
+    }
+    for row, expected in cases.items():
+        r = _probe(_PROBE_OBJ, row)
+        assert not r.ok, row
+        assert expected in r.failures[0].message, (row, r.failures[0].message)
+    r = _probe(r"  \min\quad & \sum_{e = 1}^{n} c \cdot x_{e} \tag{cost} \\")
+    assert not r.ok and "range binder" in r.failures[0].message
+
+
+def test_trailing_punctuation_is_typography_not_algebra():
+    r = _probe(
+        r"  \min\quad & \sum_{e \in \mathcal{E}} c \cdot x_{e} , \tag{cost} \\",
+        r"  & x_{e} \le u ; \tag{cap} \\",
+        r"  & l \le x_{e} . \tag{lo} \\",
+    )
+    assert r.ok, r.failures
+    assert [c.name for c in r.formulation.constraints] == ["cap", "lo"]
+
+
+def test_text_wrapped_letters_in_scripts_are_indices():
+    row, fired = _norm(r"t_{\text{i}}^{\mathit{arr}} = t_{\mathrm{i}} \forall i \in \mathcal{I}")
+    assert row.startswith(r"t_arr_{i} = t_{i}")
+    assert "text_ident_script" in fired
+
+
+def test_declared_juxtaposition_gets_cdot_with_the_coefficient_first():
+    row, fired = _norm(
+        r"B_{u} w_{u} + w_{u} B_{u} + 2 B_{u} w_{u} + q_{u} w_{u} \forall u \in \mathcal{T}"
+    )
+    assert row.startswith(
+        r"B_{u} \cdot w_{u} + B_{u} \cdot w_{u} + 2 B_{u} \cdot w_{u} + q_{u} w_{u}"
+    )
+    assert "declared_product" in fired
+    # inside a binder group two names are never a product
+    row, _ = _norm(r"\sum_{u \in T, B \in T} w_{u} \forall u \in \mathcal{T}")
+    assert row.startswith(r"\sum_{u \in T, B \in T} w_{u}")

@@ -519,6 +519,7 @@ def _parse_objective_row(row: str, ann: dict[str, Any], sym: _SymTab) -> Objecti
     info = ann.get("obj", {})
     body = _strip_tag(row).replace("&", " ")
     body = re.sub(r"\\min\\quad|\\max\\quad|\\min|\\max|\\quad", " ", body).strip()
+    body = _strip_trailing_punctuation(body)
     terms = _parse_term_sum(body, "objective", sym, {})
     return Objective(
         sense=info.get("sense", "min"),
@@ -536,12 +537,8 @@ def _parse_constraint_rows(
     same-direction inequality ``l \\le e \\le u`` (``<name>_lo``/``<name>_up``,
     both inheriting the row's quantifiers)."""
     info = ann["con"].get(name, {})
-    body = _strip_tag(row)
-    # Split body from quantifier on \qquad.
-    qpart = ""
-    if r"\qquad" in body:
-        body, qpart = body.split(r"\qquad", 1)
-    body = body.replace("&", " ").strip()
+    body, qpart = _split_quantifier_tail(_strip_tag(row))
+    body = _strip_trailing_punctuation(body.replace("&", " ").strip())
 
     quantifiers = _parse_quantifiers(qpart)
     env = {q.index: q.over for q in quantifiers}
@@ -592,6 +589,45 @@ def _parse_constraint_rows(
         build(f"{name}_up", "ge", lo_seg, mid_seg),
         build(f"{name}_lo", "ge", mid_seg, hi_seg),
     ]
+
+
+_TRAILING_PUNCT_RE = re.compile(r"(?:[\s.,;:]|\\quad|\\;|\\,)+$")
+
+
+def _strip_trailing_punctuation(body: str) -> str:
+    """Drop the row-final ``,`` ``.`` ``;`` ``:`` (and spacing macros) authors
+    write before the next equation; they are typography, never algebra."""
+    return _TRAILING_PUNCT_RE.sub("", body).strip()
+
+
+def _split_quantifier_tail(body: str) -> tuple[str, str]:
+    """Split a row into (algebra, quantifier part).
+
+    The canonical spelling puts the tail after ``\\qquad``; authors also write
+    ``..., \forall i \\in I`` or ``... \forall i \\in I`` with no separator.
+    The tail starts at ``\\qquad`` or at the first top-level ``\forall``,
+    whichever comes first; a comma or ``\\quad`` left dangling before it is
+    dropped. Nothing after the tail start is lost: it is all quantifier text.
+    """
+    depth = 0
+    i = 0
+    cut = -1
+    while i < len(body):
+        ch = body[i]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+        elif depth == 0 and ch == "\\":
+            if body.startswith(r"\qquad", i):
+                return body[:i], _strip_trailing_punctuation(body[i + len(r"\qquad") :])
+            if body.startswith(r"\forall", i) and not body[i + 7 : i + 8].isalpha():
+                cut = i
+                break
+        i += 1
+    if cut < 0:
+        return body, ""
+    return body[:cut], _strip_trailing_punctuation(body[cut:])
 
 
 #: Comparator spellings accepted in a row body, longest first so ``\leq``
@@ -736,7 +772,7 @@ def _take_numeric_prefactor(text: str) -> tuple[float | None, str]:
 
 
 def _parse_term(text: str, sign: int, role: str, sym: _SymTab, env: dict[str, str]) -> Term | None:
-    text = text.strip()
+    text = _strip_trailing_punctuation(text.strip())
     if not text:
         return None
     operator = "none"
@@ -752,8 +788,9 @@ def _parse_term(text: str, sign: int, role: str, sym: _SymTab, env: dict[str, st
     if text.startswith(r"\sum_"):
         sub, rest = _take_braced(text[len(r"\sum_") :])
         operator = "sum"
-        operator_over = tuple(_setnames(sub))
-        env = {**env, **{v: f.replace(r"\_", "_") for v, f in _BINDER_PAIR_RE.findall(sub)}}
+        pairs = _binder_pairs(sub, where="binder")
+        operator_over = tuple(f for _, f in pairs)
+        env = {**env, **dict(pairs)}
         text = rest.strip()
     elif text.startswith(r"\left|"):
         operator = "abs"
@@ -997,22 +1034,26 @@ def _parse_quantifiers(qpart: str) -> list[Quantifier]:
     qpart = qpart.replace("&", " ").strip()
     if not qpart:
         return []
-    qpart = qpart.replace(r"\forall", "")
-    clauses = [c.strip() for c in _split_clauses(qpart) if c.strip()]
+    qpart = qpart.replace(r"\forall", "").replace(r"\quad", " ")
+    clauses = _merge_shared_family_clauses([c.strip() for c in _split_clauses(qpart)])
     quants: dict[str, dict[str, Any]] = {}
     order: list[str] = []
     extras: list[str] = []
     for cl in clauses:
-        m = re.match(r"^(\w+)\s*\\in\s*\\mathcal\{([\w\\]+)\}$", cl)
-        if m:
-            idx = m.group(1)
-            over = m.group(2).replace(r"\_", "_")
-            quants[idx] = {"over": over, "restriction": "none", "other": None, "where": None}
-            order.append(idx)
+        if _SET_FORMS_RE.match(cl):
+            for idx, over in _binder_pairs(cl, where="quantifier"):
+                quants[idx] = {"over": over, "restriction": "none", "other": None, "where": None}
+                order.append(idx)
+        elif r"\in" in cl:
+            _binder_pairs(cl, where="quantifier")  # raises the named refusal
         else:
             extras.append(cl)
     for cl in extras:
-        _apply_extra(cl, quants)
+        if not _apply_extra(cl, quants):
+            raise ValueError(
+                f"quantifier clause not understood: {cl!r} (expected i \\in S, a "
+                "where-clause p_{i} = v, or a restriction i \\ne j)"
+            )
     return [
         Quantifier(
             index=i,
@@ -1025,7 +1066,8 @@ def _parse_quantifiers(qpart: str) -> list[Quantifier]:
     ]
 
 
-def _apply_extra(cl: str, quants: dict[str, dict[str, Any]]) -> None:
+def _apply_extra(cl: str, quants: dict[str, dict[str, Any]]) -> bool:
+    """Apply a where-clause or restriction; ``False`` when ``cl`` is neither."""
     # where-clause:  sym_{idx} = value
     mw = re.match(r"^(.*?)_\{(\w+)\}\s*=\s*(.+)$", cl)
     if mw and mw.group(1).strip() not in ("",):
@@ -1035,7 +1077,7 @@ def _apply_extra(cl: str, quants: dict[str, dict[str, Any]]) -> None:
             quants[idx]["where"] = QuantifierWhere(
                 parameter=param, equals=_parse_where_val(mw.group(3).strip())
             )
-            return
+            return True
     # restriction:  idx OP other
     for tok, restr in _RESTR_IN.items():
         m = re.match(rf"^(\w+)\s*{re.escape(tok)}\s*(\w+)$", cl)
@@ -1044,7 +1086,8 @@ def _apply_extra(cl: str, quants: dict[str, dict[str, Any]]) -> None:
             if idx in quants:
                 quants[idx]["restriction"] = restr
                 quants[idx]["other"] = m.group(2)
-            return
+            return True
+    return False
 
 
 def _parse_where_val(s: str) -> bool | int | float | str:
@@ -1090,19 +1133,84 @@ def _between(text: str, open_t: str, close_t: str) -> str:
     return inner.strip()
 
 
-def _setnames(sub: str) -> list[str]:
-    return [m.replace(r"\_", "_") for m in re.findall(r"\\mathcal\{([\w\\]+)\}", sub)]
+_SET_FORMS_RE = re.compile(
+    r"^(?P<vars>[A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*\\in\s*"
+    r"(?:\\mathcal\{(?P<cal>[\w\\]+)\}|\\mathit\{(?P<mit>\w+)\}|(?P<bare>[A-Za-z_]\w*))$"
+)
+
+
+def _merge_shared_family_clauses(clauses: list[str]) -> list[str]:
+    """``i, j \\in S`` splits at the comma into ``i`` and ``j \\in S``; a lone
+    index letter joins the next membership clause so both bind over S."""
+    out: list[str] = []
+    pending: list[str] = []
+    for clause in clauses:
+        cl = clause.strip()
+        if not cl:
+            continue
+        if re.fullmatch(r"[A-Za-z_]\w*", cl):
+            pending.append(cl)
+            continue
+        if pending and r"\in" in cl:
+            cl = ", ".join([*pending, cl])
+            pending = []
+        elif pending:
+            out.extend(pending)
+            pending = []
+        out.append(cl)
+    out.extend(pending)
+    return out
+
+
+def _binder_pairs(sub: str, *, where: str) -> list[tuple[str, str]]:
+    r"""``(index, family)`` pairs of a binder or quantifier group.
+
+    Accepted: ``i \in \mathcal{I}`` (canonical), ``i \in \mathit{Theta}``
+    (a Greek-named family after M1b), ``i \in I`` (a bare family name) and
+    ``i, j \in I`` (several letters over one family). Everything else is
+    refused by name so nothing binds silently: a subscripted set
+    (``\mathcal{I}_{k}``), a tuple binder (``(i, j) \in A``), a range
+    (``i = 1``) or any other clause.
+    """
+    pairs: list[tuple[str, str]] = []
+    for clause in _merge_shared_family_clauses(_split_top_commas(sub)):
+        cl = clause.strip()
+        if not cl:
+            continue
+        m = _SET_FORMS_RE.match(cl)
+        if m is None:
+            if re.search(r"\\in\s*(?:\\mathcal\{[^{}]*\}|\\mathit\{[^{}]*\}|\w+)\s*_", cl):
+                raise ValueError(
+                    f"{where} over a subscripted index set is not supported: {cl!r} "
+                    "(declare the subset as its own index family or restrict with a "
+                    "where-clause)"
+                )
+            if cl.startswith(("(", r"\left(")):
+                raise ValueError(
+                    f"tuple {where} is not supported: {cl!r} (bind each index over its own family)"
+                )
+            if "=" in cl and r"\in" not in cl:
+                raise ValueError(
+                    f"range {where} is not supported: {cl!r} (declare the range as an index family)"
+                )
+            raise ValueError(f"{where} clause not understood: {cl!r}")
+        family = (m.group("cal") or m.group("mit") or m.group("bare")).replace(r"\_", "_")
+        for var in re.split(r"\s*,\s*", m.group("vars")):
+            pairs.append((var, family))
+    return pairs
 
 
 def _split_top_commas(s: str) -> list[str]:
+    """Split on commas outside braces AND parentheses (a tuple ``(i, j)``
+    stays one piece, so it can be refused as a tuple rather than shredded)."""
     out: list[str] = []
     depth = 0
     cur: list[str] = []
     for ch in s:
-        if ch == "{":
+        if ch in "{(":
             depth += 1
             cur.append(ch)
-        elif ch == "}":
+        elif ch in "})":
             depth -= 1
             cur.append(ch)
         elif ch == "," and depth == 0:

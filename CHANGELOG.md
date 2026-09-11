@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Row conventions the corpus writes** (`rewrite-2026.09.2`, issue #64;
+  lab measurement: 55 of 6,207 accepted rows parsed before this). Codec: the
+  quantifier tail starts at `\qquad` OR the first top-level `\forall`
+  (a dangling comma before it is dropped); trailing `,` `.` `;` `:` on a
+  row, a term or a tail are typography; binder and quantifier clauses accept
+  `i \in \mathcal{I}`, `i \in \mathit{I}`, `i \in I` and `i, j \in I`,
+  and REFUSE by name what used to bind silently or vanish (a subscripted set,
+  a tuple binder, a range, any clause that is neither a set membership, a
+  where-clause nor a restriction). M1b: `text_ident_script` unwraps
+  `\text{l}`/`\mathrm{l}` inside a script; `declared_product` inserts the
+  `\cdot` between a declared parameter and a declared symbol written side by
+  side (coefficient first, `x_{i} c_{i}` -> `c_{i} \cdot x_{i}`), leaving
+  undeclared names for the parser to refuse.
 - **M1b declaration-driven script resolution** (`rewrite-2026.09.1`,
   issue #63; corpus evidence: 49 + 21 of the 220 papers still failing the
   Paper-1 promotion after the #52–#57 batch stall on superscripts and

@@ -259,22 +259,31 @@ class DocContext:
     declared: frozenset[str]
     shaped: frozenset[str]
     bound: frozenset[str]
+    #: ``%@ param`` names and ``%@ var`` names (for the product rule).
+    params: frozenset[str] = frozenset()
+    variables: frozenset[str] = frozenset()
     #: Whether the document carries any ``%@`` declaration at all. Without
     #: one there is nothing to resolve scripts against, so every context
     #: rule leaves a bare snippet untouched (the repo converter normalizes
     #: header-less rows and applies its own symbol table afterwards).
-    has_header: bool
+    has_header: bool = False
 
     @classmethod
     def build(cls, text: str, body: str) -> DocContext:
         declared: set[str] = set()
         shaped: set[str] = set()
+        params: set[str] = set()
+        variables: set[str] = set()
         for line in text.splitlines():
             dm = _DECL_RE.match(line)
             if dm is None:
                 continue
             kind, name, rest = dm.groups()
             declared.add(name)
+            if kind == "param":
+                params.add(name)
+            elif kind == "var":
+                variables.add(name)
             if kind != "index":
                 sm = re.search(r"\bshape=(\S+)", rest)
                 if sm is not None and sm.group(1) != "-":
@@ -296,6 +305,8 @@ class DocContext:
             declared=frozenset(declared),
             shaped=frozenset(shaped),
             bound=frozenset(bound),
+            params=frozenset(params),
+            variables=frozenset(variables),
             has_header=bool(declared),
         )
 
@@ -389,6 +400,41 @@ def _index_pieces(piece: str, ctx: DocContext) -> list[str] | None:
         # least one of its letters is not bound (h_{min} with i bound).
         return list(q)
     return None
+
+
+_SCRIPT_GROUP_RE = re.compile(r"([_^])\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}")
+_TEXT_IDENT_RE = re.compile(r"\\(?:text|textrm|mathrm)\s*\{\s*([A-Za-z][A-Za-z0-9]*)\s*\}")
+#: Two symbol tokens separated by whitespace only (no operator between them).
+_PRODUCT_TOK = (
+    r"(?:\\mathit\{[^{}]*\}|[A-Za-z][A-Za-z0-9]*(?:_(?!\{)[A-Za-z0-9]+)*)"
+    r"(?:_\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})?"
+)
+_DECLARED_PRODUCT_RE = re.compile(
+    r"(?<![\\A-Za-z0-9_])(" + _PRODUCT_TOK + r")([ \t]+)(" + _PRODUCT_TOK + r")(?![A-Za-z0-9_{])"
+)
+
+
+def _text_ident_script_repl(m: re.Match[str], ctx: DocContext) -> str:
+    if not ctx.has_header:
+        return m.group(0)
+    inner = _TEXT_IDENT_RE.sub(lambda mm: mm.group(1), m.group(2))
+    return m.group(1) + "{" + inner + "}"
+
+
+def _declared_product_repl(m: re.Match[str], ctx: DocContext) -> str:
+    if not ctx.has_header:
+        return m.group(0)
+    prefix = m.string[: m.start()]
+    if prefix.count("{") != prefix.count("}"):
+        return m.group(0)  # inside a script or set: never a product
+    left, right = m.group(1), m.group(3)
+    lname = _plain_name(re.split(r"_\{", left, maxsplit=1)[0])
+    rname = _plain_name(re.split(r"_\{", right, maxsplit=1)[0])
+    if lname in ctx.params and (rname in ctx.params or rname in ctx.variables):
+        return f"{left} \\cdot {right}"
+    if lname in ctx.variables and rname in ctx.params:
+        return f"{right} \\cdot {left}"  # commutative: the coefficient goes first
+    return m.group(0)
 
 
 def _bare_sub_repl(m: re.Match[str], ctx: DocContext) -> str:
@@ -636,6 +682,12 @@ REWRITE_RULES: tuple[RewriteRule, ...] = (
     # move index superscripts into the subscript, fold label superscripts
     # and label subscripts into plain names ----------------------------------
     _ctx_rule(
+        "text_ident_script",
+        _SCRIPT_GROUP_RE,
+        _text_ident_script_repl,
+        "\\text{l} / \\mathrm{l} inside a script is the identifier l",
+    ),
+    _ctx_rule(
         "bare_sub_brace",
         _BARE_SUB_RE,
         _bare_sub_repl,
@@ -665,6 +717,16 @@ REWRITE_RULES: tuple[RewriteRule, ...] = (
         _label_subscript_repl,
         "label subscript folds into a plain name (h_{min} -> h_min, Z_{1} -> Z_1); "
         "glued bound letters split into indices (x_{ij} -> x_{i, j})",
+    ),
+    # A declared parameter written next to a declared symbol with no operator
+    # between them is a product: the canonical spelling carries \cdot, and the
+    # coefficient goes first (corpus evidence: ~84% of rows write products by
+    # juxtaposition). Undeclared names are left alone for the parser to refuse.
+    _ctx_rule(
+        "declared_product",
+        _DECLARED_PRODUCT_RE,
+        _declared_product_repl,
+        "juxtaposed declared symbols get \\cdot (c_{i} x_{i} -> c_{i} \\cdot x_{i})",
     ),
     # --- whitespace hygiene (last) ----------------------------------------
     _rule("collapse_ws", r"[ \t]{2,}", " ", "collapse runs of spaces/tabs"),
