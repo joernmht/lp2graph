@@ -58,23 +58,92 @@ def agglomerative(
         return (0,)
 
     groups: list[list[int]] = [[i] for i in range(n)]
+    # Every group carries an id; the average linkage of two groups is cached
+    # by (earlier id, later id) and each row keeps its first-minimum later
+    # column, so a merge costs O(g) plus the recomputation of the rows whose
+    # minimum it touched. A merge recomputes the merged group's distances
+    # with exactly the member order the from-scratch loop would use (earlier
+    # group outer, later inner), so cached values, tie-breaking and the
+    # dendrogram are bit-for-bit those of the naive O(n^4) recomputation
+    # this replaces.
+    ids: list[int] = list(range(n))
+    next_id = n
+    cache: dict[tuple[int, int], float] = {}
+    for i in range(n):
+        for j in range(i + 1, n):
+            cache[(i, j)] = _average_linkage(dist, groups[i], groups[j])
+    rowmin: dict[int, tuple[float, int] | None] = {}
+
+    def recompute_row(pos: int) -> None:
+        gid = ids[pos]
+        best: tuple[float, int] | None = None
+        for j in range(pos + 1, len(ids)):
+            d = cache[(gid, ids[j])]
+            if best is None or d < best[0]:
+                best = (d, ids[j])
+        rowmin[gid] = best
+
+    for i in range(n):
+        recompute_row(i)
 
     while len(groups) > 1:
         if k is not None and len(groups) <= k:
             break
-        # Find the closest pair of groups; deterministic tie-break by (i, j).
-        best: tuple[float, int, int] | None = None
-        for i in range(len(groups)):
-            for j in range(i + 1, len(groups)):
-                d = _average_linkage(dist, groups[i], groups[j])
-                if best is None or d < best[0]:
-                    best = (d, i, j)
-        assert best is not None
-        merge_d, gi, gj = best
+        # The closest pair, first in (row, column) order among ties: the
+        # first row whose minimum equals the global minimum, at that row's
+        # first-minimum column.
+        pos_of = {gid: pos for pos, gid in enumerate(ids)}
+        best_pair: tuple[float, int, int] | None = None
+        for i, gid in enumerate(ids):
+            rm = rowmin[gid]
+            if rm is not None and (best_pair is None or rm[0] < best_pair[0]):
+                best_pair = (rm[0], i, pos_of[rm[1]])
+        assert best_pair is not None
+        merge_d, gi, gj = best_pair
         if k is None and distance_threshold is not None and merge_d > distance_threshold:
             break
-        groups[gi] = groups[gi] + groups[gj]
+        old_i, old_j = ids[gi], ids[gj]
+        merged = groups[gi] + groups[gj]
+        # drop every cached distance that involves the two old groups
+        for pos, gid in enumerate(ids):
+            if pos < gi:
+                del cache[(gid, old_i)]
+                del cache[(gid, old_j)]
+            elif gi < pos < gj:
+                del cache[(old_i, gid)]
+                del cache[(gid, old_j)]
+            elif pos > gj:
+                del cache[(old_i, gid)]
+                del cache[(old_j, gid)]
+        del cache[(old_i, old_j)]
+        del rowmin[old_i]
+        del rowmin[old_j]
+        groups[gi] = merged
+        ids[gi] = next_id
         del groups[gj]
+        del ids[gj]
+        for pos, other in enumerate(groups):
+            if pos < gi:
+                cache[(ids[pos], next_id)] = _average_linkage(dist, other, merged)
+            elif pos > gi:
+                cache[(next_id, ids[pos])] = _average_linkage(dist, merged, other)
+        pos_of = {gid: pos for pos, gid in enumerate(ids)}
+        recompute_row(gi)
+        for pos in range(gi):
+            gid = ids[pos]
+            rm = rowmin[gid]
+            if rm is None or rm[1] in (old_i, old_j):
+                recompute_row(pos)
+                continue
+            d_new = cache[(gid, next_id)]
+            if d_new < rm[0] or (d_new == rm[0] and gi < pos_of[rm[1]]):
+                rowmin[gid] = (d_new, next_id)
+        for pos in range(gi + 1, gj):
+            gid = ids[pos]
+            rm = rowmin[gid]
+            if rm is None or rm[1] == old_j:
+                recompute_row(pos)
+        next_id += 1
 
     return _labels_from_groups(groups, n)
 

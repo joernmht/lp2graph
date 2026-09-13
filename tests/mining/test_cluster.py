@@ -221,3 +221,92 @@ def test_stability_report_emitted() -> None:
     assert report.bootstrap_ari_min <= report.bootstrap_ari_max
     assert report.config_version
     assert "algorithm=fixed_k" in report.sensitivity
+
+
+# ---------------------------------------------------------------------------
+# Performance rewrites must be bit-identical to the naive definitions
+# ---------------------------------------------------------------------------
+
+
+def _naive_average_linkage(dist, a, b):
+    total = 0.0
+    for i in a:
+        for j in b:
+            total += dist[i][j]
+    return total / (len(a) * len(b))
+
+
+def _naive_agglomerative(dist, *, distance_threshold=0.7, k=None):
+    """The from-scratch O(n^4) definition the cached implementation replaces."""
+    n = len(dist)
+    if n == 0:
+        return ()
+    if n == 1:
+        return (0,)
+    groups = [[i] for i in range(n)]
+    while len(groups) > 1:
+        if k is not None and len(groups) <= k:
+            break
+        best = None
+        for i in range(len(groups)):
+            for j in range(i + 1, len(groups)):
+                d = _naive_average_linkage(dist, groups[i], groups[j])
+                if best is None or d < best[0]:
+                    best = (d, i, j)
+        merge_d, gi, gj = best
+        if k is None and distance_threshold is not None and merge_d > distance_threshold:
+            break
+        groups[gi] = groups[gi] + groups[gj]
+        del groups[gj]
+    ordered = sorted(groups, key=min)
+    labels = [-1] * n
+    for cid, group in enumerate(ordered):
+        for idx in group:
+            labels[idx] = cid
+    return tuple(labels)
+
+
+def _naive_distance_matrix(vectors):
+    n = len(vectors)
+    mat = [[0.0] * n for _ in range(n)]
+    for i in range(n):
+        for j in range(i + 1, n):
+            d = 1.0 - sum(x * y for x, y in zip(vectors[i], vectors[j], strict=True))
+            d = 0.0 if d < 0.0 else (2.0 if d > 2.0 else d)
+            mat[i][j] = d
+            mat[j][i] = d
+    return mat
+
+
+def test_cached_agglomerative_equals_the_naive_definition_including_ties() -> None:
+    import random
+
+    from lp2graph.mining.cluster.distance import distance_matrix
+
+    for seed in range(12):
+        rng = random.Random(seed)
+        n = rng.randint(2, 40)
+        # distances drawn from a small grid so exact ties are common
+        dist = [[0.0] * n for _ in range(n)]
+        for i in range(n):
+            for j in range(i + 1, n):
+                d = rng.choice([0.0, 0.25, 0.5, 0.5, 0.75, 1.0])
+                dist[i][j] = dist[j][i] = d
+        for thr in (0.3, 0.6, 0.9):
+            assert agglomerative(dist, distance_threshold=thr) == _naive_agglomerative(
+                dist, distance_threshold=thr
+            )
+        for kk in (1, 2, max(1, n // 3)):
+            assert agglomerative(dist, distance_threshold=None, k=kk) == _naive_agglomerative(
+                dist, distance_threshold=None, k=kk
+            )
+    # sparse cosine distances are the dense ones, coordinate for coordinate
+    rng = random.Random(7)
+    vectors = []
+    for _ in range(30):
+        v = [0.0] * 50
+        for _k in range(rng.randint(0, 6)):
+            v[rng.randrange(50)] = rng.random()
+        norm = sum(x * x for x in v) ** 0.5
+        vectors.append(tuple(x / norm for x in v) if norm else tuple(v))
+    assert distance_matrix(vectors) == _naive_distance_matrix(vectors)

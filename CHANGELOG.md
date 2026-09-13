@@ -6,6 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **M3 clustering 50x faster, bit-identical results.** `distance_matrix`
+  reduces every pair to the non-zero coordinates of the row vector (a zero
+  product adds exactly 0.0, so the dense sum is reproduced coordinate for
+  coordinate), and `agglomerative` caches every group pair's average linkage
+  by group id, recomputes only the merged group's distances with the exact
+  member order of the from-scratch loop, and keeps each row's first-minimum
+  column, so a merge costs O(g) instead of a full O(n^2 x members)
+  rescan. Ties still resolve to the first pair in (row, column) order; a
+  property test with forced ties locks the equivalence to the naive
+  definition. One taxonomy induction over the lab corpus went from 84 s to
+  1.5 s.
+
 ### Added
 
 - **Binder letters, big-M products, set algebra in binders**
