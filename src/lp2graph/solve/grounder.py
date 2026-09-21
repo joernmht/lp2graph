@@ -329,7 +329,7 @@ def to_lp_string(f: Formulation, instance: Instance) -> str:
     with tempfile.TemporaryDirectory() as d:
         p = Path(d) / "model.lp"
         prob.writeLP(str(p))
-        return p.read_text()
+        return p.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

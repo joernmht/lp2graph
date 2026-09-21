@@ -14,7 +14,7 @@ from lp2graph.solve import Instance, solve  # noqa: E402
 
 
 def _spec(path):
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     f = load(path.parents[4] / data["formulation"])
     inst = Instance(cardinalities=data["cardinalities"], parameters=data["parameters"])
     return f, inst, data["expected_optimum"]

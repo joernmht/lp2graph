@@ -189,7 +189,7 @@ def main(argv: list[str] | None = None) -> int:
         f = load(args.path)
         g = _derive(f, args.view, args.card)
         svg = render_svg(g, title=f.name)
-        args.output.write_text(svg, encoding="utf-8")
+        args.output.write_text(svg, encoding="utf-8", newline="\n")
         print(f"wrote {args.output}")
         return 0
 
@@ -232,7 +232,7 @@ def main(argv: list[str] | None = None) -> int:
                 dglg = to_dgl(g)
                 out = repr(dglg)
         if args.output:
-            args.output.write_text(out, encoding="utf-8")
+            args.output.write_text(out, encoding="utf-8", newline="\n")
             print(f"wrote {args.output}")
         else:
             print(out)
@@ -299,7 +299,7 @@ def _convert(args: argparse.Namespace) -> int:
 
         instance = Instance.load(args.instance)
     text = _write_model(f, args.output.suffix.lower(), instance, args.python_api)
-    args.output.write_text(text, encoding="utf-8")
+    args.output.write_text(text, encoding="utf-8", newline="\n")
     print(
         f"wrote {args.output} ({f.id}: {len(f.variables)} variables, "
         f"{len(f.constraints)} constraints)"
@@ -360,7 +360,7 @@ def _write_model(f: Formulation, ext: str, instance: object, python_api: str) ->
 
 def _emit(text: str, output: Path | None) -> None:
     if output is not None:
-        output.write_text(text, encoding="utf-8")
+        output.write_text(text, encoding="utf-8", newline="\n")
         print(f"wrote {output}")
     else:
         print(text)
