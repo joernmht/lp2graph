@@ -2,7 +2,7 @@
 
 Reference for the languages, runtimes, libraries, entry points, and
 build/test/CI commands of `lp2graph`. Maintained by the nightly quality pass;
-update when reality drifts. Last reviewed: 2026-06-14.
+update when reality drifts. Last reviewed: 2026-09-21.
 
 ## Language & runtime
 
@@ -17,7 +17,7 @@ update when reality drifts. Last reviewed: 2026-06-14.
 | Library | Constraint | Role |
 |---|---|---|
 | `pydantic` | `>=2.0` | Canonical frozen `Formulation` model (`core/model.py`); single source of truth |
-| `jsonschema` | `>=4.0` | Validates instances against `schema/canonical.schema.json` |
+| `jsonschema` | `>=4.0` | Validates every loaded document against `schema/canonical.schema.json`, in `core/loader.py` (ADR-0013). Declared but **never imported** before 2026-09-21. |
 
 ## Optional dependencies (lazy-imported — see ADR 0007)
 
@@ -31,19 +31,23 @@ raises the `ImportError` naming the extra that ADR-0007 clause 3 requires.
 `pyproject.toml` by `tests/test_optional_deps.py`, so an extra can never be
 named in an error message without being installable.
 
-`all` deliberately excludes `gurobi`: Gurobi is commercial and licence-gated,
-so `pip install "lp2graph[all]"` must not fail for a user without a licence.
+`all` must install on every environment `requires-python` claims (ADR-0014), so
+it excludes both `gurobi` (commercial and licence-gated — it must not fail for a
+user without a licence) and `dgl` (no Python 3.13 wheel and no sdist). pip
+resolves an extra atomically, so one unresolvable member makes the whole extra —
+and every unrelated backend in it — uninstallable. Re-check the extras against
+PyPI whenever the CI matrix gains a Python version.
 
 | Extra | Libraries | Enables |
 |---|---|---|
 | `networkx` | `networkx>=3.0` | `export/networkx_adapter.py`, M6 isomorphism |
 | `pyg` | `torch>=2.0`, `torch_geometric>=2.4` | `export/pyg.py` |
-| `dgl` | `dgl>=2.0`, `torch>=2.0` | `export/dgl.py` |
+| `dgl` | `dgl>=2.0; python_version < "3.13"`, `torch>=2.0` | `export/dgl.py`. Marked: DGL ships no cp313 wheel and no sdist (ADR-0014). |
 | `pyomo` | `pyomo>=6.7` | `export/pyomo_stub.py`, M1 Pyomo import |
 | `solver` | `pulp>=2.8`, `highspy>=1.7` | `solve/` grounding back-end, `interop` PuLP I/O |
 | `gurobi` | `gurobipy>=11.0` | `interop.from_gurobipy` / `to_gurobipy` (commercial, licence-gated) |
 | `mining` | `networkx`, `pyomo`, `nltk>=3.8`, `hdbscan>=0.8` | M1–M6 extension backends |
-| `all` | every non-commercial extra above | everything except `gurobi` |
+| `all` | every *unmarked* non-commercial extra above | everything except `gurobi` (commercial) and `dgl` (no cp313 wheel — ADR-0014) |
 | `dev` | `pytest`, `pytest-cov`, `ruff>=0.15.12,<0.16`, `mypy>=1.10`, `pre-commit` | development |
 | `docs` | `mkdocs-material`, `mkdocstrings[python]` | docs site |
 
@@ -97,25 +101,38 @@ The package is **not** pip-installed in this environment (PEP 668), so prefix
 local tooling with `PYTHONPATH=src`:
 
 ```bash
-PYTHONPATH=src python3 -m pytest -q                 # full suite (348 tests)
+PYTHONPATH=src python3 -m pytest -q                 # full suite (445 tests, 12 skipped here)
 PYTHONPATH=src python3 -m ruff check src tests      # lint (line-length 100)
 PYTHONPATH=src python3 -m ruff format --check src tests   # format gate
 PYTHONPATH=src python3 -m mypy                      # mypy --strict (src/lp2graph)
 mkdocs build --strict                               # docs
+# the ASCII-locale run CI's `c-locale` job does (ADR-0015):
+PYTHONPATH=src PYTHONUTF8=0 PYTHONCOERCECLOCALE=0 LC_ALL=C python3 -m pytest -q
 ```
 
 ## CI / pre-commit
 
-- **CI** (`.github/workflows/ci.yml`) on push/PR to `main`, matrix
-  {ubuntu, macos} × py{3.11, 3.12, 3.13}: `ruff check` → `ruff format --check`
-  → `mypy src/lp2graph` → `pytest --cov` → CLI schema validation.
-  That job installs only `[dev]`, so **60 of ~310 tests (19%) skip there** for
-  want of pulp/pyomo/nltk/hdbscan. The second job, **`backends`**, installs
-  `[dev,solver,pyomo,mining]` on py3.12 and fails if any of those still skip
-  for a missing dep — added 2026-08-26 after the gap was measured. It skips
-  `[all]` on purpose (torch + dgl ≈ 2 GB, and dgl wheels lag new Pythons), so
-  the torch/dgl exporters remain the one backend family CI does not execute.
-  `docs.yml` builds the site; `release.yml` publishes.
+- **CI** (`.github/workflows/ci.yml`) on push/PR to `main`, five independent
+  jobs:
+
+  | Job | What it gates |
+  |---|---|
+  | `lint` | `ruff check` → `ruff format --check` → `mypy src/lp2graph`, once on py3.12 |
+  | `test` | `pytest --cov` + CLI schema validation, matrix {ubuntu, macos} × py{3.11, 3.12, 3.13} |
+  | `wheel` | builds a real wheel, asserts `lp2graph/schema/canonical.schema.json` is inside, installs it, calls `canonical_schema()` (ADR-0013) |
+  | `c-locale` | the suite under `PYTHONUTF8=0 PYTHONCOERCECLOCALE=0 LC_ALL=C` (ADR-0015) |
+  | `backends` | `[dev,solver,pyomo,mining]` on py3.12; fails if an optional backend still skips for a missing dep |
+
+  **`lint` is deliberately its own job** (split 2026-09-21). As steps inside
+  `test` they ran six times and, because a job fails fast, a one-file format
+  drift hid every test result behind it — a red `Lint` meant there was *no*
+  test signal rather than a passing one. That cost a sibling repo 3.5 weeks of
+  unnoticed red (STYLE.md §6).
+
+  `test` installs only `[dev]`, so the optional-backend paths skip there; that
+  is what `backends` exists to cover. `backends` skips `[all]` on purpose
+  (torch ≈ 2 GB), so the torch/dgl exporters remain the one backend family CI
+  does not execute. `docs.yml` builds the site; `release.yml` publishes.
 - **pre-commit** (`.pre-commit-config.yaml`): pre-commit-hooks v4.6.0,
   ruff-pre-commit **v0.15.12** (`ruff --fix` + `ruff-format`), mirrors-mypy
   v1.10.0. Keep the pre-commit ruff rev and the `dev` extra's `ruff` pin in
@@ -147,6 +164,15 @@ there would only surface on a manual run. See the quality backlog (2026-07-15).
 
 - `hatchling>=1.21`; wheel packages `src/lp2graph`. Version `0.3.0`
   (`Development Status :: 3 - Alpha`). License Apache-2.0.
+- **Packaged data:** `schema/canonical.schema.json` is mapped into the wheel at
+  `lp2graph/schema/canonical.schema.json` by
+  `[tool.hatch.build.targets.wheel.force-include]`. `packages = ["src/lp2graph"]`
+  alone silently drops it — the published v0.3.0 wheel contains **zero** JSON
+  files — so reach it only through `lp2graph.canonical_schema()` /
+  `canonical_schema_path()`, never by path arithmetic from `__file__`
+  (ADR-0013). The repo-root copy remains the single source of truth because its
+  `$id` URL is public; the accessor falls back to it for `PYTHONPATH=src`
+  checkouts. The CI `wheel` job guards the mapping.
 
 ## Security notes (untrusted-input surfaces)
 

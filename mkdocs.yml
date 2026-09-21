@@ -64,6 +64,9 @@ nav:
       - "ADR-0010 codec round-trip fidelity": adr/0010-codec-roundtrip-fidelity.md
       - "ADR-0011 canonical Formulation as interchange pivot": adr/0011-canonical-formulation-as-interchange-pivot.md
       - "ADR-0012 single format registry": adr/0012-single-format-registry.md
+      - "ADR-0013 ship and enforce the canonical schema": adr/0013-ship-and-enforce-the-canonical-schema.md
+      - "ADR-0014 extras resolve on every supported Python": adr/0014-extras-resolve-on-every-supported-python.md
+      - "ADR-0015 text I/O encoding and newline": adr/0015-text-io-declares-encoding-and-newline.md
 
 markdown_extensions:
   - admonition

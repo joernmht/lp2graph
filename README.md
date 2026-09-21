@@ -105,6 +105,18 @@ A **formulation** is a JSON document validated against
 *constraint templates* with quantifiers and bindings, and an optional
 *objective* with first-class terms.
 
+`load()`/`loads()` enforce that schema on every document before the typed
+model sees it, so a file that violates the published contract is refused with
+spec-grounded messages naming the source. The schema ships inside the package;
+read it with the accessor rather than by path, since its location differs
+between a wheel and a source checkout:
+
+```python
+import lp2graph
+schema = lp2graph.canonical_schema()        # parsed dict, cached
+path = lp2graph.canonical_schema_path()     # on-disk location
+```
+
 The **schema view** exposes templates and indices — the topology of the
 problem. The **hybrid view** adds per-term offset, sign, and modulo
 labels. The **ground view** materializes every instance at given index
