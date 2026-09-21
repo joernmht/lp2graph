@@ -81,6 +81,14 @@ Source = "https://github.com/joernmht/lp2graph"
 [tool.hatch.build.targets.wheel]
 packages = ["src/lp2graph"]
 
+# The canonical JSON Schema is the published contract of the interchange
+# format, so it must travel with the wheel -- not only with the git
+# checkout (ADR-0013). The repo-root copy stays the single source of
+# truth (its `$id` URL is public); this maps it into the package so
+# `lp2graph.schema.canonical_schema()` resolves after `pip install`.
+[tool.hatch.build.targets.wheel.force-include]
+"schema/canonical.schema.json" = "lp2graph/schema/canonical.schema.json"
+
 [tool.hatch.build.targets.sdist]
 include = [
     "src/lp2graph",

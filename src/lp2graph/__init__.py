@@ -30,6 +30,7 @@ from lp2graph.core.model import (
 )
 from lp2graph.core.validate import ValidationError, validate
 from lp2graph.nl import describe
+from lp2graph.schema import canonical_schema, canonical_schema_path
 
 __all__ = [
     "Binding",
@@ -43,6 +44,8 @@ __all__ = [
     "ValidationError",
     "VariableTemplate",
     "canonical_normal_form",
+    "canonical_schema",
+    "canonical_schema_path",
     "describe",
     "from_canonical_latex",
     "load",
