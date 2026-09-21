@@ -31,7 +31,13 @@ dependencies = [
 [project.optional-dependencies]
 networkx = ["networkx>=3.0"]
 pyg = ["torch>=2.0", "torch_geometric>=2.4"]
-dgl = ["dgl>=2.0", "torch>=2.0"]
+# DGL publishes no cp313 wheel in any 2.x release and no sdist at all
+# (last PyPI upload 2024-05-13), so an unmarked `dgl` requirement makes
+# this extra unresolvable on Python 3.13 -- which `requires-python` and
+# the CI matrix both advertise. The marker keeps the extra installable
+# where wheels exist and inert where they do not; `export/dgl.py` is
+# lazily imported (ADR-0007), so the feature simply stays unavailable.
+dgl = ['dgl>=2.0; python_version < "3.13"', "torch>=2.0"]
 pyomo = ["pyomo>=6.7"]
 solver = ["pulp>=2.8", "highspy>=1.7"]
 # `lp2graph.interop.from_gurobipy` / `to_gurobipy` drive a live gurobipy
@@ -42,13 +48,16 @@ gurobi = ["gurobipy>=11.0"]
 # package imports and runs without these; they only enable optional backends
 # (M1 Pyomo import, M3 HDBSCAN, M2 WordNet, M6 NetworkX isomorphism).
 mining = ["networkx>=3.0", "pyomo>=6.7", "nltk>=3.8", "hdbscan>=0.8"]
-# Every non-commercial optional backend. Keep in sync with the extras above
-# (gurobi is excluded on purpose -- commercial, licence-gated).
+# Every non-commercial optional backend that resolves on every supported
+# Python. `gurobi` is excluded because it is commercial and licence-gated;
+# `dgl` because it has no Python 3.13 wheel and no sdist, and one
+# unresolvable member makes the whole extra -- and therefore every other
+# backend in it -- uninstallable. Install it deliberately with
+# `pip install "lp2graph[dgl]"` on Python 3.11/3.12. See ADR-0014.
 all = [
     "networkx>=3.0",
     "torch>=2.0",
     "torch_geometric>=2.4",
-    "dgl>=2.0",
     "pyomo>=6.7",
     "pulp>=2.8",
     "highspy>=1.7",
