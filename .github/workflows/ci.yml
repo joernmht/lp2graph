@@ -7,6 +7,31 @@ on:
     branches: [main]
 
 jobs:
+  # Style and types run ONCE, in their own job, deliberately independent of
+  # `test`. When these were steps inside `test` they ran six times (2 OS x 3
+  # py) and, because a job fails fast, a one-file `ruff format` drift hid
+  # every test result behind it -- a red `Lint` meant there was *no* test
+  # signal rather than a passing one. That failure mode cost a sibling repo
+  # 3.5 weeks of unnoticed red. See ~/.claude/quality/STYLE.md §6.
+  lint:
+    name: lint + types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Lint
+        run: ruff check src tests
+      - name: Format check
+        run: ruff format --check src tests
+      - name: Type check
+        run: mypy src/lp2graph
+
   test:
     name: ${{ matrix.os }} / py${{ matrix.python }}
     runs-on: ${{ matrix.os }}
@@ -24,16 +49,68 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-      - name: Lint
-        run: ruff check src tests
-      - name: Format check
-        run: ruff format --check src tests
-      - name: Type check
-        run: mypy src/lp2graph
       - name: Test
         run: pytest --cov=lp2graph --cov-report=term-missing
       - name: Schema validation
         run: python -m lp2graph.cli validate formulations/constraints/lp_1_1_fixed_sequence.json
+
+  # The canonical JSON Schema is the published contract of the interchange
+  # format, and v0.3.0 shipped a wheel containing no data files at all --
+  # `pip install lp2graph` gave users the reader but not the specification.
+  # Assert against a real built wheel, because the packaging config is the
+  # only thing keeping it in (ADR-0013).
+  wheel:
+    name: wheel ships the schema
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel
+      - name: Assert the schema is in the wheel and reachable after install
+        run: |
+          python - <<'EOF'
+          import glob, zipfile
+          whl = glob.glob("dist/*.whl")[0]
+          names = zipfile.ZipFile(whl).namelist()
+          target = "lp2graph/schema/canonical.schema.json"
+          assert target in names, f"{target} missing from {whl}: {names}"
+          print(f"ok: {target} present in {whl}")
+          EOF
+          pip install "$(ls dist/*.whl)"
+          cd /tmp && python -c "
+          import lp2graph, jsonschema
+          s = lp2graph.canonical_schema()
+          jsonschema.Draft202012Validator.check_schema(s)
+          print('ok: canonical_schema() resolves from the installed wheel:', s['\$id'])
+          "
+
+  # The text-I/O rules (ADR-0015) exist for platforms whose preferred
+  # encoding is not UTF-8. Linux hides the bug by default, so exercise the
+  # ASCII-locale path rather than assuming it away.
+  c-locale:
+    name: ascii locale
+    runs-on: ubuntu-latest
+    env:
+      PYTHONUTF8: "0"
+      PYTHONCOERCECLOCALE: "0"
+      LC_ALL: C
+      LANG: C
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Test
+        run: pytest -q
 
   backends:
     # The `test` job installs only `[dev]`, which carries none of pulp /
