@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lp2graph"
-version = "0.3.0"
+version = "0.4.0"
 description = "Typed-graph representation of LP, MIP, and MILP formulations."
 readme = "README.md"
 requires-python = ">=3.11"

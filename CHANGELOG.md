@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-04
+
 ### Fixed
 
 - **`pulp<4` until the back-end is ported** (issue #65). PuLP 4.0.0 rebuilt its
