@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **`pulp<4` until the back-end is ported** (issue #65). PuLP 4.0.0 rebuilt its
+  model classes on a Rust core (no Python-constructible `LpAffineExpression` /
+  `LpVariable`, no `PULP_CBC_CMD`, renamed constraints), so a fresh install of
+  the `solver` or `all` extra resolved a PuLP the back-end cannot drive. Both
+  extras now cap it at `<4` (ADR-0008 addendum).
 - **Summed families the referent does not vary with are summed** (issue #60).
   The grounder looped only over the dummies a term's bindings use and never
   read `Term.operator_over`, so `\\sum_{i \\in I, r \\in R} dur_r` grounded

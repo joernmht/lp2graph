@@ -79,3 +79,20 @@ reintroduced deprecated call fails CI.
 - *Keep `PULP_CBC_CMD` and read its `.path` from an instance:* rejected —
   instantiating it emits the very deprecation we are removing; the class
   attribute gives the same path without construction.
+
+## Addendum (2026-10-04): PuLP 4.0.0 broke more than its deprecations announced
+
+PuLP 4.0.0 rebuilt its model classes on a Rust core (`pulp._rustcore`).
+`LpVariable(_var)` and `LpAffineExpression(_expr)` now take core objects and
+cannot be constructed from Python, so `pulp.LpAffineExpression()` and
+`LpVariable(name, lowBound=...)` raise `TypeError`; `PULP_CBC_CMD` no longer
+exists; constraint names come back as `_C1`, `_C2`. The migration above covered
+`add_variable` and the `COIN_CMD`-first lookup, not these. The first CI run that
+resolved 4.0.0 (optional-backends job, 2026-10-04) failed in the grounder, the
+interop round trips and the object-API tests, and so did every fresh
+`pip install "lp2graph[solver]"`.
+
+Until the back-end is ported (issue #65), the `solver` and `all` extras pin
+`pulp>=2.8,<4`. The cap is the decision of this addendum; the port keeps the
+constraints of the original decision (3.x keeps working, determinism and
+`SolveResult` values unchanged) and lifts it.
