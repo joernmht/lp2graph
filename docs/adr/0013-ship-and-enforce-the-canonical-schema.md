@@ -118,3 +118,23 @@ and is enforced on every document that enters the library.**
   naming, `anyOf` for optionals) and would churn the public `$id`-ed contract
   on every pydantic upgrade. The behavioural conformance test buys the same
   protection without surrendering control of the published document.
+
+## Addendum (2026-10-04): the contract runs in both directions
+
+The conformance test above checked that the schema and the loader agree on
+*documents*. It did not check that the library's own *output* is such a
+document, and it was not: the model's nullable fields dump as `null`
+(`model_dump`, `model_dump_json`), and the schema admitted `null` for `lower`,
+`upper`, `indicator`, `where`, `restriction_other` and `modulo` but not for
+`domain_class` (parameters, constraints), `domain_role`, `provenance` or
+`objective`. From the day the loader began enforcing the schema,
+`loads(f.model_dump_json())` failed for every model with an untagged facet, no
+provenance or no objective. That is every formulation the lab corpus had
+written: its 18 promoted models stopped loading, unnoticed for 13 days
+because the lab had not run since.
+
+The schema now admits `null` for those four fields, meaning exactly what
+absence means (unset). It is a relaxation: every previously valid document
+stays valid. Two tests close the gap: every catalog model survives
+`loads(model_dump_json())`, and a model built with every nullable field unset
+dumps to a document the schema accepts and that loads back equal.

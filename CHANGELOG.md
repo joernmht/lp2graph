@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A dumped model loads again.** Since the loader began enforcing the JSON
+  Schema (ADR-0013), `loads(f.model_dump_json())` failed for every model with
+  an untagged domain facet, no provenance or no objective: the model dumps
+  those as `null`, which the schema did not admit for `domain_class`,
+  `domain_role`, `provenance` and `objective` (it already did for `lower`,
+  `upper`, `indicator` and `where`). The schema now admits `null` for them
+  (absent or `null` = unset); every previously valid document stays valid.
+
 ### Changed
 
 - **M3 clustering 50x faster, bit-identical results.** `distance_matrix`

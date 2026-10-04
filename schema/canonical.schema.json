@@ -37,7 +37,7 @@
       "description": "Free-form labels (e.g. 'big-m', 'soft', 'cyclic')."
     },
     "provenance": {
-      "type": "object",
+      "type": ["object", "null"],
       "additionalProperties": false,
       "properties": {
         "source": { "type": "string" },
@@ -66,7 +66,7 @@
       "items": { "$ref": "#/$defs/constraint_template" }
     },
     "objective": {
-      "$ref": "#/$defs/objective"
+      "anyOf": [{ "$ref": "#/$defs/objective" }, { "type": "null" }]
     }
   },
   "$defs": {
@@ -111,8 +111,8 @@
           "default": "scalar"
         },
         "domain_class": {
-          "enum": ["cost_weight", "time_duration", "capacity", "demand", "network_structure", "penalty_bigM", "count_limit", "unclassified"],
-          "description": "Optional domain-facet tag (additive). Independent of the structural 'kind'."
+          "enum": ["cost_weight", "time_duration", "capacity", "demand", "network_structure", "penalty_bigM", "count_limit", "unclassified", null],
+          "description": "Optional domain-facet tag (additive). Independent of the structural 'kind'. Absent or null = untagged."
         }
       }
     },
@@ -139,8 +139,8 @@
           "default": "primary"
         },
         "domain_role": {
-          "enum": ["selection_assignment", "ordering_precedence", "routing_path_column", "timing", "flow_quantity", "auxiliary_linearization", "unclassified"],
-          "description": "Optional domain-facet tag (additive). Independent of the structural 'role'/'domain'."
+          "enum": ["selection_assignment", "ordering_precedence", "routing_path_column", "timing", "flow_quantity", "auxiliary_linearization", "unclassified", null],
+          "description": "Optional domain-facet tag (additive). Independent of the structural 'role'/'domain'. Absent or null = untagged."
         }
       }
     },
@@ -296,8 +296,8 @@
           "default": "linear"
         },
         "domain_class": {
-          "enum": ["assignment_covering", "flow_conservation", "capacity_resource", "precedence_ordering", "headway_separation", "timing_window", "coupling_linking_definition", "periodic_modulo_pesp", "subtour_connectivity", "variable_bound_fix", "objective_defining", "unclassified"],
-          "description": "Optional domain-facet tag (additive). Independent of the structural 'kind'."
+          "enum": ["assignment_covering", "flow_conservation", "capacity_resource", "precedence_ordering", "headway_separation", "timing_window", "coupling_linking_definition", "periodic_modulo_pesp", "subtour_connectivity", "variable_bound_fix", "objective_defining", "unclassified", null],
+          "description": "Optional domain-facet tag (additive). Independent of the structural 'kind'. Absent or null = untagged."
         },
         "indicator": {
           "type": ["object", "null"],

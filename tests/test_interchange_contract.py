@@ -170,3 +170,65 @@ def test_unversioned_document_is_refused_rather_than_assumed() -> None:
     del doc["schema_version"]
     with pytest.raises(ValidationError):
         loads(json.dumps(doc))
+
+
+def test_a_dumped_catalog_model_loads_back(formulation_files: list[Path]) -> None:
+    """What the library writes, the enforced loader reads.
+
+    The model's nullable fields dump as ``null`` (an untagged domain facet, no
+    provenance, no objective). The schema admitted ``null`` for some of them
+    (``lower``, ``upper``, ``indicator``, ``where``) but not for the domain
+    facets, ``provenance`` or ``objective``, so from the day the loader began
+    enforcing it every formulation written with ``model_dump`` was refused on
+    reload: the lab's 18 promoted corpus models stopped loading.
+    """
+    from lp2graph import load
+
+    for path in formulation_files:
+        f = load(path)
+        assert loads(f.model_dump_json(warnings=False), source=str(path)) == f
+
+
+def test_unset_optional_fields_round_trip() -> None:
+    from lp2graph.core.model import (
+        Binding,
+        ConstraintTemplate,
+        Formulation,
+        Index,
+        Parameter,
+        Quantifier,
+        Term,
+        VariableTemplate,
+    )
+
+    f = Formulation(
+        id="nulls",
+        name="nulls",
+        family="lp",
+        indices=(Index(name="I"),),
+        parameters=(Parameter(name="c", shape=("I",), kind="vector"),),
+        variables=(VariableTemplate(name="x", shape=("I",), domain="non_negative"),),
+        constraints=(
+            ConstraintTemplate(
+                name="cap",
+                comparator="le",
+                quantifiers=(Quantifier(index="i", over="I"),),
+                lhs=(Term(ref="x", bindings=(Binding(index="I", expr="i"),), role="lhs"),),
+                rhs=(
+                    Term(
+                        ref="c",
+                        ref_kind="parameter",
+                        bindings=(Binding(index="I", expr="i"),),
+                        role="rhs",
+                    ),
+                ),
+            ),
+        ),
+    )
+    doc = json.loads(f.model_dump_json(warnings=False))
+    assert doc["objective"] is None and doc["provenance"] is None
+    assert doc["variables"][0]["domain_role"] is None
+    assert doc["parameters"][0]["domain_class"] is None
+    assert doc["constraints"][0]["domain_class"] is None
+    assert _schema_accepts(doc)
+    assert loads(json.dumps(doc)) == f
