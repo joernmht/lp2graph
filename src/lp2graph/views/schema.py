@@ -16,8 +16,10 @@ Edges:
 - ``var_in_objective`` from objective to variable template per term.
 - ``uses_index`` from variable template to its shape index families.
 - ``uses_parameter`` from constraint or objective to a parameter used
-  as a symbolic coefficient (parameters appearing as terms already get
-  ``var_in_constraint``/``var_in_objective`` edges).
+  as a symbolic coefficient (role ``coef``; parameters appearing as terms
+  already get ``var_in_constraint``/``var_in_objective`` edges), and from a
+  constraint to the parameter a quantifier ``where``-predicate reads (role
+  ``where``).
 
 Offsets are *not* shown in the schema view; that is the hybrid view's
 job. Every term, regardless of binding offsets, contributes a single
@@ -105,6 +107,7 @@ def schema(f: Formulation) -> Graph:
         )
         _emit_terms_for_container(g, c_id, c, c.lhs, side="lhs")
         _emit_terms_for_container(g, c_id, c, c.rhs, side="rhs")
+        _emit_where_edges(g, c_id, c)
 
     # Objective.
     if f.objective is not None:
@@ -206,6 +209,37 @@ def _emit_term_edge(
         },
     )
     _emit_coefficient_edge(g, src_id, term, position)
+
+
+def _emit_where_edges(
+    g: Graph, c_id: str, constraint: ConstraintTemplate, *, show_value: bool = False
+) -> None:
+    """A quantifier's ``where``-predicate reads a parameter; expose that use as
+    an edge (issue #61).
+
+    Which attribute selects a constraint's rows is a modelling choice, so it
+    belongs to the structure that M6 isomorphism and the WL tiers compare
+    (both match edges on ``type|role``), and a parameter used only in a
+    predicate must not look isolated to ``model_coherence``. The hybrid view
+    passes ``show_value`` to carry the compared value as well.
+    """
+    for q in constraint.quantifiers:
+        if q.where is None:
+            continue
+        param_id = f"param:{q.where.parameter}"
+        if not g.has_node(param_id):
+            continue
+        label = f"where[{q.index}]"
+        if show_value:
+            label = f"{label} = {q.where.equals}"
+        g.add_edge(
+            c_id,
+            param_id,
+            "uses_parameter",
+            role="where",
+            label=label,
+            data={"equals": q.where.equals} if show_value else {},
+        )
 
 
 def _emit_coefficient_edge(g: Graph, src_id: str, term: Term, position: str) -> None:

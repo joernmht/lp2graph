@@ -56,6 +56,7 @@ See :mod:`lp2graph.codec` for the round-trip guarantees.
 from __future__ import annotations
 
 import re
+from collections.abc import Collection
 from typing import Any
 
 from lp2graph.core.model import (
@@ -70,6 +71,7 @@ from lp2graph.core.model import (
     Term,
     VariableTemplate,
 )
+from lp2graph.core.scope import binder_loops, binding_base
 
 SCHEMA = "0.1.0"
 
@@ -155,11 +157,12 @@ def to_canonical_latex(f: Formulation) -> str:
     a(r"\begin{align}")
     if f.objective is not None:
         sense = r"\min" if f.objective.sense == "min" else r"\max"
-        body = _emit_sum(f.objective.terms)
+        body = _emit_sum(f.objective.terms, ())
         a(rf"  {sense}\quad & {body} \tag{{{_tag(f.objective.name)}}} \\")
     for c in f.constraints:
-        lhs = _emit_sum(c.lhs)
-        rhs = _emit_sum(c.rhs) if c.rhs else "0"
+        bound = [q.index for q in c.quantifiers]
+        lhs = _emit_sum(c.lhs, bound)
+        rhs = _emit_sum(c.rhs, bound) if c.rhs else "0"
         cmp = _CMP_OUT[c.comparator]
         quant = _emit_quantifiers(c.quantifiers)
         qpart = rf" \qquad {quant}" if quant else ""
@@ -168,12 +171,13 @@ def to_canonical_latex(f: Formulation) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _emit_sum(terms: tuple[Term, ...]) -> str:
+def _emit_sum(terms: tuple[Term, ...], bound: Collection[str]) -> str:
+    """Render one side; ``bound`` are the dummies the row's quantifiers bind."""
     if not terms:
         return "0"
     parts: list[str] = []
     for i, t in enumerate(terms):
-        sign, body = _emit_term(t)
+        sign, body = _emit_term(t, bound)
         if i == 0:
             parts.append(("- " + body) if sign < 0 else body)
         else:
@@ -181,7 +185,7 @@ def _emit_sum(terms: tuple[Term, ...]) -> str:
     return " ".join(parts)
 
 
-def _emit_term(t: Term) -> tuple[int, str]:
+def _emit_term(t: Term, bound: Collection[str]) -> tuple[int, str]:
     """Return ``(display_sign, body_without_sign)``."""
     sign = t.sign
     if t.ref_kind == "literal":
@@ -189,6 +193,10 @@ def _emit_term(t: Term) -> tuple[int, str]:
         if isinstance(val, (int, float)) and val < 0:
             sign = -sign
             val = -val
+        if t.operator == "sum":
+            # A summed constant counts the elements: \sum_{i \in I} 5 is 5|I|,
+            # and printing the bare 5 would drop the binder from the model.
+            return sign, rf"\sum_{{{_emit_sum_sub(t, bound)}}} {_num(val)}"
         return sign, _num(val)
 
     base = _sym(t.ref)
@@ -206,7 +214,7 @@ def _emit_term(t: Term) -> tuple[int, str]:
 
     op = t.operator
     if op == "sum":
-        body = rf"\sum_{{{_emit_sum_sub(t)}}} {body}"
+        body = rf"\sum_{{{_emit_sum_sub(t, bound)}}} {body}"
     elif op == "abs":
         body = rf"\left| {body} \right|"
     elif op == "max":
@@ -220,19 +228,24 @@ def _emit_term(t: Term) -> tuple[int, str]:
     return sign, body
 
 
-def _emit_sum_sub(t: Term) -> str:
-    r"""Render the ``\sum`` binder set, pairing each summed family with a
-    binder variable taken from the term's bindings."""
-    remaining = list(t.bindings)
-    binders: list[tuple[str, str]] = []
-    for fam in t.operator_over:
-        pick = next((b for b in remaining if b.index == fam), None)
-        if pick is not None:
-            remaining.remove(pick)
-            binders.append((pick.expr, fam))
-        else:
-            binders.append((fam.lower(), fam))
-    return ", ".join(rf"{expr} \in {_set(fam)}" for expr, fam in binders)
+def _emit_sum_sub(t: Term, bound: Collection[str]) -> str:
+    r"""Render the ``\sum`` binder set: each summed family with the dummy the
+    term's bindings use for it (:func:`lp2graph.core.scope.binder_loops`, so
+    ``x_{t-1}`` is summed over ``t`` and a dummy the row's quantifier binds is
+    never re-bound), or a fresh dummy when the referent does not vary with
+    the family."""
+    loops = binder_loops(t, bound)
+    taken = set(bound) | {binding_base(b.expr) for b in t.bindings}
+    parts: list[str] = []
+    for loop in loops:
+        name = loop.dummy
+        if name is None:
+            name = loop.family.lower()
+            while name in taken:
+                name += "p"
+            taken.add(name)
+        parts.append(rf"{name} \in {_set(loop.family)}")
+    return ", ".join(parts)
 
 
 def _emit_quantifiers(quantifiers: tuple[Quantifier, ...]) -> str:

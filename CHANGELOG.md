@@ -8,6 +8,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Summed families the referent does not vary with are summed** (issue #60).
+  The grounder looped only over the dummies a term's bindings use and never
+  read `Term.operator_over`, so `\\sum_{i \\in I, r \\in R} dur_r` grounded
+  to `\\sum_r dur_r` and a summed constant `\\sum_{i \\in I} 5` to `5`: the
+  solved value was wrong while text and schema graph were right. Emitter,
+  ground view and grounder now share one reading of an aggregation's loops,
+  `lp2graph.core.scope` (ADR-0016); a binder whose family disagrees with the
+  referent's declared shape (a sum over a subset family, `\\sum_{r \\in
+  \\mathcal{R_k}} x_r` with `x` over `R`) is refused (`UnsupportedModel`)
+  instead of being summed over the whole slot family.
+- **Ground view: summed terms have edges, pair variables are not the
+  diagonal.** The ground view keyed its sum scope by family but resolved
+  bindings by dummy, so every aggregated term contributed no edge (the
+  `assignment` and `mip_2_4_time_indexed` fixtures grounded to graphs with no
+  edges at all), and it resolved bindings into a dict keyed by family, so
+  `y_{i,j}` over `I x I` was wired to `y[j,j]`. Bindings now resolve by slot
+  position, `abs` aggregates over its free indices as in the grounder, and a
+  recurring summand is one edge with a `multiplicity`.
+- **Emitter: binders print what the model says.** `\\sum_{t \\in T}
+  x_{t-1}` was emitted as the unparseable `\\sum_{t-1 \\in T} x_{t-1}`; a
+  summed constant lost its binder (the round trip changed the model);
+  `\\sum_{j \\in I} y_{i,j}` under `\\forall i \\in I` was printed as
+  `\\sum_{i \\in I} y_{i,j}`; a sum over a subset family printed a dummy
+  the summand does not use (`\\sum_{r_k \\in \\mathcal{R_k}} x_r`); and a
+  counting loop re-bound the row's own dummy. The model round trip was intact
+  for the last three, the text was not.
+- **Hybrid view keeps both bindings of a same-family pair.** `offsets` was
+  keyed by family, so `y_{i,j}` kept only `j`; repeated families are now
+  numbered (`I.1`, `I.2`).
 - **A dumped model loads again.** Since the loader began enforcing the JSON
   Schema (ADR-0013), `loads(f.model_dump_json())` failed for every model with
   an untagged domain facet, no provenance or no objective: the model dumps
@@ -17,6 +46,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   (absent or `null` = unset); every previously valid document stays valid.
 
 ### Changed
+
+- **A `where`-predicate is a graph edge** (issue #61). The schema and hybrid
+  views add `uses_parameter` (role `where`) from a constraint to the
+  parameter its quantifier predicate reads; the hybrid edge carries the
+  compared value. Formulations that select rows by attribute get different
+  schema graphs, M6 isomorphism results and WL hashes than before (edges are
+  matched on `type|role`); formulations without predicates are unchanged.
 
 - **M3 clustering 50x faster, bit-identical results.** `distance_matrix`
   reduces every pair to the non-zero coordinates of the row vector (a zero

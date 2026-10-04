@@ -50,6 +50,7 @@ from lp2graph.core.model import (
     Quantifier,
     Term,
 )
+from lp2graph.core.scope import AggregationError, aggregation_loops, binding_base
 from lp2graph.solve.instance import Instance, lookup
 
 _DOMAIN = {
@@ -503,7 +504,7 @@ def _resolve_indices(ctx: _Ctx, t: Term, scope: dict[str, int]) -> tuple[int, ..
     if an offset falls out of a non-cyclic range."""
     out: list[int] = []
     for b in t.bindings:
-        base = _base(b.expr)
+        base = binding_base(b.expr)
         if base not in scope:
             return None
         raw = scope[base] + b.offset
@@ -523,24 +524,27 @@ def _cyclic_family(ctx: _Ctx, family: str) -> str | None:
 
 
 def _sum_scopes(ctx: _Ctx, t: Term, binding: dict[str, int]) -> Iterator[dict[str, int]]:
-    """Enumerate the summation scopes for a ``\\sum`` term: the cartesian
-    product over the loop variables that are bound by the sum (those binding
-    exprs whose base is not already in the enclosing quantifier scope)."""
-    sumvars: list[tuple[str, str]] = []
-    seen: set[str] = set()
-    for b in t.bindings:
-        base = _base(b.expr)
-        if base not in binding and base not in seen:
-            sumvars.append((base, b.index))
-            seen.add(base)
-    if not sumvars:
+    """Enumerate the summation scopes for a ``\\sum`` (or ``abs``) term: the
+    cartesian product over its loops (:func:`lp2graph.core.scope.aggregation_loops`).
+
+    A summed family the referent does not vary with is a loop too: it repeats
+    the summand once per element, so ``\\sum_{i \\in I, r \\in R} dur_r`` grounds
+    to ``|I| \\sum_r dur_r`` (issue #60). Such a loop gets a scope key no
+    binding can name, so it only counts.
+    """
+    try:
+        loops = aggregation_loops(t, binding.keys())
+    except AggregationError as exc:
+        raise UnsupportedModel(str(exc)) from exc
+    if not loops:
         yield dict(binding)
         return
-    ranges = [range(ctx.cards[fam]) for _, fam in sumvars]
+    keys = [loop.dummy if loop.dummy is not None else f"#{k}" for k, loop in enumerate(loops)]
+    ranges = [range(ctx.cards[loop.family]) for loop in loops]
     for combo in itertools.product(*ranges):
         scope = dict(binding)
-        for (vn, _), val in zip(sumvars, combo, strict=True):
-            scope[vn] = val
+        for key, val in zip(keys, combo, strict=True):
+            scope[key] = val
         yield scope
 
 
@@ -616,16 +620,6 @@ def _tuples(shape: tuple[str, ...], cards: Mapping[str, int]) -> list[tuple[int,
     if not shape:
         return [()]
     return list(itertools.product(*[range(cards[s]) for s in shape]))
-
-
-def _base(expr: str) -> str:
-    out = []
-    for ch in expr.strip():
-        if ch.isalnum() or ch == "_":
-            out.append(ch)
-        else:
-            break
-    return "".join(out)
 
 
 def _safe(name: str) -> str:

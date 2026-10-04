@@ -39,6 +39,7 @@ from lp2graph.core.model import (
     Term,
     VariableTemplate,
 )
+from lp2graph.core.scope import aggregation_loops, binding_base
 
 
 def ground(
@@ -259,7 +260,7 @@ def _resolve_binding(
     # is the quantifier variable name. We rely on the offset field
     # already extracted; we look up the quantifier value via expr's
     # leading identifier.
-    base = _expr_base(binding.expr)
+    base = binding_base(binding.expr)
     if base not in quant_binding:
         # The binding references an index that is not in the constraint's
         # quantifier scope. This is malformed and would have been caught
@@ -284,18 +285,6 @@ def _resolve_binding(
     return None
 
 
-def _expr_base(expr: str) -> str:
-    """Extract the leading identifier from a binding expression."""
-    s = expr.strip()
-    out = []
-    for ch in s:
-        if ch.isalnum() or ch == "_":
-            out.append(ch)
-        else:
-            break
-    return "".join(out)
-
-
 def _ground_constraint(
     g: Graph,
     c: ConstraintTemplate,
@@ -318,7 +307,7 @@ def _ground_constraint(
                 if term.ref_kind != "variable":
                     continue
                 # If the term is aggregated, expand the aggregation.
-                if term.operator == "sum":
+                if term.operator in _AGGREGATING:
                     edge_specs = _ground_sum_term(term, quant_binding, cards, index_map)
                     for spec in edge_specs:
                         edges_to_add.append({**spec, "side": side, "pos": i})
@@ -330,7 +319,8 @@ def _ground_constraint(
                     edges_to_add.append(
                         {
                             "var_template": term.ref,
-                            "indices": resolved,
+                            "values": resolved,
+                            "multiplicity": 1,
                             "sign": term.sign,
                             "coefficient": term.coefficient,
                             "role": term.role,
@@ -354,11 +344,8 @@ def _ground_constraint(
             },
         )
         for spec in edges_to_add:
-            v_template = spec["var_template"]
-            v_shape = var_map[v_template].shape
-            tup = tuple((s, spec["indices"][s]) for s in v_shape)
-            target = _var_instance_id(v_template, tup)
-            if not g.has_node(target):
+            target = _target_instance(spec, var_map)
+            if target is None or not g.has_node(target):
                 # Should not happen; defensive.
                 continue
             g.add_edge(
@@ -367,7 +354,7 @@ def _ground_constraint(
                 "ground_var_in_constraint",
                 role=spec["role"],
                 label=f"{spec['side']}[{spec['pos']}]",
-                data={"sign": spec["sign"], "coefficient": spec["coefficient"]},
+                data=_edge_data(spec),
             )
 
 
@@ -376,15 +363,45 @@ def _resolve_term(
     quant_binding: dict[str, int],
     cards: Mapping[str, int],
     index_map: dict[str, Index],
-) -> dict[str, int] | None:
-    """Resolve a non-aggregated term's bindings; returns None if out of range."""
-    out: dict[str, int] = {}
+) -> tuple[int, ...] | None:
+    """Resolve a term's bindings to index values in slot order; returns None
+    if one falls out of range.
+
+    Positional, like the solver back-end: a template over ``I x I`` has two
+    slots of one family, and ``x_{i,j}`` must reach ``x[i,j]``, not the
+    diagonal a lookup by family name would give.
+    """
+    out: list[int] = []
     for b in term.bindings:
         v = _resolve_binding(b, quant_binding, cards, index_map)
         if v is None:
             return None
-        out[b.index] = v
-    return out
+        out.append(v)
+    return tuple(out)
+
+
+def _target_instance(spec: dict[str, Any], var_map: dict[str, VariableTemplate]) -> str | None:
+    """The instance-variable node an edge spec points at (None if the values
+    do not fit the template's shape)."""
+    v_template = spec["var_template"]
+    v_shape = var_map[v_template].shape
+    values = spec["values"]
+    if len(values) != len(v_shape):
+        return None
+    return _var_instance_id(v_template, tuple(zip(v_shape, values, strict=True)))
+
+
+def _edge_data(spec: dict[str, Any]) -> dict[str, Any]:
+    data: dict[str, Any] = {"sign": spec["sign"], "coefficient": spec["coefficient"]}
+    if spec["multiplicity"] > 1:
+        data["multiplicity"] = spec["multiplicity"]
+    return data
+
+
+#: Operators whose term aggregates over the loops its bindings leave free.
+#: ``abs`` is read as the solver back-end reads it: ``|t_i|`` under a free
+#: ``i`` is ``sum_i |t_i|``.
+_AGGREGATING = ("sum", "abs")
 
 
 def _ground_sum_term(
@@ -393,34 +410,34 @@ def _ground_sum_term(
     cards: Mapping[str, int],
     index_map: dict[str, Index],
 ) -> list[dict[str, Any]]:
-    """Expand a ``sum_{k in K}`` term into per-instance edges."""
-    out: list[dict[str, Any]] = []
-    op_indices = list(term.operator_over)
-    op_ranges = [range(cards[k]) for k in op_indices]
-    for combo in itertools.product(*op_ranges):
+    """Expand an aggregated term into one edge spec per instance variable.
+
+    The loops are :func:`lp2graph.core.scope.aggregation_loops`, the reading
+    the solver back-end grounds with. Out-of-range summands of a windowed sum
+    drop out. A summand that recurs (a summed family the referent does not
+    vary with, or a cyclic wrap onto the same instance) is one edge whose
+    ``multiplicity`` counts it.
+    """
+    loops = aggregation_loops(term, quant_binding.keys())
+    keys = [loop.dummy if loop.dummy is not None else f"#{k}" for k, loop in enumerate(loops)]
+    counts: dict[tuple[int, ...], int] = {}
+    for combo in itertools.product(*[range(cards[loop.family]) for loop in loops]):
         scope = dict(quant_binding)
-        for k, idx_val in zip(op_indices, combo, strict=True):
-            scope[k] = idx_val
-        resolved: dict[str, int] = {}
-        skip = False
-        for b in term.bindings:
-            v = _resolve_binding(b, scope, cards, index_map)
-            if v is None:
-                skip = True
-                break
-            resolved[b.index] = v
-        if skip:
-            continue
-        out.append(
-            {
-                "var_template": term.ref,
-                "indices": resolved,
-                "sign": term.sign,
-                "coefficient": term.coefficient,
-                "role": term.role,
-            }
-        )
-    return out
+        scope.update(zip(keys, combo, strict=True))
+        values = _resolve_term(term, scope, cards, index_map)
+        if values is not None:
+            counts[values] = counts.get(values, 0) + 1
+    return [
+        {
+            "var_template": term.ref,
+            "values": values,
+            "multiplicity": n,
+            "sign": term.sign,
+            "coefficient": term.coefficient,
+            "role": term.role,
+        }
+        for values, n in counts.items()
+    ]
 
 
 def _ground_objective(
@@ -441,7 +458,7 @@ def _ground_objective(
     for i, term in enumerate(obj.terms):
         if term.ref_kind != "variable":
             continue
-        if term.operator == "sum":
+        if term.operator in _AGGREGATING:
             specs = _ground_sum_term(term, {}, cards, index_map)
         else:
             r = _resolve_term(term, {}, cards, index_map)
@@ -451,7 +468,8 @@ def _ground_objective(
                 else [
                     {
                         "var_template": term.ref,
-                        "indices": r,
+                        "values": r,
+                        "multiplicity": 1,
                         "sign": term.sign,
                         "coefficient": term.coefficient,
                         "role": term.role,
@@ -459,10 +477,8 @@ def _ground_objective(
                 ]
             )
         for spec in specs:
-            v_shape = var_map[spec["var_template"]].shape
-            tup = tuple((s, spec["indices"][s]) for s in v_shape)
-            target = _var_instance_id(spec["var_template"], tup)
-            if not g.has_node(target):
+            target = _target_instance(spec, var_map)
+            if target is None or not g.has_node(target):
                 continue
             g.add_edge(
                 o_id,
@@ -470,7 +486,7 @@ def _ground_objective(
                 "ground_var_in_constraint",
                 role=spec["role"],
                 label=f"obj[{i}]",
-                data={"sign": spec["sign"], "coefficient": spec["coefficient"]},
+                data=_edge_data(spec),
             )
 
 

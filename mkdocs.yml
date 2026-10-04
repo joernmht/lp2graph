@@ -67,6 +67,7 @@ nav:
       - "ADR-0013 ship and enforce the canonical schema": adr/0013-ship-and-enforce-the-canonical-schema.md
       - "ADR-0014 extras resolve on every supported Python": adr/0014-extras-resolve-on-every-supported-python.md
       - "ADR-0015 text I/O encoding and newline": adr/0015-text-io-declares-encoding-and-newline.md
+      - "ADR-0016 one reading of aggregation loops": adr/0016-one-reading-of-aggregation-loops.md
 
 markdown_extensions:
   - admonition

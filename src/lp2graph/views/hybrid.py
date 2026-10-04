@@ -6,8 +6,11 @@ the default for visual inspection and side-by-side comparison.
 
 Specifically, every constraint-to-variable (or objective-to-variable)
 edge carries an ``offsets`` data field summarizing the term's bindings:
-``{"t": {"expr": "t-1", "offset": -1, "modulo": null}, ...}``. Edge
-labels show the same information in a compact textual form.
+``{"t": {"expr": "t-1", "offset": -1, "modulo": null}, ...}``, keyed by
+the slot's family (numbered ``I.1``, ``I.2`` when a template has several
+slots of one family). Edge labels show the same information in a compact
+textual form. A quantifier's ``where``-predicate is a ``uses_parameter``
+edge (role ``where``) labelled with the compared value.
 
 Offsets are not aggregated across terms; each term produces its own
 edge with its own offset signature, even when two terms reference the
@@ -22,7 +25,7 @@ from lp2graph.core.model import (
     Formulation,
     Term,
 )
-from lp2graph.views.schema import _emit_coefficient_edge
+from lp2graph.views.schema import _emit_coefficient_edge, _emit_where_edges
 
 
 def hybrid(f: Formulation) -> Graph:
@@ -93,6 +96,7 @@ def hybrid(f: Formulation) -> Graph:
         )
         _emit_terms(g, c_id, c.lhs, edge_type="var_in_constraint", side="lhs")
         _emit_terms(g, c_id, c.rhs, edge_type="var_in_constraint", side="rhs")
+        _emit_where_edges(g, c_id, c, show_value=True)
 
     if f.objective is not None:
         o_id = "objective:0"
@@ -128,12 +132,12 @@ def _emit_terms(
         position = f"{side}[{i}]"
 
         offsets = {
-            b.index: {
+            key: {
                 "expr": b.expr,
                 "offset": b.offset,
                 "modulo": b.modulo,
             }
-            for b in term.bindings
+            for key, b in zip(_slot_keys(term), term.bindings, strict=True)
         }
         compact_label = _label_for_offsets(offsets, term.sign, term.coefficient)
 
@@ -176,6 +180,19 @@ def _emit_terms(
             },
         )
         _emit_coefficient_edge(g, src_id, term, position)
+
+
+def _slot_keys(term: Term) -> list[str]:
+    """One key per binding: the slot's family, numbered (``I.1``, ``I.2``) when
+    the template has several slots of one family, so ``y_{i,j}`` keeps both
+    of its bindings instead of the second overwriting the first."""
+    families = [b.index for b in term.bindings]
+    seen: dict[str, int] = {}
+    keys: list[str] = []
+    for fam in families:
+        seen[fam] = seen.get(fam, 0) + 1
+        keys.append(f"{fam}.{seen[fam]}" if families.count(fam) > 1 else fam)
+    return keys
 
 
 def _label_for_offsets(
