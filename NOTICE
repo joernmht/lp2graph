@@ -1,0 +1,7 @@
+lp2graph
+Copyright 2026 Jörn Maurischat and Technische Universität Dresden
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Portions are adapted from joernmht/raiLPminerExperimentation, originally
+released under the MIT License (see docs/extraction-report.md).
