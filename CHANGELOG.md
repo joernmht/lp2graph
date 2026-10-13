@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   on every document that enters the library"). The JSON Schema now runs first,
   as in `loads()`, and a non-conforming document is a `parse-failed` error
   naming the schema violations.
+- **The PuLP floor is `3.3.1`, not `2.8`.** The grounder and the scripts
+  `interop` generates create variables with `LpProblem.add_variable`, which
+  first shipped in PuLP 3.3.1; on 2.8–3.3.0 every solve raised
+  `AttributeError`. CI always resolved the newest PuLP, so the floor never ran.
+  The `solver` and `all` extras now require `pulp>=3.3.1,<4`, and a new CI job
+  (`oldest supported PuLP`) installs exactly the declared floor and runs the
+  solver paths (ADR-0008 addendum).
 
 ## [0.4.0] - 2026-10-04
 

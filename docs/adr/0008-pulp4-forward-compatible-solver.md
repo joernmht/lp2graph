@@ -96,3 +96,19 @@ Until the back-end is ported (issue #65), the `solver` and `all` extras pin
 `pulp>=2.8,<4`. The cap is the decision of this addendum; the port keeps the
 constraints of the original decision (3.x keeps working, determinism and
 `SolveResult` values unchanged) and lifts it.
+
+## Addendum (2026-10-13): the floor was never 2.8
+
+The migration above moved variable creation to `prob.add_variable(...)` and
+kept the floor at `pulp>=2.8`, on the grounds that "the forward-compatible APIs
+already exist in 3.x". `add_variable` in fact first shipped in PuLP **3.3.1**
+(2026-05-05); 2.8 through 3.3.0 only have `addVariable`, so on those versions
+every grounding raised `AttributeError`, and so did every script `interop`
+generates. Checked against the 3.3.0 and 3.3.1 wheels on 2026-10-13: 20
+solver-path tests fail on 3.3.0 and all pass on 3.3.1.
+
+Nothing caught it because no job ever installed the floor: pip resolves the
+newest release under the cap. The `solver` and `all` extras now require
+`pulp>=3.3.1,<4`, and the CI job `min-pulp` reads the floor from
+`pyproject.toml`, installs exactly that version and runs the solver paths, so
+the next floor claim is tested rather than asserted.

@@ -44,7 +44,7 @@ PyPI whenever the CI matrix gains a Python version.
 | `pyg` | `torch>=2.0`, `torch_geometric>=2.4` | `export/pyg.py` |
 | `dgl` | `dgl>=2.0; python_version < "3.13"`, `torch>=2.0` | `export/dgl.py`. Marked: DGL ships no cp313 wheel and no sdist (ADR-0014). |
 | `pyomo` | `pyomo>=6.7` | `export/pyomo_stub.py`, M1 Pyomo import |
-| `solver` | `pulp>=2.8`, `highspy>=1.7` | `solve/` grounding back-end, `interop` PuLP I/O |
+| `solver` | `pulp>=3.3.1,<4`, `highspy>=1.7` | `solve/` grounding back-end, `interop` PuLP I/O |
 | `gurobi` | `gurobipy>=11.0` | `interop.from_gurobipy` / `to_gurobipy` (commercial, licence-gated) |
 | `mining` | `networkx`, `pyomo`, `nltk>=3.8`, `hdbscan>=0.8` | M1–M6 extension backends |
 | `all` | every *unmarked* non-commercial extra above | everything except `gurobi` (commercial) and `dgl` (no cp313 wheel — ADR-0014) |
@@ -56,8 +56,10 @@ PyPI whenever the CI matrix gains a Python version.
 > `prob.add_variable(...)`, counts constraints via `prob.numConstraints()`, and
 > defaults to `COIN_CMD` through `solve.default_solver()` (with a bundled-CBC
 > path fallback for PuLP 3.x). `tests/test_solve.py::test_solve_path_is_pulp4_clean`
-> fails if any PuLP `DeprecationWarning` reappears. Floor stays `pulp>=2.8`;
-> the migrated code runs on both 3.x and the forthcoming 4.0.
+> fails if any PuLP `DeprecationWarning` reappears. **Floor `pulp>=3.3.1`**:
+> `add_variable` first shipped in 3.3.1, so the earlier `>=2.8` floor broke
+> every solve on 2.8–3.3.0. CI's `min-pulp` job installs the declared floor.
+> The ceiling `<4` stays until the PuLP 4.0 port (issue #65).
 
 ## Architecture (single source of truth → derived views)
 
