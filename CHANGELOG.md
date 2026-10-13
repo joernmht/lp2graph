@@ -31,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   The `solver` and `all` extras now require `pulp>=3.3.1,<4`, and a new CI job
   (`oldest supported PuLP`) installs exactly the declared floor and runs the
   solver paths (ADR-0008 addendum).
+- **`ingest()` and `validate_path()` report an unopenable path instead of
+  raising.** A path with an embedded NUL byte makes `open` raise `ValueError`,
+  which neither entry point caught (they handled `OSError`), although both are
+  documented to report read failures rather than raise. It is now a
+  read-stage failure / an `unreadable` check like any other unreadable file.
 
 ## [0.4.0] - 2026-10-04
 

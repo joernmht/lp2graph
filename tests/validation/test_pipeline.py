@@ -145,6 +145,13 @@ def test_missing_file_is_reported_not_raised():
     assert "unreadable" in _codes(report)
 
 
+def test_unopenable_path_is_reported_not_raised():
+    # An embedded NUL makes ``open`` raise ``ValueError``, not ``OSError``.
+    report = validate_path("a\x00b.lp")
+    assert report.verdict == "invalid"
+    assert "unreadable" in _codes(report)
+
+
 # ---------------------------------------------------------------------------
 # Structure detectors
 # ---------------------------------------------------------------------------

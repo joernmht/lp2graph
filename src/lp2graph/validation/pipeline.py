@@ -164,7 +164,7 @@ def validate_path(
     checks: list[Check] = []
     try:
         data = p.read_bytes()
-    except OSError as exc:
+    except (OSError, ValueError) as exc:  # ValueError: e.g. an embedded NUL byte
         checks.append(
             Check(
                 stage="decode",

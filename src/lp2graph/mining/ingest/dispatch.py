@@ -137,7 +137,11 @@ def _resolve(
                 ),
                 resolved_fmt,
             )
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
+            # ``ValueError`` too: a path the OS refuses outright (an embedded NUL
+            # byte) raises it from ``open``, and it would escape the same "never
+            # an exception" invariant. ``UnicodeDecodeError``, its subclass, is
+            # handled above with its own message.
             return (
                 source,
                 IngestionResult.single_failure(

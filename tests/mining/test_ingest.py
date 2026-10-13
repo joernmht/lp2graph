@@ -157,6 +157,14 @@ def test_non_utf8_source_reported(tmp_path):
     assert "UTF-8" in result.failures[0].message
 
 
+def test_unopenable_path_reported_not_raised():
+    # An embedded NUL makes ``open`` raise ``ValueError``, not ``OSError``; it
+    # must still come back as a read-stage failure (M1 invariant).
+    result = ingest("a\x00b.tex")
+    assert result.ok is False
+    assert result.failures[0].stage == "read"
+
+
 def test_python_source_reports_unsupported(tmp_path):
     # Executing arbitrary .py source stays out of scope by design.
     p = tmp_path / "m.py"
