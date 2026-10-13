@@ -71,6 +71,9 @@ def test_validation_catches_undeclared_variable_reference(tmp_path: Path) -> Non
 
 
 def test_validation_catches_lp_with_integer_var(tmp_path: Path) -> None:
+    # `constraints` must be present: without it the document fails the JSON
+    # Schema stage first (ADR-0013), and the test passed without ever reaching
+    # the family rule it is named after.
     bad = {
         "schema_version": "0.1.0",
         "id": "bad_lp",
@@ -78,13 +81,15 @@ def test_validation_catches_lp_with_integer_var(tmp_path: Path) -> None:
         "family": "lp",
         "indices": [],
         "variables": [{"name": "x", "domain": "binary"}],
+        "constraints": [],
     }
     p = tmp_path / "bad.json"
     p.write_text(json.dumps(bad), encoding="utf-8")
     from lp2graph.core.validate import ValidationError
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError) as e:
         load(p)
+    assert "family is 'lp' but variable 'x' has domain 'binary'" in e.value.errors
 
 
 def test_constant_term_shorthand_normalizes_to_literal(tmp_path: Path) -> None:
@@ -186,6 +191,7 @@ def test_legacy_one_literal_still_works(tmp_path: Path) -> None:
 
 
 def test_milp_must_have_an_integer_variable(tmp_path: Path) -> None:
+    # As above: `constraints` keeps the document past the schema stage.
     bad = {
         "schema_version": "0.1.0",
         "id": "bad_milp",
@@ -193,10 +199,12 @@ def test_milp_must_have_an_integer_variable(tmp_path: Path) -> None:
         "family": "milp",
         "indices": [],
         "variables": [{"name": "x", "domain": "non_negative"}],
+        "constraints": [],
     }
     p = tmp_path / "bad.json"
     p.write_text(json.dumps(bad), encoding="utf-8")
     from lp2graph.core.validate import ValidationError
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError) as e:
         load(p)
+    assert "family is 'milp' but no variable has integer or binary domain" in e.value.errors
