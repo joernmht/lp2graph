@@ -26,6 +26,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from lp2graph.core.loader import _check_schema
 from lp2graph.core.model import Formulation
 from lp2graph.core.validate import ValidationError, validate
 from lp2graph.metrics.structural import model_coherence, model_completeness
@@ -238,6 +239,21 @@ def _parse_with_fallback(
                 data = json.loads(text)
             except json.JSONDecodeError as exc:
                 attempts.append(_attempt_failure("json", f"invalid JSON: {exc}"))
+                continue
+            # The published contract first, exactly as loads() enforces it
+            # (ADR-0013): pydantic's in-Python defaults would otherwise accept
+            # an unversioned or constraint-less document the schema rejects.
+            try:
+                _check_schema(data, source)
+            except ValidationError as exc:
+                found = exc.errors or [str(exc)]
+                more = f" (+{len(found) - 5} more)" if len(found) > 5 else ""
+                attempts.append(
+                    _attempt_failure(
+                        "json",
+                        "does not conform to canonical.schema.json: " + "; ".join(found[:5]) + more,
+                    )
+                )
                 continue
             try:
                 f = Formulation.model_validate(data)

@@ -39,6 +39,22 @@ def test_canonical_json_path_is_valid():
     assert report.summary().startswith("OK: assignment")
 
 
+@pytest.mark.parametrize("dropped", ["schema_version", "constraints"])
+def test_json_path_enforces_the_published_schema(dropped):
+    """validate agrees with loads() on documents (ADR-0013).
+
+    pydantic defaults both fields for in-Python construction, so before the
+    schema check an unversioned or constraint-less document came back "valid"
+    here while ``lp2graph.loads()`` rejected it.
+    """
+    data = json.loads(Path(ASSIGNMENT).read_text(encoding="utf-8"))
+    del data[dropped]
+    report = validate_text(json.dumps(data), fmt="json", solve_check=False)
+    assert report.verdict == "invalid"
+    failure = next(c for c in report.checks if c.code == "parse-failed")
+    assert f"'{dropped}' is a required property" in (failure.detail or "")
+
+
 def test_lp_text_sniffed_and_valid():
     report = validate_text(LP_TEXT, solve_check=False)
     assert report.verdict == "valid"

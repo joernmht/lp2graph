@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   lexicographic ladder could hold an unproven value as the next stage's bound.
   Such solves now report `status == "feasible"`; `validate` emits the warning
   `solve-not-proven-optimal`, and the ladder stops at that stage.
+- **`lp2graph validate` enforces the published schema on JSON input.** Its
+  JSON path went straight to pydantic, whose in-Python defaults accept an
+  unversioned or constraint-less document, so `validate` called such a file
+  `valid` while `lp2graph.loads()` rejected it, contrary to ADR-0013 ("enforced
+  on every document that enters the library"). The JSON Schema now runs first,
+  as in `loads()`, and a non-conforming document is a `parse-failed` error
+  naming the schema violations.
 
 ## [0.4.0] - 2026-10-04
 
