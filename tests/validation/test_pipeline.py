@@ -191,6 +191,20 @@ def test_solve_smoke_on_template_model():
     assert report.solve["instance_synthesized"] is True
 
 
+def test_time_limited_solve_is_not_certified_optimal(monkeypatch, stopped_solver):
+    """A solve cut off by validate's time limit must not read "solved to optimality"."""
+    import lp2graph.solve as solve_pkg
+
+    monkeypatch.setattr(solve_pkg, "make_solver", lambda *a, **k: stopped_solver)
+    report = validate_path(ASSIGNMENT)
+    assert report.solve is not None
+    assert report.solve["status"] == "feasible"
+    codes = _codes(report)
+    assert "solve-not-proven-optimal" in codes
+    assert "solve-optimal" not in codes
+    assert report.verdict == "valid_with_warnings"
+
+
 def test_flat_unbounded_model_is_an_error():
     pytest.importorskip("pulp")
     report = validate_text("Minimize\n obj: 3 x - 5 y\nSubject To\n c1: x + y >= 2\nEnd\n")

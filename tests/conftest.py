@@ -32,3 +32,25 @@ def instance_files() -> list[Path]:
 @pytest.fixture(scope="session")
 def schema_path() -> Path:
     return ROOT / "schema" / "canonical.schema.json"
+
+
+@pytest.fixture
+def stopped_solver():
+    """A back-end that stops at a limit holding an incumbent, as CBC and HiGHS do.
+
+    PuLP reports that outcome as ``Optimal``; only ``sol_status`` records that
+    optimality was not proven. The values it leaves are irrelevant to the status.
+    """
+    pulp = pytest.importorskip("pulp")
+
+    class StoppedAtLimit(pulp.LpSolver):
+        def available(self):
+            return True
+
+        def actualSolve(self, lp, **kwargs):
+            for v in lp.variables():
+                v.varValue = 1.0
+            lp.assignStatus(pulp.LpStatusOptimal, pulp.LpSolutionIntegerFeasible)
+            return lp.status
+
+    return StoppedAtLimit()

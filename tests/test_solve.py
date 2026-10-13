@@ -292,6 +292,16 @@ def test_lexicographic_respects_priority_order():
     )
 
 
+def test_lexicographic_ladder_stops_at_an_unproven_stage(stopped_solver):
+    """A stage that is only feasible must not be held as the next stage's bound."""
+    from lp2graph.solve import solve_lexicographic
+
+    inst = Instance(cardinalities={"I": 4}, parameters={})
+    res = solve_lexicographic(_lex_model(("c", "t")), inst, solver=stopped_solver)
+    assert res.status == "feasible"
+    assert res.objectives == ()
+
+
 def test_lexicographic_rejects_non_lexicographic_objective(instance_files):
     from lp2graph.solve import UnsupportedModel, solve_lexicographic
 
@@ -323,3 +333,15 @@ def test_solve_path_is_pulp4_clean(instance_files):
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
+
+
+# --------------------------------------------------------------------------- #
+# status: a search cut short is not an optimum
+# --------------------------------------------------------------------------- #
+
+
+def test_solve_stopped_at_a_limit_is_feasible_not_optimal(instance_files, stopped_solver):
+    """PuLP says ``Optimal`` for a time-limited incumbent; lp2graph must not."""
+    f, inst, _ = _spec(next(p for p in instance_files if p.stem == "assignment_4x4"))
+    assert solve(f, inst).status == "optimal"  # a proven optimum stays "optimal"
+    assert solve(f, inst, solver=stopped_solver).status == "feasible"

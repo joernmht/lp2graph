@@ -79,6 +79,15 @@ class UnsupportedModel(Exception):
 
 @dataclass
 class SolveResult:
+    """Outcome of :func:`solve`.
+
+    ``status`` is PuLP's status, lower-cased (``optimal``, ``infeasible``,
+    ``unbounded``, ``not solved``, ``undefined``), with one refinement:
+    ``feasible`` means the solver stopped at a limit (time, iterations,
+    objective bound) holding a solution it did not prove optimal. PuLP itself
+    reports that case as ``Optimal``; see :func:`_status`.
+    """
+
     status: str
     objective: float | None
     n_vars: int
@@ -223,7 +232,7 @@ def solve(
     prob, vmap = build_problem(f, instance)
     s = _coerce_solver(solver, msg=msg)
     prob.solve(s)
-    status = pulp.LpStatus[prob.status].lower()
+    status = _status(prob)
     obj = pulp.value(prob.objective)
     values = {v.name: v.value() for cells in vmap.values() for v in cells.values()}
     return SolveResult(
@@ -292,7 +301,7 @@ def solve_lexicographic(
 
         s = _coerce_solver(solver, msg=msg)
         prob.solve(s)
-        status = pulp.LpStatus[prob.status].lower()
+        status = _status(prob)
         solver_name = type(s).__name__
         n_vars, n_constraints = len(prob.variables()), prob.numConstraints()
         variables = {v.name: v.value() for cells in vmap.values() for v in cells.values()}
@@ -347,6 +356,22 @@ def _coerce_solver(solver: pulp.LpSolver | str | None, *, msg: bool) -> pulp.LpS
 
         return make_solver(solver, msg=msg)
     return solver
+
+
+def _status(prob: pulp.LpProblem) -> str:
+    """The solve status, telling a proven optimum from a search cut short.
+
+    PuLP reports ``Optimal`` whenever a back-end stops *with* an incumbent —
+    CBC on its time limit (``Stopped on time - objective value ...``), HiGHS
+    on a time, iteration or objective limit — and only ``sol_status ==
+    LpSolutionIntegerFeasible`` records that optimality was never proven.
+    Passing that on as ``"optimal"`` certifies an objective a longer run could
+    still improve, so it is reported as ``"feasible"`` instead.
+    """
+    status: str = pulp.LpStatus[prob.status].lower()
+    if status == "optimal" and prob.sol_status == pulp.LpSolutionIntegerFeasible:
+        return "feasible"
+    return status
 
 
 @dataclass

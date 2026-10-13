@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A solve cut short at a limit is `feasible`, not `optimal`.** PuLP reports
+  `Optimal` whenever a back-end stops *with* an incumbent (CBC on its time
+  limit, HiGHS on a time, iteration or objective limit), and only `sol_status`
+  records that optimality was never proven. `solve()` and
+  `solve_lexicographic()` passed that on as `"optimal"`, so `lp2graph validate`
+  reported "solved to optimality" for runs cut off by its time limit, and a
+  lexicographic ladder could hold an unproven value as the next stage's bound.
+  Such solves now report `status == "feasible"`; `validate` emits the warning
+  `solve-not-proven-optimal`, and the ladder stops at that stage.
+
 ## [0.4.0] - 2026-10-04
 
 ### Fixed

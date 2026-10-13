@@ -663,6 +663,17 @@ def _solve_checks(
                 message=f"solved to optimality; objective = {result.objective}.",
             )
         )
+    elif result.status == "feasible":
+        checks.append(
+            Check(
+                stage="solve",
+                level="warn",
+                code="solve-not-proven-optimal",
+                message=f"solver stopped at its limit (time limit {time_limit}s) holding a "
+                f"feasible solution, objective = {result.objective}; optimality was not "
+                "proven.",
+            )
+        )
     elif result.status == "infeasible":
         checks.append(
             Check(
