@@ -55,7 +55,11 @@ def lookup(value: Any, key: tuple[int, ...]) -> float:
             return float(value)
         raise TypeError(f"scalar parameter expected, got {type(value).__name__}")
     if isinstance(value, Mapping):
-        for cand in (key, list(key), _strkey(key), key[0] if len(key) == 1 else None):
+        # A JSON object's keys are strings, so an instance file reaches here as
+        # ``{"0,1": 3.0}``. (A ``list(key)`` candidate used to precede the
+        # string one; lists are unhashable, so every such lookup raised
+        # ``TypeError`` before the string key was ever tried.)
+        for cand in (key, _strkey(key), key[0] if len(key) == 1 else None):
             if cand is not None and cand in value:
                 return float(value[cand])
         raise KeyError(f"parameter value missing for index {key}")

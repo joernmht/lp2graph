@@ -42,6 +42,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   from run to run -- a breach of the determinism rule. Neighbours are now
   insertion-ordered lists. The diameter *value* was always right and is
   unchanged; the path reported may differ from earlier releases.
+- **Instance parameters given as JSON objects can be read.** `lookup()` tried a
+  `list(key)` candidate before the string key `"0,1"`; lists are unhashable, so
+  every mapping-valued parameter loaded from an instance file raised
+  `TypeError` instead of resolving.
 
 ### Changed
 
@@ -50,6 +54,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   bounds pin the diameter. On ground views this is a handful of searches
   instead of one per node: 36 s → 0.35 s on a 4k-node `mip_2_1_big_m` ground
   graph, 5.5 s → 23 ms on `assignment` at 40×40.
+- **Flat imports scale linearly.** `from_mps_string` collected each row by
+  scanning every column (O(rows × columns)), `validate()` rebuilt the shape
+  maps per constraint (O(C × V)), and `validate`'s duplicate-name check used
+  `list.count` (O(N²)) -- all quadratic for a flat model with one template per
+  column. MPS read of a 2,000-row sparse model: 1.86 s → 0.37 s; LP read
+  1.09 s → 0.36 s. The grounder no longer rebuilds `parameter_map()` /
+  `index_map()` for every summand. Outputs are unchanged.
 
 ## [0.4.0] - 2026-10-04
 
