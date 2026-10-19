@@ -23,6 +23,7 @@ solver is installed).
 
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -476,8 +477,7 @@ def _structure_checks(f: Formulation) -> list[Check]:
         + [("parameter", p.name) for p in f.parameters]
         + [("variable", v.name) for v in f.variables]
     )
-    names = [n for _, n in declared]
-    dupes = sorted({n for n in names if names.count(n) > 1})
+    dupes = sorted(n for n, k in Counter(n for _, n in declared).items() if k > 1)
     if dupes:
         checks.append(
             Check(

@@ -214,13 +214,19 @@ def from_mps_string(text: str, *, model_id: str = "mps_model") -> Formulation:
     variables: list[GroundedVar] = []
     for col in col_order:
         variables.append(_make_var(col, col in integers, bounds.get(col)))
-    obj_terms = tuple(
-        (col_coefs[col][obj_row], col) for col in col_order if col_coefs[col].get(obj_row)
-    )
+    # Transpose the column-major COLUMNS data into rows once, in column order.
+    # Collecting each row by scanning every column made a sparse file with R
+    # rows and C columns cost O(R*C) -- quadratic for a MIPLIB-size instance.
+    by_row: dict[str, list[tuple[float, str]]] = {}
+    for col in col_order:
+        for row_name, coef in col_coefs[col].items():
+            if coef:
+                by_row.setdefault(row_name, []).append((coef, col))
+    obj_terms = tuple(by_row.get(obj_row, ()))
     constraints = tuple(
         GroundedConstraint(
             name=row,
-            terms=tuple((col_coefs[col][row], col) for col in col_order if col_coefs[col].get(row)),
+            terms=tuple(by_row.get(row, ())),
             comparator=_TYPE_CMP[row_types[row]],
             rhs=rhs.get(row, 0.0),
         )

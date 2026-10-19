@@ -142,6 +142,8 @@ _SECTIONS: dict[str, str] = {
     "sos": "unsupported",
     "end": "end",
 }
+#: Longest keyword first, so "subject to" wins over "st" and "maximize" over "max".
+_SECTIONS_LONGEST_FIRST: tuple[str, ...] = tuple(sorted(_SECTIONS, key=len, reverse=True))
 
 _LABEL = re.compile(r"^\s*([A-Za-z0-9_\.\[\]\(\),#\$%&/]+)\s*:")
 _CMP_SPLIT = re.compile(r"(<=|>=|=<|=>|<|>|=)")
@@ -245,7 +247,7 @@ def _split_sections(text: str) -> dict[str, str]:
 
 def _section_key(stripped: str) -> str | None:
     low = stripped.lower()
-    for kw in sorted(_SECTIONS, key=len, reverse=True):
+    for kw in _SECTIONS_LONGEST_FIRST:
         if low == kw or low.startswith(kw + " ") or low.startswith(kw + "\t"):
             return _SECTIONS[kw]
     return None
@@ -253,7 +255,7 @@ def _section_key(stripped: str) -> str | None:
 
 def _section_rest(stripped: str) -> str:
     low = stripped.lower()
-    for kw in sorted(_SECTIONS, key=len, reverse=True):
+    for kw in _SECTIONS_LONGEST_FIRST:
         if low == kw:
             return ""
         if low.startswith(kw + " ") or low.startswith(kw + "\t"):

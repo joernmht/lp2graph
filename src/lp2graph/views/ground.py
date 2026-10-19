@@ -294,7 +294,6 @@ def _ground_constraint(
     pvals: Mapping[str, Any],
 ) -> None:
     for quant_binding in _enumerate_quantifiers(c.quantifiers, cards, pvals):
-        cinst_id = _constraint_instance_id(c.name, tuple(sorted(quant_binding.items())))
         # Stable ID using declaration order of quantifiers, not sorted.
         cinst_id = _constraint_instance_id(
             c.name, tuple((q.index, quant_binding[q.index]) for q in c.quantifiers)

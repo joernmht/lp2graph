@@ -39,7 +39,7 @@ from __future__ import annotations
 
 import itertools
 from collections.abc import Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import pulp
@@ -47,6 +47,7 @@ import pulp
 from lp2graph.core.model import (
     Formulation,
     Objective,
+    Parameter,
     Quantifier,
     Term,
 )
@@ -383,6 +384,14 @@ class _Ctx:
     var_index: dict[str, Any]
     prob: pulp.LpProblem
     n_aux: int = 0
+    # Name lookups the per-summand helpers need; built once here because
+    # ``Formulation.parameter_map()``/``index_map()`` build a fresh dict per call.
+    param_index: dict[str, Parameter] = field(init=False)
+    cyclic: frozenset[str] = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.param_index = self.f.parameter_map()
+        self.cyclic = frozenset(i.name for i in self.f.indices if i.cyclic)
 
 
 def _objective_expr(ctx: _Ctx, obj: Objective) -> Any:
@@ -503,7 +512,7 @@ def _coef_value(ctx: _Ctx, t: Term, scope: dict[str, int], ref_idx: tuple[int, .
     if isinstance(coef, (int, float)):
         return float(coef)
     # Parameter coefficient: scalar, or shaped like the referent.
-    param = ctx.f.parameter_map().get(coef)
+    param = ctx.param_index.get(coef)
     if param is None:
         raise UnsupportedModel(f"coefficient {coef!r} is not a declared parameter")
     if not param.shape:
@@ -544,8 +553,7 @@ def _resolve_indices(ctx: _Ctx, t: Term, scope: dict[str, int]) -> tuple[int, ..
 
 
 def _cyclic_family(ctx: _Ctx, family: str) -> str | None:
-    idx = ctx.f.index_map().get(family)
-    return family if (idx is not None and idx.cyclic) else None
+    return family if family in ctx.cyclic else None
 
 
 def _sum_scopes(ctx: _Ctx, t: Term, binding: dict[str, int]) -> Iterator[dict[str, int]]:

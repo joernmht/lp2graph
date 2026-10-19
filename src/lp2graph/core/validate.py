@@ -61,15 +61,19 @@ def validate(f: Formulation) -> None:
             if s not in index_names:
                 errors.append(f"parameter {p.name!r}: shape index {s!r} is not declared")
 
-    # 3. Constraints: quantifiers, references, bindings.
+    # 3. Constraints: quantifiers, references, bindings. The shape maps are
+    # built once: rebuilt per constraint they made validation O(C*(V+P)),
+    # quadratic for a flat import with one template per scalar column.
+    variable_shapes = {v.name: v.shape for v in f.variables}
+    parameter_shapes = {p.name: p.shape for p in f.parameters}
     for c in f.constraints:
         _validate_constraint(
             c,
             index_names=index_names,
             parameter_names=parameter_names,
             variable_names=variable_names,
-            variable_shapes={v.name: v.shape for v in f.variables},
-            parameter_shapes={p.name: p.shape for p in f.parameters},
+            variable_shapes=variable_shapes,
+            parameter_shapes=parameter_shapes,
             errors=errors,
         )
 
@@ -80,8 +84,8 @@ def validate(f: Formulation) -> None:
             index_names=index_names,
             parameter_names=parameter_names,
             variable_names=variable_names,
-            variable_shapes={v.name: v.shape for v in f.variables},
-            parameter_shapes={p.name: p.shape for p in f.parameters},
+            variable_shapes=variable_shapes,
+            parameter_shapes=parameter_shapes,
             errors=errors,
         )
 
