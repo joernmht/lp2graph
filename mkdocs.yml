@@ -68,6 +68,7 @@ nav:
       - "ADR-0014 extras resolve on every supported Python": adr/0014-extras-resolve-on-every-supported-python.md
       - "ADR-0015 text I/O encoding and newline": adr/0015-text-io-declares-encoding-and-newline.md
       - "ADR-0016 one reading of aggregation loops": adr/0016-one-reading-of-aggregation-loops.md
+      - "ADR-0017 size-sensitive paths stay near-linear": adr/0017-size-sensitive-paths-stay-near-linear.md
 
 markdown_extensions:
   - admonition

@@ -2,7 +2,7 @@
 
 Reference for the languages, runtimes, libraries, entry points, and
 build/test/CI commands of `lp2graph`. Maintained by the nightly quality pass;
-update when reality drifts. Last reviewed: 2026-09-21.
+update when reality drifts. Last reviewed: 2026-10-19.
 
 ## Language & runtime
 
@@ -17,7 +17,7 @@ update when reality drifts. Last reviewed: 2026-09-21.
 | Library | Constraint | Role |
 |---|---|---|
 | `pydantic` | `>=2.0` | Canonical frozen `Formulation` model (`core/model.py`); single source of truth |
-| `jsonschema` | `>=4.0` | Validates every loaded document against `schema/canonical.schema.json`, in `core/loader.py` (ADR-0013). Declared but **never imported** before 2026-09-21. |
+| `jsonschema` | `>=4.0` | Validates every loaded document against `schema/canonical.schema.json`, in `core/loader.py` (ADR-0013). Declared but **never imported** before 2026-09-21. The dominant cost of `loads()` on small documents (~3 ms each with this machine's system jsonschema 4.10; ADR-0017). |
 
 ## Optional dependencies (lazy-imported — see ADR 0007)
 
@@ -103,11 +103,12 @@ The package is **not** pip-installed in this environment (PEP 668), so prefix
 local tooling with `PYTHONPATH=src`:
 
 ```bash
-PYTHONPATH=src python3 -m pytest -q                 # full suite (445 tests, 12 skipped here)
+PYTHONPATH=src python3 -m pytest -q                 # full suite (467 passed, 12 skipped here)
 PYTHONPATH=src python3 -m ruff check src tests      # lint (line-length 100)
 PYTHONPATH=src python3 -m ruff format --check src tests   # format gate
 PYTHONPATH=src python3 -m mypy                      # mypy --strict (src/lp2graph)
 mkdocs build --strict                               # docs
+PYTHONPATH=src python3 benchmarks/scaling.py        # cost of size-sensitive paths (ADR-0017; not in CI)
 # the ASCII-locale run CI's `c-locale` job does (ADR-0015):
 PYTHONPATH=src PYTHONUTF8=0 PYTHONCOERCECLOCALE=0 LC_ALL=C python3 -m pytest -q
 ```
@@ -139,6 +140,19 @@ PYTHONPATH=src PYTHONUTF8=0 PYTHONCOERCECLOCALE=0 LC_ALL=C python3 -m pytest -q
   ruff-pre-commit **v0.15.12** (`ruff --fix` + `ruff-format`), mirrors-mypy
   v1.10.0. Keep the pre-commit ruff rev and the `dev` extra's `ruff` pin in
   lock-step so local, pre-commit, and CI agree on formatting.
+
+## Performance (ADR-0017)
+
+Size-sensitive paths -- views, structural metrics, the grounder, `interop`
+readers/writers, `validate` -- must stay near-linear in model size, because
+ground views and flat (one-template-per-column) imports grow without bound.
+CI asserts behaviour only (exactness, determinism); **cost** is measured by
+`benchmarks/scaling.py`, which times seeded inputs at doubling sizes. Run it
+before/after touching one of those paths and compare row-to-row growth.
+Reference (this machine, 2026-10-19): 2,000-row sparse LP read 0.36 s, MPS
+0.37 s; `graph_diameter` on a 4k-node ground view 0.35 s. Known accepted
+costs (M3 agglomerative clustering ~O(n^3), normalizer prefix re-counting) are
+listed in the ADR.
 
 ## Validation harnesses (functional fidelity)
 
