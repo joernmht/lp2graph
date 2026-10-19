@@ -36,6 +36,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   which neither entry point caught (they handled `OSError`), although both are
   documented to report read failures rather than raise. It is now a
   read-stage failure / an `unreadable` check like any other unreadable file.
+- **`graph_diameter` reports the same path in every process.** Its BFS walked
+  `set[str]` neighbour sets, whose order follows the per-process string hash
+  seed, so `MetricResult.data["path"]` (one diameter-realizing path) changed
+  from run to run -- a breach of the determinism rule. Neighbours are now
+  insertion-ordered lists. The diameter *value* was always right and is
+  unchanged; the path reported may differ from earlier releases.
+
+### Changed
+
+- **`graph_diameter` is exact without a BFS from every node.** It bounds every
+  node's eccentricity from each BFS (Takes & Kosters 2011) and stops once the
+  bounds pin the diameter. On ground views this is a handful of searches
+  instead of one per node: 36 s → 0.35 s on a 4k-node `mip_2_1_big_m` ground
+  graph, 5.5 s → 23 ms on `assignment` at 40×40.
 
 ## [0.4.0] - 2026-10-04
 

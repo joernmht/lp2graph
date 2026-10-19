@@ -138,3 +138,100 @@ def test_metrics_are_deterministic() -> None:
     b = structural_summary(g)
     for k in a:
         assert a[k].value == b[k].value
+
+
+def _brute_force_diameter(g) -> int:
+    """All-sources BFS over the largest component: the reference definition."""
+    from collections import deque
+
+    adj: dict[str, set[str]] = {n.id: set() for n in g.nodes}
+    for e in g.edges:
+        adj[e.src].add(e.dst)
+        adj[e.dst].add(e.src)
+    best = 0
+    seen: set[str] = set()
+    comps: list[set[str]] = []
+    for n in g.nodes:
+        if n.id in seen:
+            continue
+        comp, queue = {n.id}, deque([n.id])
+        seen.add(n.id)
+        while queue:
+            x = queue.popleft()
+            for y in adj[x] - seen:
+                seen.add(y)
+                comp.add(y)
+                queue.append(y)
+        comps.append(comp)
+    for src in max(comps, key=len):
+        dist, queue = {src: 0}, deque([src])
+        while queue:
+            x = queue.popleft()
+            for y in adj[x]:
+                if y not in dist:
+                    dist[y] = dist[x] + 1
+                    queue.append(y)
+        best = max(best, max(dist.values()))
+    return best
+
+
+def test_graph_diameter_is_exact_and_its_path_realizes_it() -> None:
+    import random
+
+    from lp2graph.core.graph import Graph
+
+    rng = random.Random(0)
+    for _ in range(400):
+        n = rng.randint(2, 30)
+        g = Graph()
+        for i in range(n):
+            g.add_node(f"n{i}", "variable")
+        for _ in range(rng.randint(0, 2 * n)):
+            g.add_edge(f"n{rng.randrange(n)}", f"n{rng.randrange(n)}", "var_in_constraint")
+        d = graph_diameter(g)
+        assert d.value == _brute_force_diameter(g)
+        if d.value:
+            path = d.data["path"]
+            pairs = {frozenset((e.src, e.dst)) for e in g.edges}
+            assert len(path) == d.value + 1
+            assert all(frozenset(path[i : i + 2]) in pairs for i in range(d.value))
+
+
+def test_graph_diameter_is_exact_on_ground_views() -> None:
+    from lp2graph.views import ground
+
+    for name in ("assignment", "mip_2_1_big_m", "mip_2_8_pesp"):
+        f = load(f"formulations/constraints/{name}.json")
+        g = ground(f, {i.name: 4 for i in f.indices})
+        assert graph_diameter(g).value == _brute_force_diameter(g)
+
+
+def test_graph_diameter_path_does_not_depend_on_the_hash_seed() -> None:
+    """The reported path once followed ``set[str]`` iteration order, which
+    changes with PYTHONHASHSEED -- a different path in every process."""
+    import os
+    import subprocess
+    import sys
+
+    code = (
+        "from lp2graph import load\n"
+        "from lp2graph.views import ground\n"
+        "from lp2graph.metrics.structural import graph_diameter\n"
+        "for n in ('assignment', 'lp_1_1_fixed_sequence', 'mip_2_4_time_indexed'):\n"
+        "    f = load(f'formulations/constraints/{n}.json')\n"
+        "    g = ground(f, {i.name: 3 for i in f.indices})\n"
+        "    print('|'.join(graph_diameter(g).data['path']))\n"
+    )
+    outputs = set()
+    for seed in ("0", "1", "2", "3"):
+        env = {**os.environ, "PYTHONHASHSEED": seed}
+        run = subprocess.run(
+            [sys.executable, "-c", code],
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+        outputs.add(run.stdout)
+    assert len(outputs) == 1

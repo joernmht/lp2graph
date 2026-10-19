@@ -90,26 +90,13 @@ def model_coherence(g: Graph) -> MetricResult:
     """
     if len(g) <= 1:
         return MetricResult(name="model_coherence", value=1, explanation="Trivially connected.")
-    seen: set[str] = set()
-    start = g.nodes[0].id
-    queue = deque([start])
-    seen.add(start)
-    adj: dict[str, set[str]] = defaultdict(set)
-    for e in g.edges:
-        adj[e.src].add(e.dst)
-        adj[e.dst].add(e.src)
-    while queue:
-        n = queue.popleft()
-        for m in adj[n]:
-            if m not in seen:
-                seen.add(m)
-                queue.append(m)
-    coherent = 1 if len(seen) == len(g) else 0
+    reached = len(_bfs(_undirected_adjacency(g), g.nodes[0].id)[0])
+    coherent = 1 if reached == len(g) else 0
     return MetricResult(
         name="model_coherence",
         value=coherent,
         explanation="1 if undirected graph is connected, else 0.",
-        data={"reached": len(seen), "total": len(g)},
+        data={"reached": reached, "total": len(g)},
     )
 
 
@@ -143,70 +130,120 @@ def graph_diameter(g: Graph) -> MetricResult:
 
     Returns the diameter and one diameter-realizing path. If the graph
     has fewer than two nodes, returns 0.
+
+    The diameter is exact. It is found by eccentricity bounding (Takes &
+    Kosters, "Determining the diameter of small world networks", CIKM
+    2011) rather than a BFS from every node: each BFS tightens lower and
+    upper eccentricity bounds on all nodes, and the search stops once the
+    bounds pin the diameter. On ground-view graphs this needs a handful of
+    BFS runs where the all-sources search needed one per node -- the
+    difference between milliseconds and seconds at a few thousand nodes.
     """
     if len(g) < 2:
         return MetricResult(name="graph_diameter", value=0, explanation="Too small.")
-    adj: dict[str, set[str]] = defaultdict(set)
-    for e in g.edges:
-        adj[e.src].add(e.dst)
-        adj[e.dst].add(e.src)
+    adj = _undirected_adjacency(g)
 
-    # Find the largest connected component.
-    seen_global: set[str] = set()
-    components: list[set[str]] = []
+    # Largest connected component; ties go to the one met first in node order.
+    seen: set[str] = set()
+    largest: list[str] = []
     for n in g.nodes:
-        if n.id in seen_global:
-            continue
-        comp: set[str] = set()
-        queue = deque([n.id])
-        seen_global.add(n.id)
-        comp.add(n.id)
-        while queue:
-            x = queue.popleft()
-            for y in adj[x]:
-                if y not in seen_global:
-                    seen_global.add(y)
-                    comp.add(y)
-                    queue.append(y)
-        components.append(comp)
-    largest = max(components, key=len)
+        if n.id not in seen:
+            comp = list(_bfs(adj, n.id)[0])
+            seen.update(comp)
+            if len(comp) > len(largest):
+                largest = comp
     if len(largest) < 2:
         return MetricResult(name="graph_diameter", value=0, explanation="LCC has < 2 nodes.")
 
-    # Two-pass BFS approximation gives the exact diameter for trees and
-    # an exact answer for arbitrary graphs only when followed by full
-    # BFS from every node. Here we do the full BFS for correctness; the
-    # graphs we care about are small (template-scale).
-    best = 0
-    best_path: list[str] = []
-    nodes = sorted(largest)  # deterministic
-    for src in nodes:
-        dist = {src: 0}
-        prev: dict[str, str | None] = {src: None}
-        queue = deque([src])
-        while queue:
-            x = queue.popleft()
-            for y in adj[x]:
-                if y not in dist:
-                    dist[y] = dist[x] + 1
-                    prev[y] = x
-                    queue.append(y)
-        target = max(dist, key=lambda k: (dist[k], k))
-        if dist[target] > best:
-            best = dist[target]
-            # Reconstruct path.
-            path: list[str] = []
-            cur: str | None = target
-            while cur is not None:
-                path.append(cur)
-                cur = prev[cur]
-            best_path = list(reversed(path))
+    best, best_path = _exact_diameter(adj, sorted(largest))
     return MetricResult(
         name="graph_diameter",
         value=best,
         explanation="Longest shortest path in the largest connected component.",
         data={"path": best_path},
     )
+
+
+def _undirected_adjacency(g: Graph) -> dict[str, list[str]]:
+    """Undirected neighbour lists in edge-insertion order, duplicates removed.
+
+    Lists, not sets: BFS visits neighbours in this order, so it decides
+    which shortest path a search reports. ``set[str]`` iteration follows
+    the per-process string hash seed, which made the reported diameter
+    path differ between runs.
+    """
+    nbrs: dict[str, dict[str, None]] = {n.id: {} for n in g.nodes}
+    for e in g.edges:
+        nbrs[e.src][e.dst] = None
+        nbrs[e.dst][e.src] = None
+    return {k: list(v) for k, v in nbrs.items()}
+
+
+def _bfs(adj: dict[str, list[str]], src: str) -> tuple[dict[str, int], dict[str, str | None]]:
+    """Hop distances and BFS-tree parents from ``src`` over its component."""
+    dist = {src: 0}
+    prev: dict[str, str | None] = {src: None}
+    queue = deque([src])
+    while queue:
+        x = queue.popleft()
+        for y in adj[x]:
+            if y not in dist:
+                dist[y] = dist[x] + 1
+                prev[y] = x
+                queue.append(y)
+    return dist, prev
+
+
+def _exact_diameter(adj: dict[str, list[str]], nodes: list[str]) -> tuple[int, list[str]]:
+    """Exact diameter of one connected component and a path realizing it.
+
+    ``nodes`` is the component, sorted, so every tie below breaks on node
+    id and the result is deterministic. Bounds kept per node ``w``:
+    ``lo[w] <= ecc(w) <= hi[w]``. A BFS from ``v`` with ``ecc(v) = e``
+    gives, by the triangle inequality, ``max(d, e - d) <= ecc(w) <= e + d``
+    for ``d = dist(v, w)``. The diameter is ``max ecc``, so it lies
+    between ``max lo`` and ``max hi``; the loop ends when those meet.
+    """
+    lo = dict.fromkeys(nodes, 0)
+    hi = dict.fromkeys(nodes, len(nodes))
+    open_ = list(nodes)  # eccentricity not yet known exactly
+    searched: dict[str, tuple[int, dict[str, int], dict[str, str | None]]] = {}
+    pick_high = True
+    while open_ and max(lo.values()) < max(hi.values()):
+        # Alternate: the node that could have the largest eccentricity
+        # (raises the lower bound), then the one that could have the smallest
+        # (a central node: lowers every upper bound).
+        if pick_high:
+            v = min(open_, key=lambda w: (-hi[w], w))
+        else:
+            v = min(open_, key=lambda w: (lo[w], w))
+        pick_high = not pick_high
+        dist, prev = _bfs(adj, v)
+        e = max(dist.values())
+        searched[v] = (e, dist, prev)
+        for w in open_:
+            d = dist[w]
+            lo[w] = max(lo[w], d, e - d)
+            hi[w] = min(hi[w], e + d)
+        open_ = [w for w in open_ if lo[w] < hi[w]]
+    best = max(lo.values())
+
+    # A path: from the first searched node that realizes the diameter, or,
+    # if the bounds alone proved it, from the first node whose lower bound
+    # reaches it (its eccentricity is then exactly ``best``).
+    src = next((v for v, (e, _, _) in searched.items() if e == best), None)
+    if src is None:
+        src = next(w for w in nodes if lo[w] == best)
+        dist, prev = _bfs(adj, src)
+    else:
+        _, dist, prev = searched[src]
+    target = max(dist, key=lambda k: (dist[k], k))
+    path: list[str] = []
+    cur: str | None = target
+    while cur is not None:
+        path.append(cur)
+        cur = prev[cur]
+    return best, list(reversed(path))
 
 
 def structural_summary(g: Graph) -> dict[str, MetricResult]:
