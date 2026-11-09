@@ -75,7 +75,14 @@ _ABS_RHS: dict[str, int | None] = {"le": -1, "ge": 1, "eq": None}
 
 
 class UnsupportedModel(Exception):
-    """Raised when a formulation uses a feature the grounder cannot solve."""
+    """Raised when a formulation uses a feature the grounder cannot solve.
+
+    In practice it fires on a well-formed formulation that is simply not
+    expressible as the plain linear program the PuLP back-end builds: a
+    ``max`` / ``min`` / ``indicator`` / ``modulo`` term operator, an indicator
+    trigger constraint, or an ``abs`` term in a position where epigraph
+    lifting would not be exact.
+    """
 
 
 @dataclass
