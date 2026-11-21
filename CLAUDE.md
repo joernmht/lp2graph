@@ -59,7 +59,10 @@ when CI on `main` is green:
 
 1. Bump `version` in `pyproject.toml`, commit, push, wait for CI.
 2. `git tag vX.Y.Z && git push origin vX.Y.Z` — the tag must match the
-   pyproject version. `release.yml` builds sdist+wheel and publishes.
+   pyproject version. `release.yml` builds sdist+wheel, then the publish job
+   **waits for Joern's approval** (environment `pypi`: required reviewer
+   joernmht, no admin bypass, `v*.*.*` tags only; since 2026-11-21). GitHub
+   notifies him; a waiting run is expected, not a failure. Tell him it waits.
 3. `gh release create vX.Y.Z --title ... --notes ...` (the workflow does not
    create the GitHub release entry).
 4. Verify: `pip install --target /tmp/t lp2graph && PYTHONPATH=/tmp/t python3
