@@ -74,6 +74,14 @@ def test_family_without_dummy_is_a_counting_loop() -> None:
     assert binder_loops(t, ()) == (Loop("I", None), Loop("R", "r"))
 
 
+def test_fixed_and_computed_slots_are_not_dummies() -> None:
+    # \sum_{i \in S} z_{l, 2N + 1 - m, i}: the middle slot is computed, the
+    # binder's dummy is i (the emitter printed "2 \in S" and could not read it back).
+    t = _term(("K", "l"), ("S", "2 N + 1 - m"), ("S", "i"), over=("S",))
+    assert binder_loops(t, {"l", "m"}) == (Loop("S", "i"),)
+    assert aggregation_loops(t, {"l", "m"}) == (Loop("S", "i"),)
+
+
 def test_same_family_dummy_bound_by_the_row_is_not_rebound() -> None:
     # \sum_{j \in I} y_{i,j} under \forall i \in I: the binder takes j, not i.
     t = _term(("I", "i"), ("I", "j"), over=("I",))

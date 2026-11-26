@@ -66,6 +66,8 @@ def free_dummies(term: Term, bound: Collection[str]) -> tuple[tuple[str, str], .
     seen: set[str] = set()
     for b in term.bindings:
         base = binding_base(b.expr)
+        if base[:1].isdigit():
+            continue  # a fixed element (x_{i, 1}) or a computed slot (2N + 1 - m), not a dummy
         if base and base not in bound and base not in seen:
             out.append((base, b.index))
             seen.add(base)
