@@ -225,3 +225,35 @@ def test_pesp_schema_view_has_no_isolated_nodes() -> None:
     g = schema(f)
     touched = {n for e in g.edges for n in (e.src, e.dst)}
     assert touched == {n.id for n in g.nodes}
+
+
+def test_schema_constraint_carries_rhs_literal() -> None:
+    """Literals have no node or edge; their net value sits on the constraint node."""
+    from lp2graph.core.model import Formulation
+    from lp2graph.views import schema
+
+    def row(name, lhs, rhs):
+        return {"name": name, "comparator": "eq", "lhs": lhs, "rhs": rhs}
+
+    x = {"ref": "x", "ref_kind": "variable", "role": "lhs"}
+    f = Formulation.model_validate(
+        {
+            "id": "t",
+            "name": "t",
+            "family": "milp",
+            "variables": [{"name": "x", "domain": "binary"}],
+            "constraints": [
+                row("one", [x], [{"constant": 1, "role": "rhs"}]),
+                row("none", [x], []),
+                # x + 2 = 5  ->  x = 3
+                row("moved", [x, {"constant": 2, "role": "lhs"}], [{"constant": 5, "role": "rhs"}]),
+            ],
+        }
+    )
+    g = schema(f)
+    data = {n.id: n.data for n in g.nodes}
+    assert data["constraint:one"]["rhs_literal"] == 1.0
+    assert data["constraint:none"]["rhs_literal"] is None
+    assert data["constraint:moved"]["rhs_literal"] == 3.0
+    # topology unchanged: literals still add no edge
+    assert len(g.out_edges("constraint:one")) == 1

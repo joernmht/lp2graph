@@ -21,6 +21,12 @@ Edges:
   constraint to the parameter a quantifier ``where``-predicate reads (role
   ``where``).
 
+Literal (numeric constant) terms get no node and no edge; their net value
+is kept as data on the constraint node (``rhs_literal``: the constant on the
+right-hand side once every literal is moved there, ``None`` when the row has
+no literal), so ``sum x = 1`` and ``sum x = 0`` stay distinguishable without
+changing the graph's topology or any matched label.
+
 Offsets are *not* shown in the schema view; that is the hybrid view's
 job. Every term, regardless of binding offsets, contributes a single
 edge here.
@@ -89,6 +95,7 @@ def schema(f: Formulation) -> Graph:
             data={
                 "description": c.description,
                 "comparator": c.comparator,
+                "rhs_literal": _rhs_literal(c),
                 "quantifiers": [
                     {
                         "index": q.index,
@@ -125,6 +132,23 @@ def schema(f: Formulation) -> Graph:
         _emit_objective_terms(g, o_id, f.objective)
 
     return g
+
+
+def _rhs_literal(c: ConstraintTemplate) -> float | None:
+    """Net literal constant of ``c`` on the right-hand side, or ``None``."""
+    total = 0.0
+    seen = False
+    for side, terms in ((-1, c.lhs), (1, c.rhs)):
+        for t in terms:
+            if t.ref_kind != "literal":
+                continue
+            seen = True
+            coef = t.coefficient if t.coefficient is not None else 1
+            try:
+                total += side * t.sign * float(coef)
+            except (TypeError, ValueError):
+                return None  # a symbolic literal has no numeric value
+    return total if seen else None
 
 
 def _emit_terms_for_container(
