@@ -25,6 +25,12 @@ silently dropping a failure.
   `\cdot`, set wrappers, …), logging every rewrite with a `SourceSpan` into the
   original text, then `ingest_latex` parses the canonical result via the codec
   and runs the two-phase validator.
+- **Structural row rules** (`row_canon`, ADR-0018). `row_exact` reads a row
+  into an expression tree and re-emits it canonically when it is provably a
+  linear relation over the declared symbols; `row_widened` additionally widens
+  binders to base families. Products and ratios of parameters become *derived
+  parameters* declared in the header. A row the reader cannot prove is left
+  untouched and refused by name.
 - `ingest(path_or_text, fmt=...)` dispatches by extension and always returns an
   `IngestionResult` whose `failures` are reported, never raised away.
 

@@ -43,6 +43,13 @@ from dataclasses import dataclass, field
 from lp2graph.codec import from_canonical_latex
 from lp2graph.core.validate import ValidationError, validate
 from lp2graph.mining.ingest.result import IngestionResult
+from lp2graph.mining.ingest.row_canon import (
+    SCRIPT_LABELS,
+    RowContext,
+    body_letter_families,
+    canonicalize_row,
+    derived_declaration,
+)
 from lp2graph.mining.provenance import ProvenanceMap, Rewrite, SourceSpan
 from lp2graph.mining.versions import REWRITE_RULES_VERSION
 
@@ -224,6 +231,12 @@ _GREEK_UNICODE: dict[str, str] = {
     "Ψ": "Psi",
     "Ω": "Omega",
     "ℓ": "ell",
+    "ϑ": "vartheta",
+    "ϕ": "varphi",
+    "ϵ": "varepsilon",
+    "ϖ": "varpi",
+    "ϱ": "varrho",
+    "℘": "wp",
 }
 
 
@@ -269,15 +282,31 @@ class DocContext:
     #: rule leaves a bare snippet untouched (the repo converter normalizes
     #: header-less rows and applies its own symbol table afterwards).
     has_header: bool = False
+    #: Derived parameters the structural row rules created (name -> (shape,
+    #: definition)). One dict per normalization run, shared by every context
+    #: of that run, so the declarations can be appended to the header.
+    derived: dict[str, tuple[tuple[str, ...], str]] = field(default_factory=dict, compare=False)
+    #: letter -> the single family the body binds it over (exact binders).
+    letter_family: dict[str, str] = field(default_factory=dict, compare=False)
 
     @classmethod
-    def build(cls, text: str, body: str) -> DocContext:
+    def build(
+        cls,
+        text: str,
+        body: str,
+        derived: dict[str, tuple[tuple[str, ...], str]] | None = None,
+    ) -> DocContext:
         declared: set[str] = set()
         shaped: set[str] = set()
         params: set[str] = set()
         variables: set[str] = set()
         shapes: dict[str, tuple[str, ...]] = {}
+        letters: dict[str, str] = {}
         for line in text.splitlines():
+            lm = _LETTER_DECL_RE.match(line)
+            if lm is not None:
+                letters[lm.group(1)] = lm.group(2)
+                continue
             dm = _DECL_RE.match(line)
             if dm is None:
                 continue
@@ -292,7 +321,9 @@ class DocContext:
                 if sm is not None and sm.group(1) != "-":
                     shaped.add(name)
                     shapes[name] = tuple(f for f in sm.group(1).split(",") if f)
-        bound: set[str] = set()
+        # Index letters the header states (``%@ letter i over=I``) are bound in
+        # every row, whether or not a binder in the body names them.
+        bound: set[str] = set(letters)
         for bm in _BOUND_IN_RE.finditer(body):
             bound.update(_plain_name(t) for t in _split_top_commas(bm.group(1)))
         for bm in _BOUND_TUPLE_RE.finditer(body):
@@ -300,6 +331,8 @@ class DocContext:
             for t in _split_top_commas(inner):
                 if re.fullmatch(_TOK, t.strip()):
                     bound.add(_plain_name(t))
+        for bm in _BOUND_NAMED_RE.finditer(body):
+            bound.add(_plain_name(bm.group(1)))  # a = (i, j) \in A binds a as well
         for bm in _BOUND_FORALL_RE.finditer(body):
             bound.update(_plain_name(t) for t in _split_top_commas(bm.group(1)))
         for bm in _BIGOP_SUB_RE.finditer(body):
@@ -313,14 +346,35 @@ class DocContext:
             variables=frozenset(variables),
             shapes=shapes,
             has_header=bool(declared),
+            derived=derived if derived is not None else {},
+            letter_family={**letters, **body_letter_families(body)},
+        )
+
+    def row_context(self) -> RowContext:
+        """The same facts in the shape the structural row reader takes."""
+        return RowContext(
+            params=self.params,
+            variables=self.variables,
+            indices=self.declared - self.params - self.variables,
+            shapes=self.shapes,
+            bound=self.bound,
+            letter_family=self.letter_family,
+            derived=self.derived,
         )
 
 
 _DECL_RE = re.compile(r"^\s*%@\s*(index|param|var)\s+([A-Za-z_]\w*)(.*)$")
+#: ``%@ letter i over=I``: an index letter and the family it ranges over. Not
+#: part of the canonical header (the codec ignores the record); it tells the
+#: script and row rules which letters are indices when no binder says so.
+_LETTER_DECL_RE = re.compile(r"^\s*%@\s*letter\s+([A-Za-z_]\w*)\s+over=([A-Za-z_]\w*)")
 _TOK = r"(?:\\mathit\{[^{}]*\}|[A-Za-z]\w*)"
 _BOUND_IN_RE = re.compile(r"(" + _TOK + r"(?:\s*,\s*" + _TOK + r")*)\s*\\in(?![A-Za-z])")
 _BOUND_TUPLE_RE = re.compile(
     r"\\left\(\s*([^()]*?)\s*\\right\)\s*\\in(?![A-Za-z])|\(\s*([^()]*?)\s*\)\s*\\in(?![A-Za-z])"
+)
+_BOUND_NAMED_RE = re.compile(
+    r"(" + _TOK + r")\s*=\s*(?:\\left)?\(\s*[^()]*?\s*(?:\\right)?\)\s*\\in(?![A-Za-z])"
 )
 _BOUND_FORALL_RE = re.compile(r"\\forall\s*(" + _TOK + r"(?:\s*,\s*" + _TOK + r")*)")
 _BIGOP_SUB_RE = re.compile(
@@ -399,11 +453,16 @@ def _index_pieces(piece: str, ctx: DocContext) -> list[str] | None:
         letters = q.split()
         if all(ch in ctx.bound for ch in letters):
             return letters
-    if re.fullmatch(r"[A-Za-z]{2,}", q) and all(ch in ctx.bound for ch in q):
+    if (
+        w is not None
+        and re.fullmatch(r"[A-Za-z]{2,}", w)
+        and w.lower() not in SCRIPT_LABELS
+        and all(ch in ctx.bound for ch in w)
+    ):
         # Glued single-letter indices (x_{ij} with i and j bound): the
         # dominant hand-written spelling. A word is a label only when at
         # least one of its letters is not bound (h_{min} with i bound).
-        return list(q)
+        return list(w)
     return None
 
 
@@ -464,9 +523,19 @@ def _row_algebra_span(text: str, pos: int) -> tuple[int, int]:
 
 
 def _paren_symbol_repl(m: re.Match[str], ctx: DocContext) -> str:
+    if not ctx.has_header:
+        return m.group(0)
     prefix = m.string[: m.start()]
     if prefix.count("{") != prefix.count("}"):
         return m.group(0)  # inside a script, (u) is a function argument, not a symbol
+    inner = _plain_name(m.group(1))
+    if (
+        re.search(r"[A-Za-z0-9}]\s*$", prefix)
+        and inner in ctx.bound
+        and inner not in ctx.params
+        and inner not in ctx.variables
+    ):
+        return m.group(0)  # x (t): a call with a bound index letter, not a product
     return m.group(1)
 
 
@@ -596,6 +665,15 @@ def _distribute_repl(m: re.Match[str], ctx: DocContext) -> str:
     cname = _plain_name(re.split(r"_\{", coef, maxsplit=1)[0])
     if cname not in ctx.params:
         return m.group(0)
+    before = m.string[start : m.start()].rstrip()
+    last = re.search(r"(\\[A-Za-z]+|[A-Za-z0-9}])$", before)
+    if before.endswith(("-", "/")) or (
+        last is not None and (not last.group(1).startswith("\\") or last.group(1) == r"\cdot")
+    ):
+        # - M (1 - x), a M (1 - x): the sign or factor in front applies to the
+        # whole product; distributing here would leave it on the first term
+        # only (issue #67). The structural row rule handles these exactly.
+        return m.group(0)
     inner = m.group(2).strip()
     # split the parenthesised sum at top-level +/- keeping signs
     pieces: list[tuple[str, str]] = []
@@ -635,6 +713,12 @@ def _strict_relaxed_repl(m: re.Match[str], ctx: DocContext) -> str:
     prefix = m.string[start : m.start()]
     if prefix.count("{") != prefix.count("}"):
         return m.group(0)  # inside a binder or set: not a row relation
+    left = re.search(r"(?:^|[,;:\s])([A-Za-z]\w*)\s*$", m.string[start : m.start()])
+    right = re.match(r"\s*([A-Za-z]\w*)\s*(?:$|[,;:\\])", m.string[m.end() : tail + 1])
+    if left and right:
+        names = {left.group(1), right.group(1)}
+        if names <= ctx.bound and not names & (ctx.params | ctx.variables):
+            return m.group(0)  # i < j between two bound index letters is a restriction
     return r"\le" if m.group(1) == "<" else r"\ge"
 
 
@@ -649,6 +733,77 @@ def _implicit_quantifier_repl(m: re.Match[str], ctx: DocContext) -> str:
         return m.group(0)
     tail = ", ".join(rf"{letter} \in \mathcal{{{fam}}}" for letter, fam in families.items())
     return m.group(1) + body.rstrip() + r" \qquad \forall " + tail + m.group(3)
+
+
+_ANY_ROW_RE = re.compile(
+    r"^([ \t]*(?:\\(?:min|max)\\quad[ \t]*)?&)([^\n]*?)([ \t]*\\tag\{[^{}]*\}[ \t]*\\\\)[ \t]*$",
+    re.MULTILINE,
+)
+_KEY_DROP_RE = re.compile(r"\s+|\\forall|\\qquad|\\quad|\\;|\\,|&")
+
+
+def _row_key(s: str) -> str:
+    """A row's spelling with the canonical emitter's free choices removed
+    (spacing, ``\\mathit`` wrappers, ``\\leq``/``\\le``): two rows with the
+    same key are the same canonical row, and the structural rules leave them
+    alone."""
+    s = re.sub(r"\\mathit\{([^{}]*)\}", lambda m: m.group(1).replace("\\_", "_"), s)
+    s = re.sub(r"\\mathcal\{([^{}]*)\}", lambda m: m.group(1).replace("\\_", "_"), s)
+    s = s.replace("\\leq", "\\le").replace("\\geq", "\\ge").replace("\\neq", "\\ne")
+    return _KEY_DROP_RE.sub("", s)
+
+
+def _row_structural_repl(m: re.Match[str], ctx: DocContext, *, widen: bool) -> str:
+    if not ctx.has_header:
+        return m.group(0)
+    head, body, tail = m.group(1), m.group(2), m.group(3)
+    objective = "\\min" in head or "\\max" in head
+    done = canonicalize_row(body, ctx.row_context(), objective=objective, widen=widen)
+    if done is None:
+        return m.group(0)
+    text, _widened = done
+    if _row_key(text) == _row_key(body):
+        return m.group(0)
+    return head + " " + text + tail
+
+
+def _row_exact_repl(m: re.Match[str], ctx: DocContext) -> str:
+    return _row_structural_repl(m, ctx, widen=False)
+
+
+def _row_widened_repl(m: re.Match[str], ctx: DocContext) -> str:
+    return _row_structural_repl(m, ctx, widen=True)
+
+
+_INNER_BREAK_RE = re.compile(r"\\\\(?=[^\n]*\\tag\{)")
+_CALL_ARGS_RE = re.compile(
+    r"(?<![\\A-Za-z0-9_])(\\mathit\{[^{}]*\}|[A-Za-z][A-Za-z0-9]*(?:_(?!\{)[A-Za-z0-9]+)*)"
+    r"(_\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})?(\^\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})?"
+    r"\s*\\left\(\s*([^()]*?)\s*\\right\)"
+)
+
+
+def _call_args_repl(m: re.Match[str], ctx: DocContext) -> str:
+    """``x_{f} \\left(i , j\\right)`` with x declared and i, j bound letters is
+    the indexed symbol ``x_{f, i, j}`` written in function notation."""
+    if not ctx.has_header:
+        return m.group(0)
+    name = _plain_name(m.group(1))
+    if name not in ctx.params and name not in ctx.variables:
+        return m.group(0)
+    args = [a.strip() for a in _split_top_commas(m.group(4))]
+    if not args:
+        return m.group(0)
+    for a in args:
+        om = _OFFSET_RE.fullmatch(a)
+        letter = _plain_name(om.group(1) if om else a)
+        if not re.fullmatch(r"[A-Za-z]\w*", letter):
+            return m.group(0)
+        if letter not in ctx.bound or letter in ctx.params or letter in ctx.variables:
+            return m.group(0)
+    sub = m.group(2)[2:-1].strip() if m.group(2) else ""
+    pieces = ([sub] if sub else []) + args
+    return m.group(1) + "_{" + ", ".join(pieces) + "}" + (m.group(3) or "")
 
 
 _RESTRICTED_SET_RE = re.compile(
@@ -899,13 +1054,14 @@ REWRITE_RULES: tuple[RewriteRule, ...] = (
         r"\\(alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda"
         r"|mu|nu|xi|omicron|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega"
         r"|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega"
-        r"|varepsilon|vartheta|varpi|varrho|varsigma|varphi|ell)(?![a-zA-Z])",
+        r"|varepsilon|vartheta|varpi|varrho|varsigma|varphi|ell|wp|hbar|imath|jmath|aleph)"
+        r"(?![a-zA-Z])",
         lambda m: r"\mathit{" + m.group(1) + "}",
         "Greek/\\ell command identifier to \\mathit{name}",
     ),
     _rule(
         "greek_unicode_ident",
-        "[αβγδεζηθικλμνξοπρςστυφχψωΓΔΘΛΞΠΣΥΦΨΩℓ]",
+        "[αβγδεζηθικλμνξοπρςστυφχψωΓΔΘΛΞΠΣΥΦΨΩℓϑϕϵϖϱ℘]",
         lambda m: r"\mathit{" + _GREEK_UNICODE[m.group(0)] + "}",
         "unicode Greek identifier to \\mathit{name}",
     ),
@@ -928,14 +1084,35 @@ REWRITE_RULES: tuple[RewriteRule, ...] = (
     _rule(
         "prime_ident",
         r"(?<![A-Za-z0-9_\\])((?:\\mathit\{[^{}]*\})|[A-Za-z]\w*)"
-        r"((?:['′])+|\^\{\s*(?:\\prime|['′])+\s*\}|\^\\prime(?![a-zA-Z]))",
+        r"((?:['′])+|\^\{\s*(?:(?:\\prime|['′])\s*)+\}|\^\\prime(?![a-zA-Z]))",
         _prime_ident_repl,
         "primed identifier to plain p-suffixed name (t' -> tp, k^{'} -> kp)",
+    ),
+    # A prime written after the subscript belongs to the name all the same:
+    # x_{l}^{'} is x'_{l}.
+    _rule(
+        "prime_after_subscript",
+        r"(?<![A-Za-z0-9_\\])([A-Za-z][A-Za-z0-9]*)(_\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})"
+        r"\^\{\s*((?:(?:\\prime|['′])\s*)+)\}",
+        lambda m: (
+            m.group(1)
+            + "p" * (m.group(3).count("'") + m.group(3).count("′") + m.group(3).count("\\prime"))
+            + m.group(2)
+        ),
+        "prime after a subscript folds into the name (x_{l}^{'} -> xp_{l})",
     ),
     # A parenthesised single symbol is that symbol: (\bar{a})_{ik} arrives here
     # as \left(a_bar\right)_{i k} after accent_ident and becomes a_bar_{i k}.
     # Display-environment wrappers the extraction left inside one row
     # (\begin{matrix} ... \end{matrix}) carry no algebra.
+    # A line break inside one row is typography (the lab assembles one row
+    # per line, so a \\\\ before the row's own \\tag never ends a row).
+    _rule(
+        "inner_linebreak",
+        _INNER_BREAK_RE.pattern,
+        " ",
+        "line break inside one row dropped",
+    ),
     _rule(
         "env_wrapper_strip",
         _ENV_WRAPPER_RE.pattern,
@@ -965,6 +1142,15 @@ REWRITE_RULES: tuple[RewriteRule, ...] = (
         _RESTRICTED_SET_RE,
         _restricted_set_widen_repl,
         "binder/quantifier over a subscripted or superscripted set widened to the base family",
+    ),
+    # Function notation for an indexed symbol: x_{f}(i, j, s) is x_{f, i, j, s}
+    # when x is declared and every argument is a bound index letter. Runs
+    # before paren_symbol_unwrap, which would strip a one-argument call.
+    _ctx_rule(
+        "call_args_subscript",
+        _CALL_ARGS_RE,
+        _call_args_repl,
+        "declared symbol called with bound index letters: x_{f}(i, j) -> x_{f, i, j}",
     ),
     _ctx_rule(
         "paren_symbol_unwrap",
@@ -1060,6 +1246,24 @@ REWRITE_RULES: tuple[RewriteRule, ...] = (
         _forall_lone_letters_repl,
         "\\forall f without a set gets the family the declared shapes give f in the row",
     ),
+    # Structural rules (see row_canon): a row is read into an expression tree
+    # and re-emitted in the canonical spelling when it is provably a linear
+    # relation over declared symbols. row_exact applies algebraic identities
+    # only; row_widened additionally widens binders and drops tail conditions
+    # the model has no field for, and is the rule the provenance shows for
+    # every row that is not exact.
+    _ctx_rule(
+        "row_exact",
+        _ANY_ROW_RE,
+        _row_exact_repl,
+        "row restructured by algebraic identities into the canonical spelling",
+    ),
+    _ctx_rule(
+        "row_widened",
+        _ANY_ROW_RE,
+        _row_widened_repl,
+        "row restructured with binders widened to base families (recorded approximation)",
+    ),
     _ctx_rule(
         "implicit_quantifier",
         _ROW_RE,
@@ -1115,6 +1319,7 @@ def normalize_latex(text: str, *, source: str) -> tuple[str, ProvenanceMap]:
     # body so recorded spans always point into the untouched input.
     cur = body
     offset_map = list(range(len(body) + 1))
+    derived: dict[str, tuple[tuple[str, ...], str]] = {}
 
     for rule in REWRITE_RULES:
         new_chars: list[str] = []
@@ -1122,7 +1327,7 @@ def normalize_latex(text: str, *, source: str) -> tuple[str, ProvenanceMap]:
         pos = 0
         # Context rules read the header and the CURRENT body (earlier rules
         # may have renamed a bound letter, t' -> tp), so build it per rule.
-        ctx = DocContext.build(text, cur) if rule.ctx_replacement is not None else None
+        ctx = DocContext.build(text, cur, derived) if rule.ctx_replacement is not None else None
         for m in rule.pattern.finditer(cur):
             before = m.group(0)
             if rule.ctx_replacement is not None and ctx is not None:
@@ -1163,6 +1368,27 @@ def normalize_latex(text: str, *, source: str) -> tuple[str, ProvenanceMap]:
         new_offsets.append(offset_map[-1])
         offset_map = new_offsets[: len(cur) + 1]
 
+    if derived:
+        # Declarations of the derived parameters go to the end of the header;
+        # each is one recorded rewrite anchored where the body starts.
+        lines = [
+            derived_declaration(n, shape, definition) for n, (shape, definition) in derived.items()
+        ]
+        for line in lines:
+            prov = prov.with_rewrite(
+                Rewrite(
+                    rule="derived_parameter",
+                    before="",
+                    after=line,
+                    span=SourceSpan(
+                        source=source, start=lo, end=lo, line=text.count("\n", 0, lo) + 1
+                    ),
+                    rules_version=REWRITE_RULES_VERSION,
+                )
+            )
+        if lines:
+            sep = "" if head.endswith("\n") or not head else "\n"
+            head = head + sep + "\n".join(lines) + "\n"
     return head + cur + tail, prov
 
 

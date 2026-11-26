@@ -17,6 +17,7 @@ import pytest
 
 from lp2graph import load
 from lp2graph.codec import from_canonical_latex, to_canonical_latex
+from lp2graph.mining import REWRITE_RULES_VERSION
 from lp2graph.mining.ingest import (
     IngestionResult,
     from_pyomo,
@@ -517,10 +518,14 @@ def test_ge_chain_names_upper_bound_first():
     assert [c.name for c in r.formulation.constraints] == ["cap_up", "cap_lo"]
 
 
-def test_mixed_direction_chain_is_refused_by_name():
+def test_mixed_direction_chain_splits_into_pairs():
+    # a R1 b R2 c is the conjunction a R1 b and b R2 c whatever the comparators
     r = _probe(_PROBE_OBJ, r"  & l \le x_{e} \ge u \qquad \forall e \in \mathcal{E} \tag{cap} \\")
-    assert not r.ok
-    assert "chained relation" in r.failures[0].message or "mixed" in r.failures[0].message
+    assert r.ok, r.failures
+    assert [(c.name, c.comparator) for c in r.formulation.constraints] == [
+        ("cap_1", "le"),
+        ("cap_2", "ge"),
+    ]
 
 
 def test_binder_range_chain_is_not_split():
@@ -557,10 +562,15 @@ def test_nonterminating_frac_is_refused_by_name():
     assert "terminating" in r.failures[0].message
 
 
-def test_symbolic_frac_is_refused_by_name():
+def test_symbolic_frac_becomes_a_derived_parameter():
+    # a ratio of parameters is a parameter: named, declared and recorded
     r = _probe(r"  \min\quad & \sum_{e \in \mathcal{E}} \frac{u}{l} \cdot x_{e} \tag{cost} \\")
-    assert not r.ok
-    assert "frac" in r.failures[0].message
+    assert r.ok, r.failures
+    (term,) = r.formulation.objective.terms
+    assert term.coefficient == "u_over_l"
+    assert "u_over_l" in {p.name for p in r.formulation.parameters}
+    derived = [rw for rw in r.provenance.rewrites if rw.rule == "derived_parameter"]
+    assert len(derived) == 1 and "derived: u / l" in derived[0].after
 
 
 def test_trailing_superscript_is_refused_not_dropped():
@@ -738,7 +748,7 @@ def test_script_resolution_is_deterministic_and_versioned():
     a2, p2 = normalize_latex(doc, source="ctx.tex")
     assert a1 == a2
     assert p1.rewrites == p2.rewrites
-    assert {r.rules_version for r in p1.rewrites} == {"rewrite-2026.09.4"}
+    assert {r.rules_version for r in p1.rewrites} == {REWRITE_RULES_VERSION}
 
 
 def test_glued_bound_letters_are_indices_not_labels():
@@ -801,20 +811,27 @@ def test_several_letters_over_one_family_expand():
     assert [q.index for q in r.formulation.constraints[0].quantifiers] == ["e", "f"]
 
 
-def test_unsupported_quantifier_and_binder_forms_are_refused_by_name():
-    cases = {
-        r"  & x_{e} \le u \forall (e, f) \in \mathcal{E} \tag{cap} \\": "tuple quantifier",
-        r"  & x_{e} \le u \forall e = 1 \tag{cap} \\": "not understood",
-    }
-    # a restriction against a letter no quantifier binds is caught by validation
-    r = _probe(_PROBE_OBJ, r"  & x_{e} \le u \forall e \in \mathcal{E} : e \ne f \tag{cap} \\")
-    assert not r.ok and r.failures[0].stage == "validate"
-    for row, expected in cases.items():
+def test_tuple_range_and_dangling_restriction_are_widened_and_recorded():
+    # The model binds one letter over one family. A tuple, a range and a
+    # restriction against a letter the row never binds are widened to the
+    # family the declared shapes give the letter, by the row_widened rule only:
+    # the provenance tells an exact row from a widened one.
+    rows = (
+        r"  & x_{e} \le u \forall (e, f) \in \mathcal{E} \tag{cap} \\",
+        r"  & x_{e} \le u \forall e = 1 , \ldots , n \tag{cap} \\",
+        r"  & x_{e} \le u \forall e \in \mathcal{E} : e \ne f \tag{cap} \\",
+    )
+    for row in rows:
         r = _probe(_PROBE_OBJ, row)
-        assert not r.ok, row
-        assert expected in r.failures[0].message, (row, r.failures[0].message)
+        assert r.ok, (row, r.failures)
+        (q,) = r.formulation.constraints[0].quantifiers
+        assert (q.index, q.over, q.restriction) == ("e", "E", "none"), row
+        fired = {rw.rule for rw in r.provenance.rewrites}
+        assert "row_widened" in fired and "row_exact" not in fired, (row, fired)
     r = _probe(r"  \min\quad & \sum_{e = 1}^{n} c \cdot x_{e} \tag{cost} \\")
-    assert not r.ok and "range binder" in r.failures[0].message
+    assert r.ok, r.failures
+    assert r.formulation.objective.terms[0].operator_over == ("E",)
+    assert "row_widened" in {rw.rule for rw in r.provenance.rewrites}
 
 
 def test_trailing_punctuation_is_typography_not_algebra():
@@ -880,8 +897,9 @@ def test_equality_and_long_chains_split_into_consecutive_rows():
     assert names == ["cap_1", "cap_2", "cap_3", "fix_1", "fix_2"]
     assert {c.comparator for c in r.formulation.constraints[:3]} == {"le"}
     assert {c.comparator for c in r.formulation.constraints[3:]} == {"eq"}
-    r = _probe(_PROBE_OBJ, r"  & l \le x_{e} \ge u \forall e \in \mathcal{E} \tag{cap} \\")
-    assert not r.ok and "mixed-direction" in r.failures[0].message
+    r = _probe(_PROBE_OBJ, r"  & l = x_{e} \le u \forall e \in \mathcal{E} \tag{cap} \\")
+    assert r.ok, r.failures
+    assert [c.comparator for c in r.formulation.constraints] == ["eq", "le"]
 
 
 def test_interval_membership_is_the_pair_of_bounds():

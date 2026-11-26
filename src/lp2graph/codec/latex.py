@@ -598,13 +598,18 @@ def _parse_constraint_rows(
         return [build(name, cmp, body[:start], body[end:])]
 
     cmps = {cmp for _, _, cmp in rels}
-    if len(cmps) != 1:
-        raise ValueError(f"mixed-direction chained relation is not supported: {body!r}")
-    (cmp,) = cmps
     # Segments between consecutive comparators; a chain a R b R c is exactly
     # the conjunction a R b and b R c, so every chain splits into pairs.
     bounds = [0, *[i for s, e, _ in rels for i in (s, e)], len(body)]
     segments = [body[bounds[k] : bounds[k + 1]] for k in range(0, len(bounds), 2)]
+    if len(cmps) != 1:
+        # A mixed chain (a = b \le c, a \le b \ge c) is the same conjunction
+        # of consecutive pairs, each with its own comparator.
+        return [
+            build(f"{name}_{k + 1}", rels[k][2], segments[k], segments[k + 1])
+            for k in range(len(segments) - 1)
+        ]
+    (cmp,) = cmps
     if len(rels) == 2 and cmp != "eq":
         lo_seg, mid_seg, hi_seg = segments
         if cmp == "le":

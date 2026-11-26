@@ -6,6 +6,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Rows are read structurally** (`rewrite-2026.11.0`, ADR-0018). Two new M1b
+  rules, `row_exact` and `row_widened`, parse one `align` row into an
+  expression tree, prove it a linear relation over the declared symbols and
+  re-emit it canonically: products distribute over parenthesised sums, nested
+  and split sums merge, factors move under a sum, numeric denominators scale.
+  A row the reader cannot prove is left untouched for the parser to refuse by
+  name. `row_widened` additionally widens tuple, range and restricted binders
+  to base families and drops tail conditions that are pure data filters; it is
+  a separate rule so the provenance tells exact rows from widened ones.
+- **Derived parameters.** A product or ratio of parameters on a term
+  (`\lambda C_k z_k`, `2 M x`, `d_k / T`, a parameter sum under a fraction
+  bar, an index letter used as a number) becomes one deterministically named
+  parameter whose `%@ param ... :: derived: ...` line is appended to the
+  header and recorded as a `derived_parameter` rewrite.
+- **`%@ letter i over=I`** header record (read by M1b, ignored by the codec):
+  index letters known without a binder in the row.
+- New rules `call_args_subscript` (`x_{f}(i, j)` is `x_{f, i, j}`),
+  `prime_after_subscript` (`x_{l}^{'}` is `xp_{l}`) and `inner_linebreak`.
+- `mining.ingest.row_canon.scan_symbols` / `outline_row`: plain reading aids
+  for callers that audit vocabulary, shapes and kinds.
+- A mixed comparator chain (`a = b \le c`) splits into consecutive pairs.
+
+### Fixed
+
+- **`distribute_param` ignored a preceding minus** (#67): `- M (1 - x)` was
+  rewritten to `- M - M x`. The rule no longer fires behind a sign or a
+  factor; the structural reader distributes those rows exactly.
+- Glued label words are never split into index letters (`h_{min}` with `m`,
+  `i`, `n` all bound stayed three indices); the label lexicon is part of the
+  rule resource.
+
 ### Fixed
 
 - **A solve cut short at a limit is `feasible`, not `optimal`.** PuLP reports
