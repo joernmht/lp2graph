@@ -75,7 +75,7 @@ ratio parameter", "bind each index over its own family").
 
 - Rule table `rewrite-2026.11.0` (50 rules). On the lab corpus the rows that
   parse with their header rose from 9 % to 37 % with the lab's deterministic
-  declarations (lab ADR-0024); the reader alone accounts for the first step,
+  declarations (lab ADR-0026); the reader alone accounts for the first step,
   9 % to 18 %.
 - A canonical document is a fixed point: the structural rules compare a row's
   spelling with the emitter's free choices removed and leave an equal row
