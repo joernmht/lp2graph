@@ -262,6 +262,9 @@ class RowContext:
     #: Derived parameters created so far: name -> (shape, definition). Shared
     #: and mutable on purpose: the normalizer collects them across rows.
     derived: dict[str, tuple[tuple[str, ...], str]] = field(default_factory=dict)
+    #: What the emission of the current row read against a declaration
+    #: (cleared per row): a non-empty list makes the row a widened one.
+    departures: list[str] = field(default_factory=list)
 
     def shape(self, name: str) -> tuple[str, ...]:
         if name in self.derived:
@@ -2037,48 +2040,104 @@ def _coefficient(coef: _Sym, ref: _Sym, m: _Mono, ctx: RowContext, scope: dict[s
 
     A canonical coefficient is a bare parameter name; its indices are implied:
     the referent's own when the shapes agree, otherwise the one letter in
-    scope per family. ``t_{k-1} \\cdot x_{i,k}`` or ``n_{p} \\cdot z_{p,q}``
-    (two letters of one family in scope) have no such reading. The parameter
-    *as seen from the referent's position* is still data, so it becomes a
-    derived parameter over the referent's shape.
+    scope per family. Two cases have no such reading and are resolved here.
+
+    *Written against its declaration* (``v`` declared over ``R``, written
+    ``v_{p}`` with ``p \\in P``; ``M`` declared with three indices, written
+    ``M_{i,s}``): the row is the evidence at hand. When every index is a
+    letter this row binds, the coefficient is the derived parameter
+    ``v_over_P`` over the families the row binds those letters over. The
+    departure from the declaration is recorded and makes the row a widened
+    one. A letter nothing binds (a label, ``f_{L}``) stays the parser's
+    finding.
+
+    *Not the unique letter of its family* (``t_{k-1} \\cdot x_{i,k}``,
+    ``n_{p} \\cdot z_{p,q}`` with two letters of one family in scope): when
+    every index of the coefficient is one of the referent's own (or an offset
+    of one, or a fixed element), the parameter *as seen from the referent's
+    position* is still data: a derived parameter over the referent's shape.
+    An index from outside the referent (``d_{i,j} \\cdot y`` under
+    ``\\forall i, j``) does not fit that shape and the term has no place for
+    it: the derived parameter is still used, but as a recorded departure, so
+    the row is a widened one.
     """
     if not coef.subs:
         return coef
     cshape, rshape = ctx.shape(coef.name), ctx.shape(ref.name)
-    if len(cshape) != len(coef.subs) or len(rshape) != len(ref.subs):
-        return coef  # an arity the declarations do not know: the parser's finding
-    if coef.subs == ref.subs and cshape == rshape:
-        return coef
+    if len(rshape) != len(ref.subs):
+        return coef  # the referent's own arity is off: the parser's finding
+    bound = {**scope, **dict(m.sums)}
     in_scope: dict[str, set[str]] = {}
-    for letter, fam in (*scope.items(), *m.sums):
+    for letter, fam in bound.items():
         in_scope.setdefault(fam, set()).add(letter)
     for fam, expr in zip(rshape, ref.subs, strict=True):
         if re.fullmatch(_IDX_ATOM, expr):
             in_scope.setdefault(fam, set()).add(expr)
-    if all(in_scope.get(fam) == {e} for fam, e in zip(cshape, coef.subs, strict=True)):
+
+    def native(shape: tuple[str, ...]) -> bool:
+        if coef.subs == ref.subs and shape == rshape:
+            return True
+        return all(in_scope.get(fam) == {e} for fam, e in zip(shape, coef.subs, strict=True))
+
+    def from_referent() -> bool:
+        atoms = {a for expr in ref.subs for a in re.findall(_IDX_ATOM, expr)}
+        for expr in coef.subs:
+            if re.fullmatch(r"\d+", expr):
+                continue  # a fixed element, t_{0}: the same number wherever it is read
+            lm = re.match(_IDX_ATOM, expr)
+            if lm is None or lm.group() not in atoms:
+                return False
+        return True
+
+    def from_row() -> bool:
+        atoms = {a for expr in ref.subs for a in re.findall(_IDX_ATOM, expr)} | set(bound)
+        for expr in coef.subs:
+            if re.fullmatch(r"\d+", expr):
+                continue
+            lm = re.match(_IDX_ATOM, expr)
+            if lm is None or lm.group() not in atoms:
+                return False
+        return True
+
+    declared = len(cshape) == len(coef.subs) and all(
+        re.fullmatch(r"\d+", expr)
+        or ((lm := re.match(_IDX_ATOM, expr)) and lm.group() in in_scope.get(fam, set()))
+        for fam, expr in zip(cshape, coef.subs, strict=False)
+    )
+    base, shape, note = coef.name, cshape, ""
+    if not declared:
+        fams: list[str] = []
+        for expr in coef.subs:
+            lm = re.fullmatch(rf"({_IDX_ATOM})(?:\s*[+-]\s*\d+)?", expr)
+            row_fam = bound.get(lm.group(1)) if lm else None
+            if row_fam is None:
+                return coef
+            fams.append(row_fam)
+        base, shape = f"{coef.name}_over_{'_'.join(fams)}", tuple(fams)
+        note = f"{coef.name} written over ({', '.join(fams)}); declared over ({', '.join(cshape)})"
+    if native(shape):
+        name, out_shape, out_subs, definition = base, shape, coef.subs, note
+    elif from_referent() or from_row():
+        slug = re.sub(r"[^A-Za-z0-9]", "", "_".join(coef.subs).replace("-", "m").replace("+", "p"))
+        name, out_shape, out_subs = f"{coef.name}_{slug}_on_{ref.name}", rshape, ref.subs
+        definition = f"{coef.name}[{', '.join(coef.subs)}] at {ref.name}[{', '.join(ref.subs)}]"
+        if not from_referent():
+            # an index the referent does not carry: the derived parameter's
+            # shape cannot hold it, which is a departure and is recorded
+            outside = f"{definition}: an index from outside the referent is not in its shape"
+            ctx.departures.append(outside)
+    else:
         return coef
-    # Only a coefficient written consistently with its own declaration is
-    # re-read from the referent's position: every index letter must be in
-    # scope over the family the coefficient declares for that place. A
-    # coefficient indexed by a foreign letter (b over J written b_{e}) is the
-    # parser's finding and stays one.
-    for fam, expr in zip(cshape, coef.subs, strict=True):
-        if re.fullmatch(r"\d+", expr):
-            continue  # a fixed element, t_{0}: the same number wherever it is read
-        lm = re.match(_IDX_ATOM, expr)
-        if lm is None or lm.group() not in in_scope.get(fam, set()):
-            return coef
-    slug = re.sub(r"[^A-Za-z0-9]", "", "_".join(coef.subs).replace("-", "m").replace("+", "p"))
-    name = f"{coef.name}_{slug}_on_{ref.name}"
+    if name == coef.name:
+        return coef
     if ctx.is_symbol(name) and name not in ctx.derived:
-        if not (name in ctx.params and ctx.shape(name) == rshape):
+        if not (name in ctx.params and ctx.shape(name) == out_shape):
             raise _Refuse(f"derived name {name!r} collides with a declared symbol")
     else:
-        ctx.derived[name] = (
-            rshape,
-            f"{coef.name}[{', '.join(coef.subs)}] at {ref.name}[{', '.join(ref.subs)}]",
-        )
-    return _Sym(name, ref.subs)
+        ctx.derived[name] = (out_shape, definition)
+    if not declared:
+        ctx.departures.append(note)
+    return _Sym(name, out_subs)
 
 
 def _emit_mono(m: _Mono, ctx: RowContext, scope: dict[str, str] | None = None) -> tuple[int, str]:
@@ -2446,6 +2505,7 @@ def _canonicalize(
     body: str, ctx: RowContext, *, objective: bool, widen: bool, sense: str, row_id: str
 ) -> tuple[str, bool, list[tuple[str, str]]]:
     text = _TRAILING_RE.sub("", body.strip())
+    ctx.departures.clear()
     toks = _lex(text)
     if not toks:
         raise _Refuse("empty row")
@@ -2503,7 +2563,12 @@ def _canonicalize(
                 if not sym.subs and sym.name in rd.shadowed:
                     raise _Refuse(f"bound letter {sym.name!r} used as a value")
         monos, extras = _epigraph(monos, sense, row_id, rd)
-        return _emit_side(monos, ctx), widened, extras
+        emitted = _emit_side(monos, ctx)
+        if ctx.departures:
+            widened = True
+            if not widen:
+                raise _Refuse("needs widening")
+        return emitted, widened, extras
 
     if not rels:
         raise _Refuse("no relation")
@@ -2578,4 +2643,8 @@ def _canonicalize(
     if pairs or restrictions:
         clauses = [r"\forall " + letter + r" \in " + _set_text(fam) for letter, fam in pairs]
         out += r" \qquad " + r",\; ".join(clauses + restrictions)
+    if ctx.departures:
+        widened = True
+        if not widen:
+            raise _Refuse("needs widening")
     return out, widened, []

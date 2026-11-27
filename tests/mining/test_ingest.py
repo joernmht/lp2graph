@@ -472,7 +472,20 @@ def test_subscripted_coefficient_resolves_via_quantifier_index():
 
 
 def test_subscripted_coefficient_with_foreign_index_is_refused_by_name():
+    # b is declared over another family than the letter it is written with.
+    # The exact rules refuse it; the widening rule reads the coefficient as
+    # data at the referent's position and records the departure (ADR-0018,
+    # point 15), so the provenance tells such a row from an exact one.
     r = _probe(r"  \min\quad & \sum_{e \in \mathcal{E}} b_{e} \cdot x_{e} \tag{cost} \\")
+    assert r.ok, r.failures
+    fired = {rw.rule for rw in r.provenance.rewrites}
+    assert "row_widened" in fired and "row_exact" not in fired
+    (term,) = r.formulation.objective.terms
+    assert term.coefficient == "b_over_E"
+    derived = {p.name: p for p in r.formulation.parameters}["b_over_E"]
+    assert derived.shape == ("E",) and "declared over" in derived.description
+    # a coefficient indexed by a letter nothing binds is still refused by name
+    r = _probe(r"  \min\quad & \sum_{e \in \mathcal{E}} b_{q} \cdot x_{e} \tag{cost} \\")
     assert not r.ok
     assert r.failures[0].stage == "parse"
     assert "subscripted coefficient" in r.failures[0].message

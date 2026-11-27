@@ -396,3 +396,41 @@ def test_a_letter_that_names_a_subscripted_symbol_still_binds():
     assert r.ok, r.failures
     assert _terms(r, "r", "lhs") == [(1, 1, "t", ("i",), ())]
     assert _terms(r, "r", "rhs") == [(1, 1, "f", ("i", "t"), ("T",))]
+
+
+def test_a_coefficient_against_its_declaration_is_a_recorded_departure():
+    header = (
+        _HEADER
+        + "%@ index R ordered=0 cyclic=0 :: r\n"
+        + "%@ param v shape=R kind=vector domain=- :: value\n"
+        + "%@ param g shape=I,J kind=matrix domain=- :: g\n"
+    )
+    # another family: v is declared over R, the row writes v_i with i in I
+    r = _ingest(r"  & \sum_{i \in I} v_{i} y_{i} \leq 1 \tag{r} \\", header=header)
+    assert r.ok, r.failures
+    assert _terms(r, "r", "lhs") == [(1, "v_over_I", "y", ("i",), ("I",))]
+    assert _fired(r) >= {"row_widened"} and "row_exact" not in _fired(r)
+    over = {p.name: p for p in r.formulation.parameters}["v_over_I"]
+    assert over.shape == ("I",) and "declared over (R)" in over.description
+    # another number of indices
+    r = _ingest(r"  & g_{i} y_{i} \leq w , \forall i \in I \tag{r} \\", header=header)
+    assert r.ok, r.failures
+    assert _terms(r, "r", "lhs") == [(1, "g_over_I", "y", ("i",), ())]
+    # a letter nothing binds is a label: still refused by name
+    r = _ingest(r"  & v_{L} y_{i} \leq w , \forall i \in I \tag{r} \\", header=header)
+    assert not r.ok and "subscripted coefficient" in r.failures[0].message
+
+
+def test_an_index_from_outside_the_referent_is_not_exact():
+    # c_{k} x_{i,k}: every index is the referent's own, the reading is exact
+    r = _ingest(r"  & c_{k} x_{i k} \leq w , \forall i \in I , k \in I \tag{r} \\")
+    assert r.ok, r.failures
+    assert _terms(r, "r", "lhs") == [(1, "c_k_on_x", "x", ("i", "k"), ())]
+    assert "row_exact" in _fired(r)
+    # d_{i,k} y_{i} with i and k of one family: k is not y's, so the derived
+    # parameter over y's shape cannot hold it. Kept, as a departure.
+    header = _HEADER + "%@ param e shape=I,I kind=matrix domain=- :: e\n"
+    r = _ingest(r"  & e_{i k} y_{i} \leq w , \forall i \in I , k \in I \tag{r} \\", header=header)
+    assert r.ok, r.failures
+    assert _terms(r, "r", "lhs") == [(1, "e_ik_on_y", "y", ("i",), ())]
+    assert "row_widened" in _fired(r) and "row_exact" not in _fired(r)

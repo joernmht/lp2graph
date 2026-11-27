@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   into one derived parameter `case_<row>_<n>`; a branch with a variable or a
   condition in words is refused. Rule `paren_superscript` (`x^{(t)}` is
   `x^{t}`).
+- **Coefficients written against their declaration** (`v` over `R` written
+  `v_p`, `p \in P`; another number of indices) become a derived parameter
+  `v_over_P` over the families the row binds, as a recorded departure
+  (`rewrite-2026.11.2`). A coefficient indexed by an unbound letter is still
+  refused by name.
 - **Homonyms.** An index family and a parameter or variable may share a name
   (`\mathcal{T}` and `T`); `DocContext.families` keeps the two apart.
   `latex_normalizer.bound_letters(body)` is public.
@@ -57,6 +62,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   so `\sum_{a \in \delta^{-}(v)} x_a - \sum_{a \in \delta^{+}(v)} x_a = 0`
   parsed as `0 = 0`. The rule now declines for one summand under two
   restrictions of one set; the reader keeps the sets apart.
+- **A coefficient with an index from outside its referent was called exact**
+  (`d_{i,j} \cdot y` read as a derived parameter over `y`'s shape, since
+  `rewrite-2026.11.0`). The reading is kept but is a recorded departure now
+  (`row_widened`, `rewrite-2026.11.2`, ADR-0018 point 15).
 - **Unknown decorations were dropped**: `overset_base` read
   `\overset{\leftarrow}{S}` (and a tilde spelled U+02DC) as plain `S`. Left
   arrows, dots and breves are accents now; an unknown sign is left in place.

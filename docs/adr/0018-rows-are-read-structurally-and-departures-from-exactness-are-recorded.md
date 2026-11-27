@@ -73,9 +73,9 @@ ratio parameter", "bind each index over its own family").
    `t_{k-1} x_{i,k}`, `n_{p} z_{p,q}` with two letters of one family in scope
    and a fixed element `t_{0} y_{i,k}` have no such reading. The parameter as
    seen from the referent is still data: it becomes a derived parameter over
-   the referent's shape (`t_km1_on_x`). A coefficient written against its own
-   declaration (`b` over `J` written `b_{e}`) is not re-read; that stays the
-   parser's finding.
+   the referent's shape (`t_km1_on_x`). This is exact only while every index
+   of the coefficient is one of the referent's own; see point 15 for the two
+   cases that are not (amended `rewrite-2026.11.2`).
 
 7. **Piecewise terms are rewritten where, and only where, that is exact.**
    `|e|`, `max(e_1, e_2)`, `min(..)` and an extremum over a binder have no
@@ -147,9 +147,27 @@ ratio parameter", "bind each index over its own family").
    `v_dot`); a sign the table does not know stays in place, so the row is
    refused instead of renamed.
 
+15. **A coefficient that departs from its declaration, or from the referent,
+   is a recorded departure** (`rewrite-2026.11.2`; amends point 6).
+   - *Written against its declaration*: `v` is declared over `R` and the row
+     writes `\sum_{p \in P} v_p x_p`, or `M` is declared with three indices
+     and written `M_{i,s}`. Until now such a row was refused by name. The row
+     is the evidence at hand: when every index is a letter the row binds, the
+     coefficient becomes the derived parameter `v_over_P` over the families
+     the row binds those letters over. A letter nothing binds (a label,
+     `f_{L}`) is still refused.
+   - *An index from outside the referent*: `d_{i,j} \cdot y` under
+     `\forall i, j` with `i` and `j` of one family. The term has no place for
+     the two indices and the derived parameter over the referent's shape
+     cannot hold them. `2026.11.0` produced it all the same and called the
+     row exact, which it is not. The reading is kept, as a departure.
+
+   Both make the row a `row_widened` one and are spelled out in the derived
+   parameter's description, so a consumer can drop exactly these rows.
+
 ## Consequences
 
-- Rule table `rewrite-2026.11.1` (54 rules; `2026.11.0` had 52). On the lab corpus the rows that
+- Rule table `rewrite-2026.11.2` (54 rules; `2026.11.0` had 52). On the lab corpus the rows that
   parse with their header rose from 9 % to 37 % with the lab's deterministic
   declarations (lab ADR-0026); the reader alone accounts for the first step,
   9 % to 18 %.
