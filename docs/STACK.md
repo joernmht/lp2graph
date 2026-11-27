@@ -178,7 +178,7 @@ there would only surface on a manual run. See the quality backlog (2026-07-15).
 
 ## Build backend & packaging
 
-- `hatchling>=1.21`; wheel packages `src/lp2graph`. Version `0.4.0`
+- `hatchling>=1.21`; wheel packages `src/lp2graph`. Version `0.5.0`
   (`Development Status :: 3 - Alpha`). License Apache-2.0.
 - **Packaged data:** `schema/canonical.schema.json` is mapped into the wheel at
   `lp2graph/schema/canonical.schema.json` by

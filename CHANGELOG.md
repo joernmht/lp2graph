@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-27
+
 ### Added
 
 - **Rows are read structurally** (`rewrite-2026.11.0`, ADR-0018). Two new M1b
