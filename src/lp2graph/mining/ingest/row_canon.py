@@ -265,6 +265,9 @@ class RowContext:
     #: What the emission of the current row read against a declaration
     #: (cleared per row): a non-empty list makes the row a widened one.
     departures: list[str] = field(default_factory=list)
+    #: ``False`` for callers that audit or repair declarations: a symbol
+    #: written against its declaration is then left as written.
+    redeclare: bool = True
 
     def shape(self, name: str) -> tuple[str, ...]:
         if name in self.derived:
@@ -2046,7 +2049,7 @@ def _coefficient(coef: _Sym, ref: _Sym, m: _Mono, ctx: RowContext, scope: dict[s
     ``v_{p}`` with ``p \\in P``; ``M`` declared with three indices, written
     ``M_{i,s}``): the row is the evidence at hand. When every index is a
     letter this row binds, the coefficient is the derived parameter
-    ``v_over_P`` over the families the row binds those letters over. The
+    ``v_idx_P`` over the families the row binds those letters over. The
     departure from the declaration is recorded and makes the row a widened
     one. A letter nothing binds (a label, ``f_{L}``) stays the parser's
     finding.
@@ -2106,6 +2109,8 @@ def _coefficient(coef: _Sym, ref: _Sym, m: _Mono, ctx: RowContext, scope: dict[s
     )
     base, shape, note = coef.name, cshape, ""
     if not declared:
+        if not ctx.redeclare:
+            return coef
         fams: list[str] = []
         for expr in coef.subs:
             lm = re.fullmatch(rf"({_IDX_ATOM})(?:\s*[+-]\s*\d+)?", expr)
@@ -2113,7 +2118,7 @@ def _coefficient(coef: _Sym, ref: _Sym, m: _Mono, ctx: RowContext, scope: dict[s
             if row_fam is None:
                 return coef
             fams.append(row_fam)
-        base, shape = f"{coef.name}_over_{'_'.join(fams)}", tuple(fams)
+        base, shape = f"{coef.name}_idx_{'_'.join(fams)}", tuple(fams)
         note = f"{coef.name} written over ({', '.join(fams)}); declared over ({', '.join(cshape)})"
     if native(shape):
         name, out_shape, out_subs, definition = base, shape, coef.subs, note
@@ -2138,6 +2143,37 @@ def _coefficient(coef: _Sym, ref: _Sym, m: _Mono, ctx: RowContext, scope: dict[s
     if not declared:
         ctx.departures.append(note)
     return _Sym(name, out_subs)
+
+
+def _as_written(sym: _Sym, m: _Mono, ctx: RowContext, scope: dict[str, str]) -> _Sym:
+    """A parameter standing alone as a term, written against its declaration
+    (other families, another number of indices): the derived parameter over
+    the families this row binds its letters over, as a recorded departure.
+    The same reading as for a coefficient (:func:`_coefficient`); a variable
+    is never re-declared, and a letter nothing binds leaves the term as it is
+    for the validator to refuse."""
+    if not sym.subs or ctx.is_var(sym.name) or not ctx.redeclare:
+        return sym
+    bound = {**scope, **dict(m.sums)}
+    fams: list[str] = []
+    for expr in sym.subs:
+        lm = re.fullmatch(rf"({_IDX_ATOM})(?:\s*[+-]\s*\d+)?", expr)
+        row_fam = bound.get(lm.group(1)) if lm else None
+        if row_fam is None:
+            return sym
+        fams.append(row_fam)
+    declared = ctx.shape(sym.name)
+    if tuple(fams) == declared:
+        return sym
+    name = f"{sym.name}_idx_{'_'.join(fams)}"
+    note = f"{sym.name} written over ({', '.join(fams)}); declared over ({', '.join(declared)})"
+    if ctx.is_symbol(name) and name not in ctx.derived:
+        if not (name in ctx.params and ctx.shape(name) == tuple(fams)):
+            raise _Refuse(f"derived name {name!r} collides with a declared symbol")
+    else:
+        ctx.derived[name] = (tuple(fams), note)
+    ctx.departures.append(note)
+    return _Sym(name, sym.subs)
 
 
 def _emit_mono(m: _Mono, ctx: RowContext, scope: dict[str, str] | None = None) -> tuple[int, str]:
@@ -2176,9 +2212,8 @@ def _emit_mono(m: _Mono, ctx: RowContext, scope: dict[str, str] | None = None) -
     elif not params and not dens:
         body = _num_text(mag)
     elif len(params) == 1 and not dens:
-        body = (
-            _sym_text(params[0]) if mag == 1 else f"{_num_text(mag)} \\cdot {_sym_text(params[0])}"
-        )
+        alone = _as_written(params[0], m, ctx, scope)
+        body = _sym_text(alone) if mag == 1 else f"{_num_text(mag)} \\cdot {_sym_text(alone)}"
     elif len(params) == 2 and not dens and mag == 1 and not (params[0].subs and params[1].subs):
         a, b = params
         if a.subs:
@@ -2542,12 +2577,33 @@ def _canonicalize(
                 raise _Refuse("relation in an objective")
             cuts = [-1, *[pos for pos, _c, _s in rels], len(alg)]
             segs = [(cuts[k] + 1, cuts[k + 1]) for k in range(len(cuts) - 1)]
-            chosen = segs[-1]
-            for lo, hi in segs[:-1]:
-                if not _is_label(alg[lo:hi]):
-                    chosen = (lo, hi)
-                    break
-            monos = side(*chosen)
+            stated = [(lo, hi) for lo, hi in segs if lo < hi and not _is_label(alg[lo:hi])]
+            if len(stated) > 1:
+                # "Z = Z_1 + d Z_2 = \sum c x + d \sum e y": the paper states
+                # the objective several times and every statement is the
+                # objective. The first one that can be read is taken; a later
+                # one only if it names a variable (not a value, "= 100").
+                first: _Refuse | None = None
+                for k, (lo, hi) in enumerate(stated):
+                    if k and not any(t.kind == "name" and ctx.is_var(t.val) for t in alg[lo:hi]):
+                        continue
+                    derived_before = dict(ctx.derived)
+                    try:
+                        return _canonicalize(
+                            text[alg[lo].start : alg[hi - 1].end],
+                            ctx,
+                            objective=True,
+                            widen=widen,
+                            sense=sense,
+                            row_id=row_id,
+                        )
+                    except _Refuse as exc:
+                        ctx.derived.clear()
+                        ctx.derived.update(derived_before)
+                        first = first or exc
+                assert first is not None
+                raise first
+            monos = side(*(stated[0] if stated else segs[-1]))
         else:
             monos = side(0, len(alg))
         if widened and not widen:

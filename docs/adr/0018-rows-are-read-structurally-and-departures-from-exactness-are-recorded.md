@@ -153,7 +153,7 @@ ratio parameter", "bind each index over its own family").
      writes `\sum_{p \in P} v_p x_p`, or `M` is declared with three indices
      and written `M_{i,s}`. Until now such a row was refused by name. The row
      is the evidence at hand: when every index is a letter the row binds, the
-     coefficient becomes the derived parameter `v_over_P` over the families
+     coefficient becomes the derived parameter `v_idx_P` over the families
      the row binds those letters over. A letter nothing binds (a label,
      `f_{L}`) is still refused.
    - *An index from outside the referent*: `d_{i,j} \cdot y` under
@@ -163,7 +163,20 @@ ratio parameter", "bind each index over its own family").
      row exact, which it is not. The reading is kept, as a departure.
 
    Both make the row a `row_widened` one and are spelled out in the derived
-   parameter's description, so a consumer can drop exactly these rows.
+   parameter's description, so a consumer can drop exactly these rows. The
+   same reading applies to a parameter that stands alone as a term. A
+   *variable* written against its declaration is never re-declared: two
+   variables of one letter would be two unconnected nodes of the model, which
+   is a statement about the model and not about its data.
+
+   Callers that audit or repair declarations must see the mismatch, not the
+   repair: `normalize_latex(..., redeclare=False)` leaves such symbols as
+   written (the lab's declaration rules read shapes off those uses).
+
+16. **An objective stated several times is read from the first statement
+   that can be read.** `min Z = Z_1 + d Z_2 = \sum c x + d \sum e y` states
+   one objective twice; when the first statement names undeclared parts, the
+   next one that holds a variable is taken (never a trailing value).
 
 ## Consequences
 

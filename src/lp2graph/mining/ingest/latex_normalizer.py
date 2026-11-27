@@ -326,6 +326,8 @@ class DocContext:
     derived: dict[str, tuple[tuple[str, ...], str]] = field(default_factory=dict, compare=False)
     #: letter -> the single family the body binds it over (exact binders).
     letter_family: dict[str, str] = field(default_factory=dict, compare=False)
+    #: ``False``: symbols written against their declaration are left as written.
+    redeclare: bool = True
 
     @classmethod
     def build(
@@ -333,6 +335,8 @@ class DocContext:
         text: str,
         body: str,
         derived: dict[str, tuple[tuple[str, ...], str]] | None = None,
+        *,
+        redeclare: bool = True,
     ) -> DocContext:
         declared: set[str] = set()
         shaped: set[str] = set()
@@ -376,6 +380,7 @@ class DocContext:
             has_header=bool(declared),
             derived=derived if derived is not None else {},
             letter_family={**letters, **body_letter_families(body)},
+            redeclare=redeclare,
         )
 
     def row_context(self) -> RowContext:
@@ -388,6 +393,7 @@ class DocContext:
             bound=self.bound,
             letter_family=self.letter_family,
             derived=self.derived,
+            redeclare=self.redeclare,
         )
 
 
@@ -1497,8 +1503,13 @@ def _body_span(text: str) -> tuple[int, int]:
 # ---------------------------------------------------------------------------
 
 
-def normalize_latex(text: str, *, source: str) -> tuple[str, ProvenanceMap]:
+def normalize_latex(text: str, *, source: str, redeclare: bool = True) -> tuple[str, ProvenanceMap]:
     """Apply the rewrite-rule table in order, recording provenance.
+
+    ``redeclare=False`` is for callers that audit or repair declarations: a
+    parameter written against its declared shape is then left as written
+    (and its row for the parser to refuse) instead of being read as a derived
+    parameter ``name_idx_<families>``, so the mismatch stays visible.
 
     Returns the rewritten text and a :class:`ProvenanceMap` whose
     ``rewrites`` list has one :class:`Rewrite` per rule firing. Each
@@ -1524,7 +1535,11 @@ def normalize_latex(text: str, *, source: str) -> tuple[str, ProvenanceMap]:
         pos = 0
         # Context rules read the header and the CURRENT body (earlier rules
         # may have renamed a bound letter, t' -> tp), so build it per rule.
-        ctx = DocContext.build(text, cur, derived) if rule.ctx_replacement is not None else None
+        ctx = (
+            DocContext.build(text, cur, derived, redeclare=redeclare)
+            if rule.ctx_replacement is not None
+            else None
+        )
         for m in rule.pattern.finditer(cur):
             before = m.group(0)
             if rule.ctx_replacement is not None and ctx is not None:

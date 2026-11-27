@@ -408,14 +408,14 @@ def test_a_coefficient_against_its_declaration_is_a_recorded_departure():
     # another family: v is declared over R, the row writes v_i with i in I
     r = _ingest(r"  & \sum_{i \in I} v_{i} y_{i} \leq 1 \tag{r} \\", header=header)
     assert r.ok, r.failures
-    assert _terms(r, "r", "lhs") == [(1, "v_over_I", "y", ("i",), ("I",))]
+    assert _terms(r, "r", "lhs") == [(1, "v_idx_I", "y", ("i",), ("I",))]
     assert _fired(r) >= {"row_widened"} and "row_exact" not in _fired(r)
-    over = {p.name: p for p in r.formulation.parameters}["v_over_I"]
+    over = {p.name: p for p in r.formulation.parameters}["v_idx_I"]
     assert over.shape == ("I",) and "declared over (R)" in over.description
     # another number of indices
     r = _ingest(r"  & g_{i} y_{i} \leq w , \forall i \in I \tag{r} \\", header=header)
     assert r.ok, r.failures
-    assert _terms(r, "r", "lhs") == [(1, "g_over_I", "y", ("i",), ())]
+    assert _terms(r, "r", "lhs") == [(1, "g_idx_I", "y", ("i",), ())]
     # a letter nothing binds is a label: still refused by name
     r = _ingest(r"  & v_{L} y_{i} \leq w , \forall i \in I \tag{r} \\", header=header)
     assert not r.ok and "subscripted coefficient" in r.failures[0].message
@@ -434,3 +434,42 @@ def test_an_index_from_outside_the_referent_is_not_exact():
     assert r.ok, r.failures
     assert _terms(r, "r", "lhs") == [(1, "e_ik_on_y", "y", ("i",), ())]
     assert "row_widened" in _fired(r) and "row_exact" not in _fired(r)
+
+
+def test_a_parameter_alone_against_its_declaration_and_the_audit_switch():
+    header = (
+        _HEADER
+        + "%@ index R ordered=0 cyclic=0 :: r\n%@ param v shape=R kind=vector domain=- :: v\n"
+    )
+    row = r"  & y_{i} \leq v_{i} , \forall i \in I \tag{r} \\"
+    r = _ingest(row, header=header)
+    assert r.ok, r.failures
+    assert _terms(r, "r", "rhs") == [(1, 1, "v_idx_I", ("i",), ())]
+    assert "row_widened" in _fired(r) and "row_exact" not in _fired(r)
+    # a caller that audits declarations switches the reading off: the row
+    # keeps the name as written, so the mismatch stays visible
+    text, prov = normalize_latex(_doc(row, header=header), source="t.tex", redeclare=False)
+    assert "v_idx_I" not in text and "v_{i}" in text
+    assert "derived_parameter" not in {rw.rule for rw in prov.rewrites}
+    # a variable written against its declaration is never re-declared
+    r = _ingest(r"  & y_{i, j} \leq w , \forall i \in I , j \in J \tag{r} \\", header=header)
+    assert not r.ok
+
+
+def test_an_objective_stated_twice_is_read_from_the_statement_that_parses():
+    # Z = (its parts by name) = (the expression): the parts are not declared,
+    # the expression is; a trailing value is never taken for the objective
+    r = _ingest(
+        objective=(
+            r"  \min\quad & Z = Z_{1} + w Z_{2} = \sum_{i \in I} c_{i} y_{i} + w \sum_{i \in I} y_{i}"
+            r" \tag{objective} \\"
+        )
+    )
+    assert r.ok, r.failures
+    assert [(t.coefficient, t.ref) for t in r.formulation.objective.terms] == [
+        ("c", "y"),
+        ("w", "y"),
+    ]
+    r = _ingest(objective=r"  \min\quad & Z = \sum_{i \in I} c_{i} y_{i} = 100 \tag{objective} \\")
+    assert r.ok, r.failures
+    assert [(t.coefficient, t.ref) for t in r.formulation.objective.terms] == [("c", "y")]

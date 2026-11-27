@@ -31,9 +31,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `x^{t}`).
 - **Coefficients written against their declaration** (`v` over `R` written
   `v_p`, `p \in P`; another number of indices) become a derived parameter
-  `v_over_P` over the families the row binds, as a recorded departure
+  `v_idx_P` over the families the row binds, as a recorded departure
   (`rewrite-2026.11.2`). A coefficient indexed by an unbound letter is still
   refused by name.
+  The same holds for a parameter standing alone as a term; a variable is
+  never re-declared. `normalize_latex(..., redeclare=False)` switches the
+  reading off for callers that audit declarations.
+- An objective stated several times (`Z = Z_1 + d Z_2 = \sum ...`) is read
+  from the first statement that can be read.
 - **Homonyms.** An index family and a parameter or variable may share a name
   (`\mathcal{T}` and `T`); `DocContext.families` keeps the two apart.
   `latex_normalizer.bound_letters(body)` is public.

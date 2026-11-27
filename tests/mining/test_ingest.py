@@ -481,8 +481,8 @@ def test_subscripted_coefficient_with_foreign_index_is_refused_by_name():
     fired = {rw.rule for rw in r.provenance.rewrites}
     assert "row_widened" in fired and "row_exact" not in fired
     (term,) = r.formulation.objective.terms
-    assert term.coefficient == "b_over_E"
-    derived = {p.name: p for p in r.formulation.parameters}["b_over_E"]
+    assert term.coefficient == "b_idx_E"
+    derived = {p.name: p for p in r.formulation.parameters}["b_idx_E"]
     assert derived.shape == ("E",) and "declared over" in derived.description
     # a coefficient indexed by a letter nothing binds is still refused by name
     r = _probe(r"  \min\quad & \sum_{e \in \mathcal{E}} b_{q} \cdot x_{e} \tag{cost} \\")
