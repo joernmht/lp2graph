@@ -46,6 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `prime_after_subscript` (`x_{l}^{'}` is `xp_{l}`) and `inner_linebreak`.
 - `mining.ingest.row_canon.scan_symbols` / `outline_row`: plain reading aids
   for callers that audit vocabulary, shapes and kinds.
+  `scan_symbols` follows a product through a fraction's numerator;
+  `denominator_names(row)` lists what divides (not the `/` of a set
+  difference in a binder or the quantifier tail).
 - A mixed comparator chain (`a = b \le c`) splits into consecutive pairs.
 - **Piecewise terms** (ADR-0018 §7). In a constraint, `|e| \le b`,
   `max(e_1, e_2) \le b`, `b \le min(..)` and an extremum over a binder become

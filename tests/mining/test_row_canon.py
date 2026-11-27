@@ -473,3 +473,13 @@ def test_an_objective_stated_twice_is_read_from_the_statement_that_parses():
     r = _ingest(objective=r"  \min\quad & Z = \sum_{i \in I} c_{i} y_{i} = 100 \tag{objective} \\")
     assert r.ok, r.failures
     assert [(t.coefficient, t.ref) for t in r.formulation.objective.terms] == [("c", "y")]
+
+
+def test_reading_aids_see_through_fractions_but_not_into_set_differences():
+    from lp2graph.mining.ingest.row_canon import denominator_names, scan_symbols
+
+    row = r"& Z = w \cdot \frac{Y}{N} + a_{i} / T , \forall k \in \mathcal{K} / K"
+    assert denominator_names(row) == ["N", "T"]  # K / K in the tail is a set difference
+    (w,) = [u for u in scan_symbols(row) if u.name == "w"]
+    assert w.product == ("Y",)  # the numerator is what w multiplies
+    assert denominator_names(r"& \sum_{i \in I / J} x_{i} \le \frac{\frac{a}{b}}{c}") == ["b", "c"]

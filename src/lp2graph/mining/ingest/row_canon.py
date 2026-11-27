@@ -482,6 +482,67 @@ class SymbolUse:
     product: tuple[str, ...] = ()
 
 
+def denominator_names(row: str) -> list[str]:
+    r"""Identifiers that divide: inside the second group of a ``\frac`` or
+    right after a ``/``, in the algebra of the row (not in script groups,
+    binders or the quantifier tail, where ``/`` is a set difference). A
+    reading aid like :func:`scan_symbols`; in a linear model whatever divides
+    is data."""
+    toks = _lex(row)
+    out: list[str] = []
+
+    def end_of(j: int, hi: int) -> int:
+        try:
+            return min(_group_end(toks, j), hi)
+        except _Refuse:
+            return hi
+
+    def names_in(lo: int, hi: int) -> None:
+        m = lo
+        while m < hi:
+            tm = toks[m]
+            if tm.kind == "op" and tm.val in "_^" and m + 1 < hi:
+                m = end_of(m + 1, hi) + 1 if toks[m + 1].kind == "lb" else m + 2
+                continue
+            if tm.kind == "name":
+                out.append(tm.val)
+            m += 1
+
+    def walk(lo: int, hi: int) -> None:
+        k = lo
+        while k < hi:
+            tk = toks[k]
+            if tk.kind == "cmd" and tk.val in (r"\forall", r"\qquad"):
+                return  # the quantifier tail
+            if tk.kind == "op" and tk.val in "_^" and k + 1 < hi:
+                k = end_of(k + 1, hi) + 1 if toks[k + 1].kind == "lb" else k + 2
+                continue
+            if tk.kind == "cmd" and tk.val == r"\underset" and k + 1 < hi:
+                k = end_of(k + 1, hi) + 1
+                continue
+            is_frac = tk.kind == "cmd" and tk.val in (r"\frac", r"\dfrac", r"\tfrac")
+            if is_frac and k + 1 < hi and toks[k + 1].kind == "lb":
+                num_end = end_of(k + 1, hi)
+                walk(k + 2, num_end)
+                if num_end + 1 < hi and toks[num_end + 1].kind == "lb":
+                    den_end = end_of(num_end + 1, hi)
+                    names_in(num_end + 2, den_end)
+                    k = den_end + 1
+                    continue
+                k = num_end + 1
+                continue
+            if tk.kind == "op" and tk.val == "/" and k + 1 < hi:
+                nxt = toks[k + 1]
+                if nxt.kind == "name":
+                    out.append(nxt.val)
+                elif nxt.kind in ("open", "lb"):
+                    names_in(k + 2, end_of(k + 1, hi))
+            k += 1
+
+    walk(0, len(toks))
+    return out
+
+
 def scan_symbols(row: str) -> list[SymbolUse]:
     r"""Every identifier of a row outside script groups and ``\sum`` binders.
 
@@ -523,6 +584,25 @@ def scan_symbols(row: str) -> list[SymbolUse]:
                     k = skip_group(k + 1)
             elif tk.kind == "cmd" and tk.val == r"\underset":
                 k = skip_group(skip_group(k + 1))
+            elif tk.kind == "cmd" and tk.val in (r"\frac", r"\dfrac", r"\tfrac"):
+                # w \frac{Z}{Z_nom}: the numerator is multiplied, the
+                # denominator divides (see :func:`denominator_names`)
+                if k + 1 >= n or toks[k + 1].kind != "lb":
+                    break
+                try:
+                    end = _group_end(toks, k + 1)
+                except _Refuse:
+                    break
+                m = k + 2
+                while m < end:
+                    tm = toks[m]
+                    if tm.kind == "op" and tm.val in "_^":
+                        m = skip_group(m + 1)
+                        continue
+                    if tm.kind == "name":
+                        names.append(tm.val)
+                    m += 1
+                k = skip_group(end + 1)
             elif tk.kind in ("open", "lb"):
                 try:
                     end = _group_end(toks, k)
