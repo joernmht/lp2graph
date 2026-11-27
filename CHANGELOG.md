@@ -29,12 +29,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `mining.ingest.row_canon.scan_symbols` / `outline_row`: plain reading aids
   for callers that audit vocabulary, shapes and kinds.
 - A mixed comparator chain (`a = b \le c`) splits into consecutive pairs.
+- **Piecewise terms** (ADR-0018 §7). In a constraint, `|e| \le b`,
+  `max(e_1, e_2) \le b`, `b \le min(..)` and an extremum over a binder become
+  the exact conjunction; in a minimised objective `w |e|` / `w max(..)` become
+  an explicit auxiliary variable with its defining rows (`derived_variable`).
+  Non-convex occurrences are refused.
+- **Coefficient broadcast.** `t_{k-1} x_{i,k}`, a coefficient indexed by one of
+  two in-scope letters of a family, and a fixed-element coefficient `t_{0} y`
+  become a derived parameter over the referent's shape.
+- `|S|` over an index family is the derived parameter `card_S`; an index
+  letter used as a number is `val_T`; a parameter sum under a fraction bar is
+  one derived parameter.
+- New rule `accent_over_scripts` (`\bar{a_{i}}` is `\bar{a}_{i}`).
 
 ### Fixed
 
 - **`distribute_param` ignored a preceding minus** (#67): `- M (1 - x)` was
   rewritten to `- M - M x`. The rule no longer fires behind a sign or a
   factor; the structural reader distributes those rows exactly.
+- **A fixed or computed slot is not a binder dummy.** `\sum_{i \in S} z_{l,
+  2N+1-m, i}` was emitted as `\sum_{2 \in S}` and could not be read back.
+- A digit subscript is a fixed element only where the declared shape has a
+  place for it: `w_{1}` next to a declared `w_{f,i}` is the symbol `w_1`.
 - Glued label words are never split into index letters (`h_{min}` with `m`,
   `i`, `n` all bound stayed three indices); the label lexicon is part of the
   rule resource.

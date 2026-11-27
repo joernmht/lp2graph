@@ -43,7 +43,7 @@ provenance shows which rows are exact and which were widened.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from functools import lru_cache
 from typing import Final
@@ -271,8 +271,15 @@ class RowContext:
     def is_symbol(self, name: str) -> bool:
         return name in self.params or name in self.variables or name in self.derived
 
+    def is_var(self, name: str) -> bool:
+        """A declared variable, or a derived one (an auxiliary variable the
+        reader introduced; its definition is marked ``var:<domain>:``)."""
+        return name in self.variables or (
+            name in self.derived and self.derived[name][1].startswith("var:")
+        )
+
     def is_param(self, name: str) -> bool:
-        return name in self.params or name in self.derived
+        return name in self.params or (name in self.derived and not self.is_var(name))
 
 
 _EXACT_BINDER_RE = re.compile(
@@ -463,6 +470,10 @@ class SymbolUse:
     in_tail: bool
     #: the identifier this occurrence multiplies (the next factor), if any
     multiplies: str | None = None
+    #: every identifier of the product that follows this occurrence, looking
+    #: through a ``\sum`` and into a bracket: ``w \sum_{i} c_{i} x_{i}`` and
+    #: ``M (1 - x_{i})`` both give ``w`` / ``M`` a product that holds ``x``
+    product: tuple[str, ...] = ()
 
 
 def scan_symbols(row: str) -> list[SymbolUse]:
@@ -484,6 +495,48 @@ def scan_symbols(row: str) -> list[SymbolUse]:
             except _Refuse:
                 return n
         return j + 1
+
+    def product_names(j: int) -> list[str]:
+        """Identifiers of the factors that follow position ``j`` in one product."""
+        names: list[str] = []
+        k = j
+        while k < n:
+            tk = toks[k]
+            if tk.kind == "cmd" and tk.val == r"\cdot":
+                k += 1
+            elif tk.kind == "name":
+                names.append(tk.val)
+                k += 1
+                while k < n and toks[k].kind == "op" and toks[k].val in "_^":
+                    k = skip_group(k + 1)
+            elif tk.kind == "num":
+                k += 1
+            elif tk.kind == "cmd" and tk.val == r"\sum":
+                k += 1
+                while k < n and toks[k].kind == "op" and toks[k].val in "_^":
+                    k = skip_group(k + 1)
+            elif tk.kind == "cmd" and tk.val == r"\underset":
+                k = skip_group(skip_group(k + 1))
+            elif tk.kind in ("open", "lb"):
+                try:
+                    end = _group_end(toks, k)
+                except _Refuse:
+                    break
+                d = 0
+                m = k + 1
+                while m < end:  # every name of the bracket, outside script groups
+                    tm = toks[m]
+                    if tm.kind == "op" and tm.val in "_^":
+                        m = skip_group(m + 1)
+                        continue
+                    if tm.kind == "name":
+                        names.append(tm.val)
+                    m += 1
+                del d
+                k = end + 1
+            else:
+                break
+        return names
 
     while i < n:
         t = toks[i]
@@ -528,7 +581,30 @@ def scan_symbols(row: str) -> list[SymbolUse]:
                 sup = inner.strip()
             j = k
         coef = j < n and toks[j].kind == "cmd" and toks[j].val == r"\cdot"
-        nxt = toks[j + 1] if coef and j + 1 < n else toks[j] if j < n else None
+        k = j + 1 if coef else j
+        # what the occurrence multiplies may sit behind a \sum or inside a
+        # bracket: c \sum_{i} x_{i}, M (1 - x_{i})
+        hops = 0
+        while k < n and hops < 6:
+            tk = toks[k]
+            if tk.kind == "cmd" and tk.val == r"\sum":
+                k += 1
+                while k < n and toks[k].kind == "op" and toks[k].val in "_^":
+                    k = skip_group(k + 1)
+            elif tk.kind == "cmd" and tk.val == r"\underset":
+                k = skip_group(skip_group(k + 1))
+            elif (
+                tk.kind in ("open", "lb")
+                or tk.kind == "num"
+                or (tk.kind == "op" and tk.val in "+-")
+            ):
+                if tk.kind in ("num", "op") and hops == 0:
+                    break  # a number or sign right after the name: not a product
+                k += 1
+            else:
+                break
+            hops += 1
+        nxt = toks[k] if k < n else None
         out.append(
             SymbolUse(
                 t.val,
@@ -537,6 +613,7 @@ def scan_symbols(row: str) -> list[SymbolUse]:
                 coef,
                 in_tail,
                 nxt.val if nxt is not None and nxt.kind == "name" else None,
+                tuple(product_names(j)),
             )
         )
         i = j
@@ -611,6 +688,20 @@ class _Mono:
     dens: tuple[_Sym, ...] = ()
     #: Source text of the binders this term was summed under (widening guard).
     origin: tuple[str, ...] = ()
+    #: The term is ``coef * pw``: an absolute value or an extremum of
+    #: expressions. It has no canonical spelling of its own; a row may carry
+    #: one only where it can be rewritten exactly, anything else is refused.
+    pw: _Piecewise | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _Piecewise:
+    r"""``|e|`` (kind ``abs``, one branch), ``max(e_1, ..)`` / ``min(e_1, ..)``,
+    or an extremum over a binder (``max_{i \in I} e_i``: one branch, ``binders``)."""
+
+    kind: str
+    branches: tuple[tuple[_Mono, ...], ...]
+    binders: tuple[tuple[str, str], ...] = ()
 
 
 _IDX_ATOM = r"[A-Za-z]\w*"
@@ -722,7 +813,15 @@ class _Reader:
         if t.kind == "bar":
             return t.val == "L"
         if t.kind == "cmd":
-            return t.val in (r"\sum", r"\frac", r"\dfrac", r"\tfrac", r"\underset")
+            return t.val in (
+                r"\sum",
+                r"\frac",
+                r"\dfrac",
+                r"\tfrac",
+                r"\underset",
+                r"\max",
+                r"\min",
+            )
         return False
 
     def term(self) -> list[_Mono]:
@@ -766,6 +865,10 @@ class _Reader:
         t = self.take()
         if t.kind == "num":
             return [_Mono(Fraction(t.val))]
+        if t.kind == "name" and t.val.lower() in ("max", "min") and not self.ctx.is_symbol(t.val):
+            return self.extremum(t.val.lower(), None)
+        if t.kind == "cmd" and t.val in (r"\max", r"\min"):
+            return self.extremum(t.val[1:], None)
         if t.kind == "name":
             if not self.ctx.is_symbol(t.val) and t.val in self.ctx.bound:
                 nxt = self.peek()
@@ -793,6 +896,31 @@ class _Reader:
             if nxt is not None and nxt.kind == "op" and nxt.val in "^_":
                 raise _Refuse("script on a parenthesised expression")
             return monos
+        if t.kind == "bar" and t.val == "L":
+            depth = 0
+            for j in range(self.i, len(self.toks)):
+                tj = self.toks[j]
+                if tj.kind in ("open", "lb"):
+                    depth += 1
+                elif tj.kind in ("close", "rb"):
+                    depth -= 1
+                elif tj.kind == "bar" and tj.val == "R" and depth == 0:
+                    break
+            else:
+                raise _Refuse("unclosed absolute value")
+            card = self.cardinality(self.toks[self.i : j])
+            if card is not None:
+                self.i = j + 1
+                return [_Mono(Fraction(1), (card,))]
+            inner = _Reader(self.text, self.toks[self.i : j], self.ctx, widen=self.widen)
+            inner.usage = self.usage
+            inner.shadowed = self.shadowed
+            monos = inner.expr()
+            if inner.i != len(inner.toks):
+                raise _Refuse("unread tokens in absolute value")
+            self.widened = self.widened or inner.widened
+            self.i = j + 1
+            return [_Mono(Fraction(1), pw=_Piecewise("abs", (tuple(monos),)))]
         if t.kind == "cmd" and t.val == r"\sum":
             return self.bigsum(None)
         if t.kind == "cmd" and t.val == r"\underset":
@@ -800,10 +928,17 @@ class _Reader:
             if nxt is None or nxt.kind != "lb":
                 raise _Refuse("underset without argument")
             binder = self.group_text()
-            op = self.group_text()
-            if op.strip() != r"\sum":
-                raise _Refuse(f"underset over {op!r}")
-            return self.bigsum(binder)
+            op = re.sub(
+                r"\\(?:text|mathrm|mathit|mathbf|operatorname)\s*\{([^{}]*)\}",
+                r"\1",
+                self.group_text(),
+            )
+            op = op.replace(" ", "").lstrip("\\").lower()
+            if op == "sum":
+                return self.bigsum(binder)
+            if op in ("max", "min"):
+                return self.extremum(op, binder)
+            raise _Refuse(f"underset over {op!r}")
         if t.kind == "cmd" and t.val in (r"\frac", r"\dfrac", r"\tfrac"):
             num = self.braced_expr()
             den = self.braced_expr()
@@ -849,6 +984,102 @@ class _Reader:
             ctx.derived[name] = (tuple(shape), " ".join(define).lstrip("+ "))
         return [_Mono(Fraction(1), (_Sym(name, tuple(exprs)),))]
 
+    def cardinality(self, toks: list[_Tok]) -> _Sym | None:
+        """``|S|`` with ``S`` an index family (or a labelled or indexed subset
+        of one, ``|E^{stop}_{f}|``) is a number the data fixes: the derived
+        parameter ``card_S``. ``None`` when the bars hold anything else."""
+        ctx = self.ctx
+        wrappers = 0
+        i = 0
+        while (
+            i + 1 < len(toks)
+            and toks[i].kind == "cmd"
+            and toks[i].val in _SET_WRAPPERS
+            and toks[i + 1].kind == "lb"
+        ):
+            i += 2
+            wrappers += 1
+        if i >= len(toks) or toks[i].kind != "name":
+            return None
+        name = toks[i].val
+        base = re.sub(r"_.*$", "", name)
+        if ctx.is_symbol(name) or not (name in ctx.indices or base in ctx.indices):
+            return None
+        i += 1 + wrappers
+        if any(t.kind != "rb" for t in toks[i - wrappers : i]):
+            return None
+        pieces: list[str] = []
+        while i < len(toks) and toks[i].kind == "op" and toks[i].val == "_":
+            if i + 1 < len(toks) and toks[i + 1].kind == "lb":
+                end = _group_end(toks, i + 1)
+                pieces.extend(_sub_pieces(self.text[toks[i + 1].end : toks[end].start]))
+                i = end + 1
+            else:
+                return None
+        if i != len(toks):
+            return None
+        shape: list[str] = []
+        for piece in pieces:
+            fam = ctx.letter_family.get(piece)
+            if fam is None:
+                return None
+            shape.append(fam)
+        derived = "card_" + name
+        if ctx.is_symbol(derived) and derived not in ctx.derived:
+            if not (derived in ctx.params and ctx.shape(derived) == tuple(shape)):
+                return None
+        else:
+            known = ctx.derived.get(derived)
+            if known is not None and known[0] != tuple(shape):
+                return None
+            ctx.derived[derived] = (tuple(shape), f"number of elements of {name}")
+        return _Sym(derived, tuple(pieces))
+
+    def extremum(self, kind: str, binder: str | None) -> list[_Mono]:
+        """``max \\{a, b\\}``, ``\\max_{i \\in I} e_i``, ``\\underset{i}{max} e_i``."""
+        if binder is None and self.at_op("_"):
+            self.take()
+            binder = self.group_text()
+        nxt = self.peek()
+        if nxt is None:
+            raise _Refuse("extremum without arguments")
+        branches: list[list[_Mono]] | None = None
+        if nxt.kind == "open":
+            j = _group_end(self.toks, self.i)
+            inner = self.toks[self.i + 1 : j]
+            depths = _depths(inner)
+            parts: list[list[_Tok]] = [[]]
+            for tok, d in zip(inner, depths, strict=True):
+                if d == 0 and tok.kind == "op" and tok.val == ",":
+                    parts.append([])
+                else:
+                    parts[-1].append(tok)
+            if len(parts) >= 2:
+                branches = []
+                for part in parts:
+                    sub = _Reader(self.text, part, self.ctx, widen=self.widen)
+                    sub.usage = self.usage
+                    sub.shadowed = self.shadowed
+                    if not part:
+                        raise _Refuse("empty argument of an extremum")
+                    branches.append(sub.expr())
+                    if sub.i != len(sub.toks):
+                        raise _Refuse("unread tokens in an extremum")
+                    self.widened = self.widened or sub.widened
+                self.i = j + 1
+        if branches is None:
+            if binder is None:
+                raise _Refuse("extremum of one expression without a binder")
+            if not self.starts_factor(nxt):
+                raise _Refuse("extremum without a body")
+            branches = [self.term()]
+        pairs: list[tuple[str, str]] = []
+        if binder is not None:
+            pairs, widened = _binder_clauses(binder, None, self, tail=False)
+            self.widened = self.widened or widened
+        pw = _Piecewise(kind, tuple(tuple(b) for b in branches), tuple(pairs))
+        return [_Mono(Fraction(1), pw=pw)]
+
     def braced_expr(self) -> list[_Mono]:
         t = self.peek()
         if t is None or t.kind != "lb":
@@ -888,7 +1119,7 @@ class _Reader:
             if any(letter in dict(m.sums) for letter in letters):
                 raise _Refuse("nested sums reuse a binder letter")
             src = " ".join(binder.split()) + ("^" + " ".join(upper.split()) if upper else "")
-            out.append(_Mono(m.coef, m.syms, tuple(pairs) + m.sums, m.dens, (src, *m.origin)))
+            out.append(replace(m, sums=tuple(pairs) + m.sums, origin=(src, *m.origin)))
         return out
 
     def symbol(self, name: str) -> _Sym:
@@ -917,9 +1148,9 @@ class _Reader:
             if t.kind == "open" and t.val == "(":
                 j = _group_end(self.toks, self.i)
                 inner = self.text[t.end : self.toks[j].start].strip()
-                args = _split_top(inner)
-                if args and all(self.index_like(a, nested=False) for a in args):
-                    subs.extend(" ".join(a.split()) for a in args)
+                args = [_norm_piece(a) for a in _split_top(inner, ",;")]
+                if args and all(self.index_like(a, nested=True) for a in args):
+                    subs.extend(args)
                     self.i = j + 1
                     continue
             if (
@@ -955,7 +1186,7 @@ class _Reader:
             return base in ctx.bound and not ctx.is_symbol(base)
         if nested:
             m2 = re.fullmatch(rf"({_IDX_ATOM})_\{{([^{{}}]*)\}}", p)
-            if m2 and ctx.is_symbol(m2.group(1)):
+            if m2 and (ctx.is_symbol(m2.group(1)) or m2.group(1) in ctx.bound):
                 return all(
                     re.fullmatch(_IDX_ATOM, q.strip()) is not None for q in _split_top(m2.group(2))
                 )
@@ -1004,7 +1235,8 @@ class _Reader:
 
 _MATHIT_RE = re.compile(r"\\mathit\{([^{}]*)\}")
 _PIECE_OK_RE = re.compile(
-    r"^(?:[A-Za-z]\w*(?:_\{[A-Za-z0-9_, +-]*\})?|\d+|\\left\|\s*[A-Za-z]\w*\s*\\right\|)"
+    r"^(?:[A-Za-z]\w*(?:_\{(?:[A-Za-z0-9_, +-]|\{[A-Za-z0-9_, +-]*\})*\})?|\d+"
+    r"|\\left\|\s*[A-Za-z]\w*\s*\\right\|)"
     r"(?:\s*[+-]\s*(?:\d+|[A-Za-z]\w*))?$"
 )
 
@@ -1019,6 +1251,12 @@ def _norm_piece(piece: str) -> str:
         if m is None:
             break
         p = m.group(1).strip()
+    # an index given by a labelled map, s_{r}^{d} or i_{a}^{+}: the label is
+    # part of the map's name (s_d_{r}, i_plus_{a}), as for any symbol
+    lm = re.fullmatch(r"([A-Za-z]\w*)(_\{[^{}]*\})\^\{?\s*([A-Za-z]\w*|[+*-])\s*\}?", p)
+    if lm is not None:
+        word = {"+": "plus", "-": "minus", "*": "star"}.get(lm.group(3), lm.group(3))
+        p = f"{lm.group(1)}_{word}{lm.group(2)}"
     return p
 
 
@@ -1026,7 +1264,7 @@ _TUPLE_PIECE_RE = re.compile(
     r"^(?:\\left\s*)?[(〈\[]\s*(.*?)\s*(?:\\right\s*)?[)〉\]]$|^\\left\\langle\s*(.*?)\s*\\right\\rangle$"
 )
 _CALL_PIECE_RE = re.compile(
-    r"^([A-Za-z]\w*)\s*(?:\\left\s*)?\(\s*([A-Za-z0-9_, +-]*?)\s*(?:\\right\s*)?\)$"
+    r"^([A-Za-z]\w*)\s*(?:\\left\s*)?\(\s*((?:[A-Za-z0-9_, +-]|\{[A-Za-z0-9_, +-]*\})*?)\s*(?:\\right\s*)?\)$"
 )
 
 
@@ -1053,15 +1291,15 @@ def _sub_pieces(inner: str) -> list[str]:
             p = cm.group(1) + "_{" + ",".join(a.strip() for a in cm.group(2).split(",")) + "}"
         if "," in p and "{" not in p:
             out.extend(q.strip() for q in p.split(",") if q.strip())
-        elif re.fullmatch(r"[A-Za-z]\w*(?:\s+[A-Za-z]\w*)+", p):
-            out.extend(p.split())
+        elif re.fullmatch(r"[A-Za-z]\w*(?:_\{[^{}]*\})?(?:\s+[A-Za-z]\w*(?:_\{[^{}]*\})?)+", p):
+            out.extend(re.findall(r"[A-Za-z]\w*(?:_\{[^{}]*\})?", p))
         else:
             out.append(p)
     return out
 
 
 def _scale(m: _Mono, k: Fraction) -> _Mono:
-    return _Mono(m.coef * k, m.syms, m.sums, m.dens, m.origin)
+    return replace(m, coef=m.coef * k)
 
 
 def _mul(a: list[_Mono], b: list[_Mono]) -> list[_Mono]:
@@ -1078,6 +1316,8 @@ def _mul(a: list[_Mono], b: list[_Mono]) -> list[_Mono]:
                     for piece in sym.subs:
                         if set(re.findall(_IDX_ATOM, piece)) & letters:
                             raise _Refuse("free letter captured by a sum binder")
+            if x.pw is not None and y.pw is not None:
+                raise _Refuse("product of piecewise terms")
             out.append(
                 _Mono(
                     x.coef * y.coef,
@@ -1085,6 +1325,7 @@ def _mul(a: list[_Mono], b: list[_Mono]) -> list[_Mono]:
                     x.sums + y.sums,
                     x.dens + y.dens,
                     x.origin + y.origin,
+                    x.pw or y.pw,
                 )
             )
     return out
@@ -1105,7 +1346,7 @@ def _div(a: list[_Mono], b: list[_Mono]) -> list[_Mono]:
             for piece in sym.subs:
                 if set(re.findall(_IDX_ATOM, piece)) & xl:
                     raise _Refuse("free letter captured by a sum binder")
-        out.append(_Mono(x.coef / d.coef, x.syms, x.sums, x.dens + d.syms, x.origin))
+        out.append(replace(x, coef=x.coef / d.coef, dens=x.dens + d.syms))
     return out
 
 
@@ -1267,6 +1508,18 @@ def _clauses(src: str, rd: _Reader, *, tail: bool) -> tuple[list[tuple[str, str]
             else:
                 # x_{i} \in \{0, 1\}: a domain statement about a declared symbol
                 if lt and lt[0].kind == "name" and ctx.is_symbol(lt[0].val) and tail:
+                    widened = True
+                    continue
+                # s + 1 \in S: the neighbour of a bound letter exists; a
+                # condition on that letter, which the model has no field for
+                offset = (
+                    len(lt) == 3
+                    and lt[0].kind == "name"
+                    and lt[1].kind == "op"
+                    and lt[1].val in "+-"
+                    and lt[2].kind == "num"
+                )
+                if offset and not ctx.is_symbol(lt[0].val) and named is None:
                     widened = True
                     continue
                 raise _Refuse("binder subject not understood")
@@ -1571,9 +1824,15 @@ def _num_ident(x: Fraction) -> str:
 
 
 def derived_declaration(name: str, shape: tuple[str, ...], definition: str) -> str:
-    """The ``%@ param`` line a derived parameter needs."""
-    kind = "scalar" if not shape else "vector" if len(shape) == 1 else "matrix"
+    """The header line a derived parameter (or auxiliary variable) needs."""
     shape_s = ",".join(shape) if shape else "-"
+    if definition.startswith("var:"):
+        _var, domain, what = definition.split(":", 2)
+        return (
+            f"%@ var {name} shape={shape_s} domain={domain} role=auxiliary "
+            f"drole=auxiliary_linearization lo=- hi=- :: derived: {what}"
+        )
+    kind = "scalar" if not shape else "vector" if len(shape) == 1 else "matrix"
     return f"%@ param {name} shape={shape_s} kind={kind} domain=- :: derived: {definition}"
 
 
@@ -1621,12 +1880,70 @@ def _derive(mag: Fraction, nums: list[_Sym], dens: list[_Sym], ctx: RowContext) 
     return _Sym(name, tuple(exprs))
 
 
-def _emit_mono(m: _Mono, ctx: RowContext) -> tuple[int, str]:
-    variables = [s for s in m.syms if s.name in ctx.variables]
-    params = [s for s in m.syms if s.name not in ctx.variables]
+def _coefficient(coef: _Sym, ref: _Sym, m: _Mono, ctx: RowContext, scope: dict[str, str]) -> _Sym:
+    """The coefficient as the canonical term can carry it.
+
+    A canonical coefficient is a bare parameter name; its indices are implied:
+    the referent's own when the shapes agree, otherwise the one letter in
+    scope per family. ``t_{k-1} \\cdot x_{i,k}`` or ``n_{p} \\cdot z_{p,q}``
+    (two letters of one family in scope) have no such reading. The parameter
+    *as seen from the referent's position* is still data, so it becomes a
+    derived parameter over the referent's shape.
+    """
+    if not coef.subs:
+        return coef
+    cshape, rshape = ctx.shape(coef.name), ctx.shape(ref.name)
+    if len(cshape) != len(coef.subs) or len(rshape) != len(ref.subs):
+        return coef  # an arity the declarations do not know: the parser's finding
+    if coef.subs == ref.subs and cshape == rshape:
+        return coef
+    in_scope: dict[str, set[str]] = {}
+    for letter, fam in (*scope.items(), *m.sums):
+        in_scope.setdefault(fam, set()).add(letter)
+    for fam, expr in zip(rshape, ref.subs, strict=True):
+        if re.fullmatch(_IDX_ATOM, expr):
+            in_scope.setdefault(fam, set()).add(expr)
+    if all(in_scope.get(fam) == {e} for fam, e in zip(cshape, coef.subs, strict=True)):
+        return coef
+    # Only a coefficient written consistently with its own declaration is
+    # re-read from the referent's position: every index letter must be in
+    # scope over the family the coefficient declares for that place. A
+    # coefficient indexed by a foreign letter (b over J written b_{e}) is the
+    # parser's finding and stays one.
+    for fam, expr in zip(cshape, coef.subs, strict=True):
+        if re.fullmatch(r"\d+", expr):
+            continue  # a fixed element, t_{0}: the same number wherever it is read
+        lm = re.match(_IDX_ATOM, expr)
+        if lm is None or lm.group() not in in_scope.get(fam, set()):
+            return coef
+    slug = re.sub(r"[^A-Za-z0-9]", "", "_".join(coef.subs).replace("-", "m").replace("+", "p"))
+    name = f"{coef.name}_{slug}_on_{ref.name}"
+    if ctx.is_symbol(name) and name not in ctx.derived:
+        if not (name in ctx.params and ctx.shape(name) == rshape):
+            raise _Refuse(f"derived name {name!r} collides with a declared symbol")
+    else:
+        ctx.derived[name] = (
+            rshape,
+            f"{coef.name}[{', '.join(coef.subs)}] at {ref.name}[{', '.join(ref.subs)}]",
+        )
+    return _Sym(name, ref.subs)
+
+
+def _emit_mono(m: _Mono, ctx: RowContext, scope: dict[str, str] | None = None) -> tuple[int, str]:
+    scope = scope or {}
+    if m.pw is not None:
+        # the canonical grammar has |coef * ref| as a term of its own
+        if not _single_term_abs(m):
+            raise _Refuse("piecewise term outside a bound")
+        _inner_sign, inner = _emit_mono(m.pw.branches[0][0], ctx, scope)
+        return (-1 if m.coef < 0 else 1), rf"\left| {inner} \right|"
+    if any(s.name == _INDEX_VALUE for s in (*m.syms, *m.dens)):
+        raise _Refuse("index letter used as a value where no binder is known")
+    variables = [s for s in m.syms if ctx.is_var(s.name)]
+    params = [s for s in m.syms if not ctx.is_var(s.name)]
     if len(variables) > 1:
         raise _Refuse("product of variables")
-    if any(s.name in ctx.variables for s in m.dens):
+    if any(ctx.is_var(s.name) for s in m.dens):
         raise _Refuse("division by a variable")
     if m.coef == 0:
         raise _Refuse("zero term")
@@ -1638,10 +1955,13 @@ def _emit_mono(m: _Mono, ctx: RowContext) -> tuple[int, str]:
         var = variables[0]
         if not params and not dens:
             body = _sym_text(var) if mag == 1 else f"{_num_text(mag)} \\cdot {_sym_text(var)}"
-        elif len(params) == 1 and not dens and mag == 1:
-            body = f"{_sym_text(params[0])} \\cdot {_sym_text(var)}"
         else:
-            body = _sym_text(_derive(mag, params, dens, ctx)) + r" \cdot " + _sym_text(var)
+            coef = (
+                params[0]
+                if len(params) == 1 and not dens and mag == 1
+                else _derive(mag, params, dens, ctx)
+            )
+            body = _sym_text(_coefficient(coef, var, m, ctx, scope)) + r" \cdot " + _sym_text(var)
     elif not params and not dens:
         body = _num_text(mag)
     elif len(params) == 1 and not dens:
@@ -1661,13 +1981,23 @@ def _emit_mono(m: _Mono, ctx: RowContext) -> tuple[int, str]:
     return sign, body
 
 
-def _emit_side(monos: list[_Mono], ctx: RowContext) -> str:
+def _single_term_abs(m: _Mono) -> bool:
+    """``|coef * ref|`` with nothing outside the bars but a sign."""
+    if m.pw is None or m.pw.kind != "abs" or len(m.pw.branches[0]) != 1:
+        return False
+    if abs(m.coef) != 1 or m.syms or m.sums or m.dens:
+        return False
+    inner = m.pw.branches[0][0]
+    return inner.coef > 0 and not inner.sums and inner.pw is None and len(inner.syms) >= 1
+
+
+def _emit_side(monos: list[_Mono], ctx: RowContext, scope: dict[str, str] | None = None) -> str:
     monos = [m for m in monos if m.coef != 0]
     if not monos:
         return "0"
     parts: list[str] = []
     for k, m in enumerate(monos):
-        sign, body = _emit_mono(m, ctx)
+        sign, body = _emit_mono(m, ctx, scope)
         if k == 0:
             parts.append(("- " if sign < 0 else "") + body)
         else:
@@ -1718,16 +2048,187 @@ def _index_values(
                 return _Sym(name, (letter,))
 
             new.append(
-                _Mono(
-                    m.coef,
-                    tuple(fix(s) for s in m.syms),
-                    m.sums,
-                    tuple(fix(s) for s in m.dens),
-                    m.origin,
-                )
+                replace(m, syms=tuple(fix(s) for s in m.syms), dens=tuple(fix(s) for s in m.dens))
             )
         out.append(new)
     return out
+
+
+def _piecewise_bound(
+    sides: list[list[_Mono]], cmps: list[str]
+) -> tuple[list[list[_Mono]], list[str], list[tuple[str, str]]]:
+    """A piecewise term bounding from the convex side is a conjunction.
+
+    ``|e| \\le b`` is ``-b \\le e \\le b``; ``max(e_1, e_2) \\le b`` is
+    ``e_1 \\le b`` and ``e_2 \\le b``; ``b \\le min(e_1, e_2)`` likewise;
+    an extremum over a binder quantifies the one inequality over it. These are
+    the places such a term has an exact linear spelling: alone on the smaller
+    (max, abs) or larger (min) side of a single inequality whose other side
+    holds none. Returns the new sides, comparators and quantifier pairs to
+    add; every other occurrence stays in the terms and is refused at emission.
+    """
+    flat = [m for monos in sides for m in monos if m.pw is not None and not _single_term_abs(m)]
+    if not flat:
+        return sides, cmps, []
+    if len(flat) != 1 or len(sides) != 2 or len(cmps) != 1:
+        raise _Refuse("piecewise term outside a bound")
+    k = 0 if any(m.pw is not None for m in sides[0]) else 1
+    (mono,) = flat
+    pw = mono.pw
+    assert pw is not None
+    alone = len([m for m in sides[k] if m.coef != 0]) == 1
+    plain = mono.coef == 1 and not (mono.syms or mono.sums or mono.dens)
+    smaller = (k == 0 and cmps[0] == "le") or (k == 1 and cmps[0] == "ge")
+    larger = (k == 0 and cmps[0] == "ge") or (k == 1 and cmps[0] == "le")
+    nested = any(m.pw is not None for b in pw.branches for m in b)
+    if not (alone and plain) or nested or any(m.pw is not None for m in sides[1 - k]):
+        raise _Refuse("piecewise term outside a bound")
+    bound = sides[1 - k]
+    branches = [list(b) for b in pw.branches]
+    extra = list(pw.binders)
+    if pw.kind == "abs" and smaller:
+        return [[_scale(m, Fraction(-1)) for m in bound], branches[0], bound], ["le", "le"], extra
+    if pw.kind == "max" and smaller:
+        if len(branches) == 1:
+            return [branches[0], bound], ["le"], extra
+        if len(branches) == 2:
+            return [branches[0], bound, branches[1]], ["le", "ge"], extra
+    if pw.kind == "min" and larger:
+        if len(branches) == 1:
+            return [bound, branches[0]], ["le"], extra
+        if len(branches) == 2:
+            return [branches[0], bound, branches[1]], ["ge", "le"], extra
+    raise _Refuse("piecewise term outside a bound")
+
+
+def _free_letters(m: _Mono, ctx: RowContext) -> list[str]:
+    """Index letters a term uses without binding them (its own sums and the
+    binders of a piecewise factor bind theirs)."""
+    out: list[str] = []
+    bound_here = {letter for letter, _fam in m.sums}
+
+    def visit(x: _Mono, bound: set[str]) -> None:
+        local = bound | {letter for letter, _fam in x.sums}
+        for sym in (*x.syms, *x.dens):
+            for piece in sym.subs:
+                for atom in re.findall(_IDX_ATOM, piece):
+                    free = atom in ctx.bound and not ctx.is_symbol(atom) and atom not in local
+                    if free and atom not in out:
+                        out.append(atom)
+        if x.pw is not None:
+            inner = local | {letter for letter, _fam in x.pw.binders}
+            for branch in x.pw.branches:
+                for y in branch:
+                    visit(y, inner)
+
+    visit(m, bound_here)
+    return out
+
+
+def _objective_scope(monos: list[_Mono], ctx: RowContext) -> tuple[list[_Mono], bool]:
+    """An objective is a number, so a term with a free index letter is summed.
+
+    ``\\sum_{i, k} |a_{ik}| + |d_{ik}|`` means the sum over both terms: the
+    author's ``\\sum`` reaches further than the grammar's. A free letter is
+    bound by the nearest sum written before the term that binds that letter;
+    with none, the row is refused. Returns the terms and whether any scope
+    was extended (a reading of the notation, recorded as widening).
+    """
+    out: list[_Mono] = []
+    extended = False
+    for k, m in enumerate(monos):
+        free = _free_letters(m, ctx)
+        if not free:
+            out.append(m)
+            continue
+        add: list[tuple[str, str]] = []
+        for letter in free:
+            fam = next(
+                (f for prev in reversed(monos[:k]) for le, f in prev.sums if le == letter), None
+            )
+            if fam is None:
+                raise _Refuse(f"letter {letter!r} of an objective term is not summed")
+            add.append((letter, fam))
+        out.append(replace(m, sums=(*add, *m.sums)))
+        extended = True
+    return out, extended
+
+
+def _epigraph(
+    monos: list[_Mono], sense: str, row_id: str, rd: _Reader
+) -> tuple[list[_Mono], list[tuple[str, str]]]:
+    """A piecewise term of an objective, moved into constraints.
+
+    Minimising ``w |e|`` or ``w max(e_1, e_2)`` with ``w \\ge 0`` is
+    minimising ``w u`` subject to ``u \\ge e`` and ``u \\ge -e`` (or
+    ``u \\ge e_k``): the standard exact reformulation with an explicit
+    auxiliary variable. The mirror cases (maximising ``-w |e|``, ``w min(..)``)
+    are covered; the non-convex ones are refused. A symbolic weight is taken
+    to be non-negative, which the derived variable's description states.
+
+    Returns the objective's terms with each piecewise term replaced by its
+    auxiliary variable, and the defining rows as ``(tag suffix, row text)``.
+    """
+    ctx = rd.ctx
+    out: list[_Mono] = []
+    rows: list[tuple[str, str]] = []
+    n = 0
+    for m in monos:
+        pw = m.pw
+        if pw is None or _single_term_abs(m):
+            out.append(m)
+            continue
+        if any(ctx.is_var(s.name) for s in (*m.syms, *m.dens)):
+            raise _Refuse("piecewise term multiplied by a variable")
+        upper = pw.kind in ("abs", "max")  # the auxiliary variable bounds from above
+        positive = m.coef > 0
+        convex = (sense == "min") == (positive == upper)
+        if not convex or any(x.pw is not None for b in pw.branches for x in b):
+            raise _Refuse("piecewise term the objective cannot linearise")
+        n += 1
+        outer = dict(m.sums)
+        inner_letters = {letter for letter, _fam in pw.binders}
+        letters: list[str] = []
+        for branch in pw.branches:
+            for x in branch:
+                local = {letter for letter, _fam in x.sums} | inner_letters
+                for sym in (*x.syms, *x.dens):
+                    for piece in sym.subs:
+                        for atom in re.findall(_IDX_ATOM, piece):
+                            if atom in local or ctx.is_symbol(atom):
+                                continue
+                            if atom in outer:
+                                if atom not in letters:
+                                    letters.append(atom)
+                            elif atom in ctx.bound:
+                                raise _Refuse(f"letter {atom!r} of a piecewise term is not summed")
+        letters = [x for x in outer if x in letters]  # the order the sums bind them in
+        name = f"aux_{row_id}_{n}"
+        if ctx.is_symbol(name) and name not in ctx.derived:
+            raise _Refuse(f"derived name {name!r} collides with a declared symbol")
+        domain = "non_negative" if pw.kind == "abs" else "continuous"
+        what = {"abs": "absolute value", "max": "maximum", "min": "minimum"}[pw.kind]
+        ctx.derived[name] = (
+            tuple(outer[x] for x in letters),
+            f"var:{domain}:{what} term {n} of the objective {row_id}, weight taken as non-negative",
+        )
+        aux = _Sym(name, tuple(letters))
+        out.append(replace(m, pw=None, syms=(*m.syms, aux)))
+        quantified = [(x, outer[x]) for x in letters] + list(pw.binders)
+        scope = dict(quantified)
+        tail = ""
+        if quantified:
+            tail = r" \qquad " + r",\; ".join(
+                r"\forall " + letter + r" \in " + _set_text(fam) for letter, fam in quantified
+            )
+        lhs = _emit_side([_Mono(Fraction(1), (aux,))], ctx, scope)
+        branches = [list(b) for b in pw.branches]
+        if pw.kind == "abs":
+            branches = [branches[0], [_scale(x, Fraction(-1)) for x in branches[0]]]
+        cmp = r"\ge" if upper else r"\le"
+        for k, side in enumerate(branches, start=1):
+            rows.append((f"aux{n}_{k}", f"{lhs} {cmp} {_emit_side(side, ctx, scope)}{tail}"))
+    return out, rows
 
 
 def _merge_guard(sides: list[list[_Mono]], ctx: RowContext) -> None:
@@ -1740,9 +2241,9 @@ def _merge_guard(sides: list[list[_Mono]], ctx: RowContext) -> None:
     seen: dict[str, tuple[str, ...]] = {}
     for monos in sides:
         for m in monos:
-            if m.coef == 0 or not m.sums:
+            if m.coef == 0 or not m.sums or m.pw is not None:
                 continue
-            _sign, body = _emit_mono(_Mono(abs(m.coef), m.syms, m.sums, m.dens), ctx)
+            _sign, body = _emit_mono(replace(m, coef=abs(m.coef)), ctx)
             first = seen.setdefault(body, m.origin)
             if first != m.origin:
                 raise _Refuse("widening would merge sums over different sets")
@@ -1756,18 +2257,29 @@ _TRAILING_RE = re.compile(r"(?:[\s.,;:]|\\quad|\\qquad|\\;|\\,)+$")
 
 
 def canonicalize_row(
-    body: str, ctx: RowContext, *, objective: bool, widen: bool
-) -> tuple[str, bool] | None:
+    body: str,
+    ctx: RowContext,
+    *,
+    objective: bool,
+    widen: bool,
+    sense: str = "min",
+    row_id: str = "row",
+) -> tuple[str, bool, list[tuple[str, str]]] | None:
     """Canonical spelling of one row body (the text between ``&`` and
     ``\\tag``), or ``None`` when the row is left to the parser.
 
-    Returns ``(text, widened)``. With ``widen=False`` only exact rewrites are
-    produced; a row that needs a widened binder or a dropped tail condition
-    returns ``None`` and is retried by the widening rule.
+    Returns ``(text, widened, extra rows)``. With ``widen=False`` only exact
+    rewrites are produced; a row that needs a widened binder or a dropped tail
+    condition returns ``None`` and is retried by the widening rule. The extra
+    rows, ``(tag suffix, row text)``, define the auxiliary variables an
+    objective's piecewise terms were replaced by (``sense`` says which way the
+    objective runs, ``row_id`` names them).
     """
     snapshot = dict(ctx.derived)
     try:
-        return _canonicalize(body, ctx, objective=objective, widen=widen)
+        return _canonicalize(
+            body, ctx, objective=objective, widen=widen, sense=sense, row_id=row_id
+        )
     except _Refuse:
         ctx.derived.clear()
         ctx.derived.update(snapshot)
@@ -1778,7 +2290,9 @@ def canonicalize_row(
         return None
 
 
-def _canonicalize(body: str, ctx: RowContext, *, objective: bool, widen: bool) -> tuple[str, bool]:
+def _canonicalize(
+    body: str, ctx: RowContext, *, objective: bool, widen: bool, sense: str, row_id: str
+) -> tuple[str, bool, list[tuple[str, str]]]:
     text = _TRAILING_RE.sub("", body.strip())
     toks = _lex(text)
     if not toks:
@@ -1827,12 +2341,18 @@ def _canonicalize(body: str, ctx: RowContext, *, objective: bool, widen: bool) -
             monos = side(0, len(alg))
         if widened and not widen:
             raise _Refuse("needs widening")
+        monos, scoped = _objective_scope(monos, ctx)
+        if scoped:
+            widened = True
+            if not widen:
+                raise _Refuse("needs widening")
         (monos,) = _index_values([monos], [], rd)
         for m in monos:
             for sym in (*m.syms, *m.dens):
                 if not sym.subs and sym.name in rd.shadowed:
                     raise _Refuse(f"bound letter {sym.name!r} used as a value")
-        return _emit_side(monos, ctx), widened
+        monos, extras = _epigraph(monos, sense, row_id, rd)
+        return _emit_side(monos, ctx), widened, extras
 
     if not rels:
         raise _Refuse("no relation")
@@ -1844,6 +2364,7 @@ def _canonicalize(body: str, ctx: RowContext, *, objective: bool, widen: bool) -
     bounds.append(len(alg))
     sides = [side(bounds[k], bounds[k + 1]) for k in range(0, len(bounds), 2)]
     cmps = [c for _, c, _s in rels]
+    sides, cmps, quantified = _piecewise_bound(sides, cmps)
 
     pairs: list[tuple[str, str]] = []
     restrictions: list[str] = []
@@ -1851,6 +2372,10 @@ def _canonicalize(body: str, ctx: RowContext, *, objective: bool, widen: bool) -
         tail_src = text[tail[0].start : tail[-1].end]
         pairs, restrictions, tail_widened = _clauses(tail_src, rd, tail=True)
         widened = widened or tail_widened
+    for q_letter, q_fam in quantified:  # the binder of an extremum quantifies its inequality
+        if q_letter in {p[0] for p in pairs}:
+            raise _Refuse("an extremum rebinds a quantified letter")
+        pairs.append((q_letter, q_fam))
     if widened and not widen:
         raise _Refuse("needs widening")
     # every restriction must name two quantified letters
@@ -1883,10 +2408,23 @@ def _canonicalize(body: str, ctx: RowContext, *, objective: bool, widen: bool) -
                     raise _Refuse(f"bound letter {sym.name!r} used as a value")
     if widened:
         _merge_guard(sides, ctx)
-    out = _emit_side(sides[0], ctx)
+    # the letters in scope of every term: the tail's, or (no tail) the free
+    # letters the implicit quantifier will bind over their one usage family
+    scope = dict(pairs)
+    if not tail and not quantified:
+        for monos in sides:
+            for m in monos:
+                bound_here = {letter for letter, _fam in m.sums}
+                for sym in (*m.syms, *m.dens):
+                    for piece in sym.subs:
+                        lm = re.match(_IDX_ATOM, piece)
+                        fams = rd.usage.get(lm.group()) if lm else None
+                        if lm and lm.group() not in bound_here and fams and len(fams) == 1:
+                            scope[lm.group()] = next(iter(fams))
+    out = _emit_side(sides[0], ctx, scope)
     for k, cmp in enumerate(cmps):
-        out += f" {_REL_OUT[cmp]} " + _emit_side(sides[k + 1], ctx)
+        out += f" {_REL_OUT[cmp]} " + _emit_side(sides[k + 1], ctx, scope)
     if pairs or restrictions:
         clauses = [r"\forall " + letter + r" \in " + _set_text(fam) for letter, fam in pairs]
         out += r" \qquad " + r",\; ".join(clauses + restrictions)
-    return out, widened
+    return out, widened, []

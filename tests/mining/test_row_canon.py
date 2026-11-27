@@ -204,3 +204,104 @@ def test_scan_and_outline_read_a_row_without_interpreting_it():
     o = outline_row(r"u_{i} = \sum_{j \in \mathcal{J}} x_{i,j} , i \in I", frozenset({"u", "x"}))
     assert o is not None and o.comparators == ("eq",) and o.alone == (True, False)
     assert [u.name for u in o.sides[1]] == ["x"]
+
+
+def test_an_absolute_value_bound_is_the_two_sided_chain():
+    r = _ingest(r"  & \left| y_{i} - c_{i} \right| \le H \forall i \in I \tag{r} \\")
+    assert r.ok, r.failures
+    assert [(c.name, c.comparator) for c in r.formulation.constraints] == [
+        ("r_lo", "le"),
+        ("r_up", "le"),
+    ]
+    lo, up = r.formulation.constraints
+    assert [(t.sign, t.ref) for t in lo.lhs] == [(-1, "H")]
+    assert [(t.sign, t.ref) for t in lo.rhs] == [(1, "y"), (-1, "c")]
+    assert [(t.sign, t.ref) for t in up.rhs] == [(1, "H")]
+    # anywhere else an absolute value has no linear spelling and is refused
+    for row in (
+        r"  & \left| y_{i} - c_{i} \right| \ge H \forall i \in I \tag{r} \\",
+        r"  & z + \left| y_{i} \right| \le H \forall i \in I \tag{r} \\",
+    ):
+        _text, prov = normalize_latex(_doc(row), source="t.tex")
+        assert not {rw.rule for rw in prov.rewrites} & {"row_exact", "row_widened"}, row
+
+
+def test_a_coefficient_the_term_cannot_index_becomes_a_parameter_over_the_referent():
+    # t_{k-1} x_{i,k}: the canonical coefficient is a bare name whose indices
+    # are implied; an offset (or two letters of one family) has no such reading
+    header = _HEADER + "%@ param tm shape=T kind=vector domain=- :: times\n"
+    r = _ingest(
+        r"  & \sum_{t \in T} tm_{t - 1} f_{i t} \le H \forall i \in I \tag{r} \\", header=header
+    )
+    assert r.ok, r.failures
+    assert _terms(r, "r", "lhs") == [(1, "tm_tm1_on_f", "f", ("i", "t"), ("T",))]
+    assert {p.name: p.shape for p in r.formulation.parameters}["tm_tm1_on_f"] == ("I", "T")
+    # the plain case keeps the paper's own parameter
+    r = _ingest(
+        r"  & \sum_{j \in J} d_{i j} x_{i j} \le c_{i} \cdot y_{i} \forall i \in I \tag{r} \\"
+    )
+    assert r.ok, r.failures
+    assert _terms(r, "r", "lhs") == [(1, "d", "x", ("i", "j"), ("J",))]
+    assert _terms(r, "r", "rhs") == [(1, "c", "y", ("i",), ())]
+
+
+def test_extrema_bounding_from_the_convex_side_are_conjunctions():
+    r = _ingest(
+        r"  & \max \left\{ y_{i} , c_{i} \right\} \le z \forall i \in I \tag{a} \\",
+        r"  & z \le \min \left( y_{i} , H \right) \forall i \in I \tag{b} \\",
+        r"  & \max_{j \in J} d_{i j} x_{i j} \le y_{i} \forall i \in I \tag{c} \\",
+    )
+    assert r.ok, r.failures
+    got = [
+        (c.name, c.comparator, [t.ref for t in c.lhs], [t.ref for t in c.rhs])
+        for c in r.formulation.constraints
+    ]
+    assert got == [
+        ("a_1", "le", ["y"], ["z"]),
+        ("a_2", "ge", ["z"], ["c"]),
+        ("b_1", "ge", ["y"], ["z"]),
+        ("b_2", "le", ["z"], ["H"]),
+        ("c", "le", ["x"], ["y"]),
+    ]
+    (c,) = [c for c in r.formulation.constraints if c.name == "c"]
+    assert [(q.index, q.over) for q in c.quantifiers] == [("i", "I"), ("j", "J")]
+    # the non-convex side has no linear spelling
+    row = r"  & z = \max \left\{ y_{i} , c_{i} \right\} \forall i \in I \tag{a} \\"
+    _text, prov = normalize_latex(_doc(row), source="t.tex")
+    assert not {rw.rule for rw in prov.rewrites} & {"row_exact", "row_widened"}
+
+
+def test_a_minimised_deviation_becomes_an_explicit_auxiliary_variable():
+    r = _ingest(
+        objective=r"  \min\quad & \sum_{i \in I} c_{i} \left| y_{i} - H \right| + z \tag{objective} \\"
+    )
+    assert r.ok, r.failures
+    aux = {v.name: v for v in r.formulation.variables}["aux_objective_1"]
+    assert (aux.shape, aux.domain, aux.role) == (("I",), "non_negative", "auxiliary")
+    assert [(t.sign, t.coefficient, t.ref) for t in r.formulation.objective.terms] == [
+        (1, "c", "aux_objective_1"),
+        (1, 1, "z"),
+    ]
+    rows = {c.name: c for c in r.formulation.constraints}
+    assert set(rows) == {"objective_aux1_1", "objective_aux1_2"}
+    up = rows["objective_aux1_1"]
+    assert up.comparator == "ge" and [(t.sign, t.ref) for t in up.rhs] == [(1, "y"), (-1, "H")]
+    assert [(q.index, q.over) for q in up.quantifiers] == [("i", "I")]
+    lo = rows["objective_aux1_2"]
+    assert [(t.sign, t.ref) for t in lo.rhs] == [(-1, "y"), (1, "H")]
+    fired = _fired(r)
+    assert "derived_variable" in fired
+    # the canonical document reads back unchanged
+    again = ingest_latex(to_canonical_latex(r.formulation), source="again.tex")
+    assert again.ok and again.formulation == r.formulation
+
+
+def test_min_max_objective_and_the_non_convex_direction():
+    r = _ingest(objective=r"  \min\quad & \max_{i \in I} y_{i} \tag{objective} \\")
+    assert r.ok, r.failures
+    (row,) = r.formulation.constraints
+    assert row.comparator == "ge" and [t.ref for t in row.lhs] == ["aux_objective_1"]
+    assert [(q.index, q.over) for q in row.quantifiers] == [("i", "I")]
+    # maximising a maximum is not a linear program
+    r = _ingest(objective=r"  \max\quad & \max_{i \in I} y_{i} \tag{objective} \\")
+    assert not r.ok

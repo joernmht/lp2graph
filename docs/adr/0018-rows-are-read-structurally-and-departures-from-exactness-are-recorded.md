@@ -67,7 +67,46 @@ ratio parameter", "bind each index over its own family").
    chains already did. The codec refused them before; nothing about them is
    ambiguous.
 
-6. **`distribute_param` no longer fires behind a sign or a factor** (issue
+6. **A coefficient the term cannot index is read from the referent's
+   position.** A canonical coefficient is a bare parameter name whose indices
+   are implied (the referent's, or the one letter in scope per family).
+   `t_{k-1} x_{i,k}`, `n_{p} z_{p,q}` with two letters of one family in scope
+   and a fixed element `t_{0} y_{i,k}` have no such reading. The parameter as
+   seen from the referent is still data: it becomes a derived parameter over
+   the referent's shape (`t_km1_on_x`). A coefficient written against its own
+   declaration (`b` over `J` written `b_{e}`) is not re-read; that stays the
+   parser's finding.
+
+7. **Piecewise terms are rewritten where, and only where, that is exact.**
+   `|e|`, `max(e_1, e_2)`, `min(..)` and an extremum over a binder have no
+   canonical spelling beyond the single-term `|c x|`.
+   - In a constraint, alone on the convex side of one inequality, they are a
+     conjunction: `|e| \le b` is `-b \le e \le b`, `max(e_1, e_2) \le b` is
+     the mixed chain `e_1 \le b \ge e_2`, `\max_{i} e_i \le b` quantifies
+     the inequality over `i`. An equation with an extremum, or the non-convex
+     side, is refused.
+   - In an objective that is minimised (or the mirror cases), the term is
+     replaced by an explicit auxiliary variable with its defining
+     inequalities (`u \ge e`, `u \ge -e`): the standard exact reformulation.
+     The variable is a *derived variable* (`aux_<row>_<n>`, role `auxiliary`,
+     `derived_variable` rewrite) and its rows follow the objective row under
+     tags `<row>_aux<n>_<k>`. A symbolic weight is taken to be non-negative,
+     and the variable's description says so. The model that results is
+     equivalent to the paper's, not identical to it: it has variables and rows
+     the paper does not write, each marked as derived.
+
+8. **Cardinalities and index values are data.** `|S|` over an index family
+   (or a labelled or indexed subset) is the derived parameter `card_S`; an
+   index letter used as a number next to an explicit operator, in a row that
+   binds it, is `val_T`.
+
+9. **In an objective, a `\sum` reaches the terms that need it.** An objective
+   is a number, so a term with a free index letter is summed; it is bound by
+   the nearest preceding sum that binds that letter
+   (`\sum_{i,k} |a_{ik}| + |d_{ik}|`). This is a reading of the notation and
+   is recorded as widening.
+
+10. **`distribute_param` no longer fires behind a sign or a factor** (issue
    #67): `- M (1 - x)` became `- M - M x`. The structural reader handles those
    rows exactly.
 

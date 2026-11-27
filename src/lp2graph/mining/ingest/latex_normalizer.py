@@ -758,13 +758,26 @@ def _row_structural_repl(m: re.Match[str], ctx: DocContext, *, widen: bool) -> s
         return m.group(0)
     head, body, tail = m.group(1), m.group(2), m.group(3)
     objective = "\\min" in head or "\\max" in head
-    done = canonicalize_row(body, ctx.row_context(), objective=objective, widen=widen)
+    tag = re.search(r"\\tag\{([^{}]*)\}", tail)
+    row_id = tag.group(1).replace("\\_", "_") if tag else "row"
+    done = canonicalize_row(
+        body,
+        ctx.row_context(),
+        objective=objective,
+        widen=widen,
+        sense="max" if "\\max" in head else "min",
+        row_id=re.sub(r"\W", "_", row_id),
+    )
     if done is None:
         return m.group(0)
-    text, _widened = done
-    if _row_key(text) == _row_key(body):
+    text, _widened, extras = done
+    if _row_key(text) == _row_key(body) and not extras:
         return m.group(0)
-    return head + " " + text + tail
+    out = head + " " + text + tail
+    for suffix, row in extras:
+        # the rows that define an auxiliary variable follow the row that uses it
+        out += "\n  & " + row + " \\tag{" + (row_id + "_" + suffix).replace("_", "\\_") + "} \\\\"
+    return out
 
 
 def _row_exact_repl(m: re.Match[str], ctx: DocContext) -> str:
@@ -923,7 +936,10 @@ def _label_subscript_repl(m: re.Match[str], ctx: DocContext) -> str:
         if w is None:
             return m.group(0)  # unresolvable piece: the parser refuses it by name
         if w.isdigit():
-            if bname in ctx.shaped:
+            # a digit is a fixed element only where the declared shape has a
+            # place for it: w_{1} next to a declared w_{f,i} is another symbol
+            arity = len(_split_top_commas(sub))
+            if bname in ctx.shaped and arity == len(ctx.shapes.get(bname, ())):
                 keep.append(qs)  # fixed-element reference against a declared shape
             else:
                 labels.append(w)
@@ -1073,6 +1089,17 @@ REWRITE_RULES: tuple[RewriteRule, ...] = (
     # valid in EVERY position (binder, quantifier index, subscript expr,
     # referent), where \mathit{...} is not. Runs AFTER the Greek rules so
     # \tilde{\beta} arrives here as \tilde{\mathit{beta}} -> beta_tilde) --
+    # An accent drawn over a symbol together with its scripts decorates the
+    # symbol: \bar{a_{j,k}} is \bar{a}_{j,k}. Runs before accent_ident, which
+    # then names it a_bar.
+    _rule(
+        "accent_over_scripts",
+        r"\\(widehat|widetilde|overline|underline|tilde|bar|hat|vec)(?![a-zA-Z])\s*\{\s*"
+        r"(\\mathit\{[^{}]*\}|[A-Za-z][A-Za-z0-9]*)\s*"
+        r"((?:[_^]\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})+)\s*\}",
+        lambda m: "\\" + m.group(1) + "{" + m.group(2) + "}" + m.group(3),
+        "accent over a scripted symbol moves onto the symbol (\\bar{a_{i}} -> \\bar{a}_{i})",
+    ),
     _rule(
         "accent_ident",
         r"\\(widehat|widetilde|overline|underline|mathring|tilde|check|breve"
@@ -1377,7 +1404,7 @@ def normalize_latex(text: str, *, source: str) -> tuple[str, ProvenanceMap]:
         for line in lines:
             prov = prov.with_rewrite(
                 Rewrite(
-                    rule="derived_parameter",
+                    rule="derived_variable" if line.startswith("%@ var ") else "derived_parameter",
                     before="",
                     after=line,
                     span=SourceSpan(
