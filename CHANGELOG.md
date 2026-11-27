@@ -37,6 +37,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   The same holds for a parameter standing alone as a term; a variable is
   never re-declared. `normalize_latex(..., redeclare=False)` switches the
   reading off for callers that audit declarations.
+- **One letter for two variables** (`rewrite-2026.11.3`, ADR-0018 point 17):
+  when the header declares `x_idx_I_T` next to `x`, a use of `x` written over
+  exactly the families `(I, T)` is read as that variable. The reader never
+  declares the second variable itself.
 - An objective stated several times (`Z = Z_1 + d Z_2 = \sum ...`) is read
   from the first statement that can be read.
 - **Homonyms.** An index family and a parameter or variable may share a name

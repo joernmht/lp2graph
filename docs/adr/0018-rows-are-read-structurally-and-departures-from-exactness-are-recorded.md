@@ -178,9 +178,21 @@ ratio parameter", "bind each index over its own family").
    one objective twice; when the first statement names undeclared parts, the
    next one that holds a variable is taken (never a trailing value).
 
+17. **One letter for two variables is read from the header, never invented**
+   (`rewrite-2026.11.3`). Papers reuse a letter (`x_{i,j}` chooses an arc,
+   `x_{f,t}` a departure time). A variable is never re-declared by the reader
+   (point 15), so the header must say that there are two: next to `x` it
+   declares `x_idx_<families>`, and a use of `x` whose written indices the
+   row binds over exactly these families is read as that variable. The
+   reading is exact, because the declaration is the caller's statement and
+   the reader only tells the two apart. Whether two forms of a letter are two
+   variables or one variable with an index left out is evidence the caller
+   weighs (lab ADR-0026, rule R9); without the declared sibling the row is
+   refused as before.
+
 ## Consequences
 
-- Rule table `rewrite-2026.11.2` (54 rules; `2026.11.0` had 52). On the lab corpus the rows that
+- Rule table `rewrite-2026.11.3` (54 rules; `2026.11.0` had 52). On the lab corpus the rows that
   parse with their header rose from 9 % to 37 % with the lab's deterministic
   declarations (lab ADR-0026); the reader alone accounts for the first step,
   9 % to 18 %.

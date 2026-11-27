@@ -483,3 +483,40 @@ def test_reading_aids_see_through_fractions_but_not_into_set_differences():
     (w,) = [u for u in scan_symbols(row) if u.name == "w"]
     assert w.product == ("Y",)  # the numerator is what w multiplies
     assert denominator_names(r"& \sum_{i \in I / J} x_{i} \le \frac{\frac{a}{b}}{c}") == ["b", "c"]
+
+
+def test_one_letter_for_two_variables_reads_the_declared_sibling():
+    # The header declares a second variable of the letter y for (I, T): a row
+    # that writes y over those families means that one, an exact reading.
+    header = (
+        _HEADER
+        + "%@ var y_idx_I_T shape=I,T domain=binary role=primary drole=- lo=- hi=- :: "
+        + "second variable written y\n"
+    )
+    r = _ingest(
+        r"  & \sum_{t \in T} y_{i t} \leq 1 , \forall i \in I \tag{a} \\",
+        r"  & y_{i} \leq w , \forall i \in I \tag{b} \\",
+        r"  & c_{i} y_{i t} \leq y_{i} , \forall i \in I , t \in T \tag{c} \\",
+        header=header,
+    )
+    assert r.ok, r.failures
+    assert _terms(r, "a", "lhs") == [(1, 1, "y_idx_I_T", ("i", "t"), ("T",))]
+    assert _terms(r, "b", "lhs") == [(1, 1, "y", ("i",), ())]
+    # one row can relate the two, and the coefficient is read against the sibling
+    assert [t[2] for t in _terms(r, "c", "lhs")] == ["y_idx_I_T"]
+    assert [t[2] for t in _terms(r, "c", "rhs")] == ["y"]
+    assert "row_widened" not in _fired(r)
+
+
+def test_without_a_declared_sibling_a_variable_is_never_split():
+    # no header line for a second y: the row is refused, not re-declared
+    r = _ingest(r"  & \sum_{t \in T} y_{i t} \leq 1 , \forall i \in I \tag{a} \\")
+    assert not r.ok
+    assert "y_idx_I_T" not in str(r.failures)
+    # a sibling declared over other families than the row writes is not it
+    header = (
+        _HEADER
+        + "%@ var y_idx_I_T shape=I,J domain=binary role=primary drole=- lo=- hi=- :: other\n"
+    )
+    r = _ingest(r"  & \sum_{t \in T} y_{i t} \leq 1 , \forall i \in I \tag{a} \\", header=header)
+    assert not r.ok

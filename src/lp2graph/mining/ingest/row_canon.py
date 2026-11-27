@@ -2256,6 +2256,33 @@ def _as_written(sym: _Sym, m: _Mono, ctx: RowContext, scope: dict[str, str]) -> 
     return _Sym(name, sym.subs)
 
 
+def _homonym_variable(sym: _Sym, m: _Mono, ctx: RowContext, scope: dict[str, str]) -> _Sym:
+    """A variable written over other families than its declaration, when the
+    header declares a second variable of that letter for exactly these
+    families (``x_idx_E_E`` next to ``x``): the row means that one.
+
+    Nothing is invented here: a paper that uses one letter for two variables
+    says so in its header, and the reader only tells the two apart by the
+    families the row binds the written indices over. Without the declared
+    sibling the term stays as written and the validator refuses it."""
+    if not sym.subs or sym.name not in ctx.variables:
+        return sym
+    bound = {**scope, **dict(m.sums)}
+    fams: list[str] = []
+    for expr in sym.subs:
+        lm = re.fullmatch(rf"({_IDX_ATOM})(?:\s*[+-]\s*\d+)?", expr)
+        row_fam = bound.get(lm.group(1)) if lm else None
+        if row_fam is None:
+            return sym
+        fams.append(row_fam)
+    if tuple(fams) == ctx.shape(sym.name):
+        return sym
+    sibling = f"{sym.name}_idx_{'_'.join(fams)}"
+    if sibling in ctx.variables and ctx.shape(sibling) == tuple(fams):
+        return _Sym(sibling, sym.subs)
+    return sym
+
+
 def _emit_mono(m: _Mono, ctx: RowContext, scope: dict[str, str] | None = None) -> tuple[int, str]:
     scope = scope or {}
     if m.pw is not None:
@@ -2279,7 +2306,7 @@ def _emit_mono(m: _Mono, ctx: RowContext, scope: dict[str, str] | None = None) -
     dens = list(m.dens)
     body: str
     if variables:
-        var = variables[0]
+        var = _homonym_variable(variables[0], m, ctx, scope)
         if not params and not dens:
             body = _sym_text(var) if mag == 1 else f"{_num_text(mag)} \\cdot {_sym_text(var)}"
         else:
