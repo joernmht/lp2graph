@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   header and recorded as a `derived_parameter` rewrite.
 - **`%@ letter i over=I`** header record (read by M1b, ignored by the codec):
   index letters known without a binder in the row.
+- **Case distinctions of constants** (`rewrite-2026.11.1`): rule
+  `cases_groups` plus the reader turn `= 1 if i = o, -1 if i = d, 0 otherwise`
+  into one derived parameter `case_<row>_<n>`; a branch with a variable or a
+  condition in words is refused. Rule `paren_superscript` (`x^{(t)}` is
+  `x^{t}`).
+- **Homonyms.** An index family and a parameter or variable may share a name
+  (`\mathcal{T}` and `T`); `DocContext.families` keeps the two apart.
+  `latex_normalizer.bound_letters(body)` is public.
 - New rules `call_args_subscript` (`x_{f}(i, j)` is `x_{f, i, j}`),
   `prime_after_subscript` (`x_{l}^{'}` is `xp_{l}`) and `inner_linebreak`.
 - `mining.ingest.row_canon.scan_symbols` / `outline_row`: plain reading aids
@@ -43,6 +51,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - New rule `accent_over_scripts` (`\bar{a_{i}}` is `\bar{a}_{i}`).
 
 ### Fixed
+
+- **Widening could cancel a balance row** (since `rewrite-2026.09`):
+  `restricted_set_widen` rewrote in-arc and out-arc sets to the same family,
+  so `\sum_{a \in \delta^{-}(v)} x_a - \sum_{a \in \delta^{+}(v)} x_a = 0`
+  parsed as `0 = 0`. The rule now declines for one summand under two
+  restrictions of one set; the reader keeps the sets apart.
+- **Unknown decorations were dropped**: `overset_base` read
+  `\overset{\leftarrow}{S}` (and a tilde spelled U+02DC) as plain `S`. Left
+  arrows, dots and breves are accents now; an unknown sign is left in place.
 
 - **`distribute_param` ignored a preceding minus** (#67): `- M (1 - x)` was
   rewritten to `- M - M x`. The rule no longer fires behind a sign or a

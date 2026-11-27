@@ -132,6 +132,7 @@ _OVERSET_ACCENTS: dict[str, str] = {
     "\\sim": "tilde",
     "\\tilde": "tilde",
     "\u0303": "tilde",
+    "\u02dc": "tilde",
     "^": "hat",
     "\\wedge": "hat",
     "\\hat": "hat",
@@ -145,6 +146,19 @@ _OVERSET_ACCENTS: dict[str, str] = {
     "→": "vec",
     "\\rightarrow": "vec",
     "\\vec": "vec",
+    # A left arrow marks the opposite direction of the same letter (inbound
+    # and outbound trains): its own name, never the plain letter. ``\lvec``
+    # and ``\lrvec`` are internal spellings only accent_ident reads.
+    "\\leftarrow": "lvec",
+    "\u20d6": "lvec",
+    "←": "lvec",
+    "\\leftrightarrow": "lrvec",
+    "\u0307": "dot",
+    "\\cdot": "dot",
+    "\\cdot\\cdot": "ddot",
+    "\u0308": "ddot",
+    "\u0306": "breve",
+    "\u030c": "check",
 }
 
 _UNDERSET_ACCENTS: dict[str, str] = {
@@ -161,6 +175,26 @@ def _accent_alts(table: dict[str, str]) -> str:
 
 def _overset_accent_repl(m: re.Match[str]) -> str:
     return "\\" + _OVERSET_ACCENTS[m.group(1).strip()] + "{" + m.group(2) + "}"
+
+
+_RELATION_BASE_RE = re.compile(
+    r"\s*(?:=|<|>|\\(?:leq?|geq?|leqslant|geqslant|neq?|approx|equiv|sim|triangleq)(?![A-Za-z]))\s*"
+)
+_ANNOTATION_RE = re.compile(
+    r"\s*(?:|︷|⏞|\\(?:text|mathrm|textrm|mathit)\s*\{[^{}]*\}|[A-Za-z]{2,}\.?|\(\w+\))\s*"
+)
+
+
+def _overset_base_repl(m: re.Match[str]) -> str:
+    """Drop what is written above a base only when it is an annotation: words
+    (``def``), a brace, an equation reference, or anything above a relation.
+    A single sign above a symbol is part of its name (an arrow, a dot, a
+    label): one that overset_accent does not know is left in place, so the
+    row stays outside the grammar instead of being read as the plain symbol."""
+    note, base = m.group(1), m.group(2)
+    if _ANNOTATION_RE.fullmatch(note) or _RELATION_BASE_RE.fullmatch(base):
+        return "{" + base + "}"
+    return m.group(0)
 
 
 def _underset_accent_repl(m: re.Match[str]) -> str:
@@ -275,6 +309,10 @@ class DocContext:
     #: ``%@ param`` names and ``%@ var`` names (for the product rule).
     params: frozenset[str] = frozenset()
     variables: frozenset[str] = frozenset()
+    #: ``%@ index`` names. A family and a symbol may share a name (the periods
+    #: \mathcal{T} and the horizon T), so this is not ``declared`` minus the
+    #: symbols.
+    families: frozenset[str] = frozenset()
     #: Declared shape (index families per subscript position) of params/vars.
     shapes: dict[str, tuple[str, ...]] = field(default_factory=dict)
     #: Whether the document carries any ``%@`` declaration at all. Without
@@ -300,6 +338,7 @@ class DocContext:
         shaped: set[str] = set()
         params: set[str] = set()
         variables: set[str] = set()
+        families: set[str] = set()
         shapes: dict[str, tuple[str, ...]] = {}
         letters: dict[str, str] = {}
         for line in text.splitlines():
@@ -316,6 +355,8 @@ class DocContext:
                 params.add(name)
             elif kind == "var":
                 variables.add(name)
+            else:
+                families.add(name)
             if kind != "index":
                 sm = re.search(r"\bshape=(\S+)", rest)
                 if sm is not None and sm.group(1) != "-":
@@ -323,27 +364,14 @@ class DocContext:
                     shapes[name] = tuple(f for f in sm.group(1).split(",") if f)
         # Index letters the header states (``%@ letter i over=I``) are bound in
         # every row, whether or not a binder in the body names them.
-        bound: set[str] = set(letters)
-        for bm in _BOUND_IN_RE.finditer(body):
-            bound.update(_plain_name(t) for t in _split_top_commas(bm.group(1)))
-        for bm in _BOUND_TUPLE_RE.finditer(body):
-            inner = bm.group(1) if bm.group(1) is not None else bm.group(2)
-            for t in _split_top_commas(inner):
-                if re.fullmatch(_TOK, t.strip()):
-                    bound.add(_plain_name(t))
-        for bm in _BOUND_NAMED_RE.finditer(body):
-            bound.add(_plain_name(bm.group(1)))  # a = (i, j) \in A binds a as well
-        for bm in _BOUND_FORALL_RE.finditer(body):
-            bound.update(_plain_name(t) for t in _split_top_commas(bm.group(1)))
-        for bm in _BIGOP_SUB_RE.finditer(body):
-            for rm in _RANGE_BINDER_RE.finditer(bm.group(1)):
-                bound.add(_plain_name(rm.group(1)))
+        bound = set(letters) | bound_letters(body)
         return cls(
             declared=frozenset(declared),
             shaped=frozenset(shaped),
             bound=frozenset(bound),
             params=frozenset(params),
             variables=frozenset(variables),
+            families=frozenset(families),
             shapes=shapes,
             has_header=bool(declared),
             derived=derived if derived is not None else {},
@@ -355,12 +383,38 @@ class DocContext:
         return RowContext(
             params=self.params,
             variables=self.variables,
-            indices=self.declared - self.params - self.variables,
+            indices=self.families,
             shapes=self.shapes,
             bound=self.bound,
             letter_family=self.letter_family,
             derived=self.derived,
         )
+
+
+def bound_letters(body: str) -> set[str]:
+    r"""Every letter ``body`` binds: ``\in`` binders and quantifiers, tuple
+    binders ``(i, j) \in``, ``\forall i, j`` lists, big-operator ranges
+    ``\sum_{i = 1}^{n}``, and letters that take an offset inside a script."""
+    bound: set[str] = set()
+    for bm in _BOUND_IN_RE.finditer(body):
+        bound.update(_plain_name(t) for t in _split_top_commas(bm.group(1)))
+    for bm in _BOUND_TUPLE_RE.finditer(body):
+        inner = bm.group(1) if bm.group(1) is not None else bm.group(2)
+        for t in _split_top_commas(inner):
+            if re.fullmatch(_TOK, t.strip()):
+                bound.add(_plain_name(t))
+    for bm in _BOUND_NAMED_RE.finditer(body):
+        bound.add(_plain_name(bm.group(1)))  # a = (i, j) \in A binds a as well
+    for bm in _BOUND_FORALL_RE.finditer(body):
+        bound.update(_plain_name(t) for t in _split_top_commas(bm.group(1)))
+    for bm in _BIGOP_SUB_RE.finditer(body):
+        for rm in _RANGE_BINDER_RE.finditer(bm.group(1)):
+            bound.add(_plain_name(rm.group(1)))
+    # A letter that takes an offset inside a script (x^{t + 1}, d_{k - 1})
+    # is index arithmetic: labels have no successor.
+    for om in _OFFSET_SCRIPT_RE.finditer(body):
+        bound.add(om.group(1))
+    return bound
 
 
 _DECL_RE = re.compile(r"^\s*%@\s*(index|param|var)\s+([A-Za-z_]\w*)(.*)$")
@@ -376,6 +430,7 @@ _BOUND_TUPLE_RE = re.compile(
 _BOUND_NAMED_RE = re.compile(
     r"(" + _TOK + r")\s*=\s*(?:\\left)?\(\s*[^()]*?\s*(?:\\right)?\)\s*\\in(?![A-Za-z])"
 )
+_OFFSET_SCRIPT_RE = re.compile(r"[_^]\{(?:[^{}]*,)?\s*([A-Za-z])\s*[+-]\s*\d+\s*(?:,[^{}]*)?\}")
 _BOUND_FORALL_RE = re.compile(r"\\forall\s*(" + _TOK + r"(?:\s*,\s*" + _TOK + r")*)")
 _BIGOP_SUB_RE = re.compile(
     r"\\(?:sum|prod|max|min|bigcup|bigcap)_\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}"
@@ -788,6 +843,39 @@ def _row_widened_repl(m: re.Match[str], ctx: DocContext) -> str:
     return _row_structural_repl(m, ctx, widen=True)
 
 
+_CASES_RE = re.compile(
+    r"(?:\\left\s*\\\{\s*(?:\\right\s*\.)?\s*\\begin\{(?:matrix|array)\}(?:\{[^{}]*\})?(?P<a>.*?)"
+    r"\\end\{(?:matrix|array)\}(?:\s*\\right\s*\.?)?"
+    r"|\\begin\{cases\}(?P<b>.*?)\\end\{cases\})",
+    re.DOTALL,
+)
+_CASE_SPLIT_RE = re.compile(
+    r"\s*,?\s*&+\s*|\s*,\s*(?=\\text\{\s*(?:if|for|otherwise|else)|(?:if|for|otherwise)\b|\\forall)"
+    r"|\s+(?=\\text\{\s*(?:if|otherwise|else)\b|(?:if|i\s+f|otherwise|o\s+t\s+h\s+e\s+r\s+w\s+i\s+s\s+e)\b)"
+)
+
+
+def _cases_repl(m: re.Match[str]) -> str:
+    body = m.group("a") if m.group("a") is not None else m.group("b")
+    after = m.string[m.end() :]
+    if m.group("a") is not None and not re.match(r"\s*(?:,|\.|;|\\forall|\\tag|\\qquad|$)", after):
+        return m.group(0)  # an opening brace that is not a case distinction
+    branches = [b.strip() for b in re.split(r"\\\\", body) if b.strip()]
+    if len(branches) < 2:
+        return m.group(0)
+    out: list[str] = []
+    for branch in branches:
+        branch = re.sub(r"^&+\s*", "", branch)
+        parts = _CASE_SPLIT_RE.split(branch, maxsplit=1)
+        if len(parts) != 2 or not parts[0].strip() or not parts[1].strip():
+            return m.group(0)
+        value, cond = parts[0].strip(), parts[1].replace("&", " ").strip()
+        if value.count("{") != value.count("}") or cond.count("{") != cond.count("}"):
+            return m.group(0)
+        out.append("{" + value + "}{" + cond + "}")
+    return "\\casesof" + "".join(out)
+
+
 _INNER_BREAK_RE = re.compile(r"\\\\(?=[^\n]*\\tag\{)")
 _CALL_ARGS_RE = re.compile(
     r"(?<![\\A-Za-z0-9_])(\\mathit\{[^{}]*\}|[A-Za-z][A-Za-z0-9]*(?:_(?!\{)[A-Za-z0-9]+)*)"
@@ -830,9 +918,75 @@ _RESTRICTED_SET_RE = re.compile(
 )
 
 
+_SUMMAND_END_RE = re.compile(
+    r"[+=<>-]|\\(?:leq?|geq?|neq?|forall|tag|qquad|quad|sum|underset)(?![A-Za-z])|,"
+)
+
+
+def _summand_after(text: str, pos: int, lo: int, hi: int) -> tuple[str, str] | None:
+    """``(binder, summand)`` of the ``\\sum_{...}`` whose subscript holds
+    ``pos``, compared without whitespace; ``None`` when ``pos`` is not inside
+    a sum's subscript (a quantifier, for instance)."""
+    # the sum is written \sum_{binder} or \underset{binder}{\sum}
+    spelled = max(
+        ((text.rfind(head, lo, pos), head) for head in ("\\sum_{", "\\underset{")),
+        key=lambda found: found[0],
+    )
+    start, head = spelled
+    if start < 0:
+        return None
+    depth, i = 0, start + len(head) - 1
+    while i < hi:
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        i += 1
+    if i >= hi or i < pos:
+        return None  # the subscript closed before ``pos``: not this sum's binder
+    binder = "".join(text[start + len(head) : pos].split())
+    if head == "\\underset{":
+        operator = re.compile(r"\s*\{\s*\\sum\s*\}").match(text, i + 1)
+        if operator is None:
+            return None
+        i = operator.end() - 1
+    depth, j = 0, i + 1
+    while j < hi:
+        ch = text[j]
+        if ch in "{([":
+            depth += 1
+        elif ch in "})]":
+            if depth == 0:
+                break
+            depth -= 1
+        elif depth == 0 and _SUMMAND_END_RE.match(text, j):
+            break
+        j += 1
+    summand = re.sub(r"\\(?:left|right)(?![A-Za-z])", "", text[i + 1 : j])
+    return binder, "".join(summand.split())
+
+
 def _restricted_set_widen_repl(m: re.Match[str], ctx: DocContext) -> str:
     if not ctx.has_header:
         return m.group(0)
+    # A balance row sums the same summand over two restrictions of one base
+    # set (in-arcs \delta^{-}(v) minus out-arcs \delta^{+}(v)). Widened here,
+    # both sums would name the same terms and cancel to nothing: such a pair
+    # is left to the structural reader, which tracks where each sum came from.
+    lo = m.string.rfind("\n", 0, m.start()) + 1
+    hi = m.string.find("\n", m.end())
+    hi = hi if hi >= 0 else len(m.string)
+    mine = _summand_after(m.string, m.start(), lo, hi)
+    if mine is not None:
+        for o in _RESTRICTED_SET_RE.finditer(m.string, lo, hi):
+            if o.start() == m.start() or o.group(2) != m.group(2):
+                continue
+            if "".join(o.group(3).split()) == "".join(m.group(3).split()):
+                continue
+            if _summand_after(m.string, o.start(), lo, hi) == mine:
+                return m.group(0)
     return m.group(1) + m.group(2)
 
 
@@ -1045,9 +1199,9 @@ REWRITE_RULES: tuple[RewriteRule, ...] = (
     ),
     _rule(
         "overset_base",
-        r"\\overset\s*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}",
-        lambda m: "{" + m.group(1) + "}",
-        "\\overset{a}{b} to {b} (keep the base symbol)",
+        r"\\overset\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}",
+        _overset_base_repl,
+        "\\overset{note}{b} to {b} (an annotation in words, or one on a relation, is dropped)",
     ),
     # Consecutive big operators do not parse; the canonical spelling is ONE
     # \sum with a comma-joined multi-binder (order preserved: the second
@@ -1103,10 +1257,17 @@ REWRITE_RULES: tuple[RewriteRule, ...] = (
     _rule(
         "accent_ident",
         r"\\(widehat|widetilde|overline|underline|mathring|tilde|check|breve"
-        r"|acute|grave|ddot|dot|bar|hat|vec)(?![a-zA-Z])"
+        r"|acute|grave|ddot|dot|bar|hat|lrvec|lvec|vec)(?![a-zA-Z])"
         r"\s*(?:\{\s*(" + _ACCENT_INNER + r")\s*\}|\s+([A-Za-z])(?![a-zA-Z]))",
         _accent_ident_repl,
         "accented identifier to plain name_accent (\\hat{tc} -> tc_hat)",
+    ),
+    # A superscript written in brackets is the same script: x^{(t)}, Z^{(1)}.
+    _rule(
+        "paren_superscript",
+        r"\^\{\s*(?:\\left)?\(\s*(\\mathit\{[^{}]*\}|[A-Za-z0-9]+(?:\s*[+-]\s*\d+)?)\s*(?:\\right)?\)\s*\}",
+        lambda m: "^{" + m.group(1) + "}",
+        "bracketed superscript unwrapped (x^{(t)} -> x^{t})",
     ),
     _rule(
         "prime_ident",
@@ -1132,6 +1293,15 @@ REWRITE_RULES: tuple[RewriteRule, ...] = (
     # as \left(a_bar\right)_{i k} after accent_ident and becomes a_bar_{i k}.
     # Display-environment wrappers the extraction left inside one row
     # (\begin{matrix} ... \end{matrix}) carry no algebra.
+    # A case distinction keeps its branches as groups, \casesof{value}{condition}..,
+    # before the line breaks and environment wrappers that delimit them are
+    # dropped; the structural reader decides what it can be.
+    _rule(
+        "cases_groups",
+        _CASES_RE.pattern,
+        _cases_repl,
+        "case distinction regrouped as \\casesof{value}{condition}...",
+    ),
     # A line break inside one row is typography (the lab assembles one row
     # per line, so a \\\\ before the row's own \\tag never ends a row).
     _rule(

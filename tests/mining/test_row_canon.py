@@ -151,8 +151,8 @@ def test_widening_that_would_merge_two_sums_is_refused():
         r"  & \sum_{j \in J_{i}^{+}} x_{i j} - \sum_{j \in J_{i}^{-}} x_{i j} = 0"
         r" \forall i \in I \tag{r} \\"
     )
-    _text, prov = normalize_latex(_doc(row), source="t.tex")
-    assert "row_widened" not in {rw.rule for rw in prov.rewrites}
+    text, _prov = normalize_latex(_doc(row), source="t.tex")
+    assert r"\sum_{j \in \mathcal{J}} x_{i,j} - \sum_{j \in \mathcal{J}} x_{i,j}" not in text
 
 
 def test_an_index_letter_used_as_a_number_is_the_value_parameter_of_its_family():
@@ -305,3 +305,94 @@ def test_min_max_objective_and_the_non_convex_direction():
     # maximising a maximum is not a linear program
     r = _ingest(objective=r"  \max\quad & \max_{i \in I} y_{i} \tag{objective} \\")
     assert not r.ok
+
+
+def test_a_case_distinction_of_constants_is_one_derived_parameter():
+    # node balance: the right-hand side depends on the node only, so it is data
+    r = _ingest(
+        r"  & \sum_{j \in J} x_{i j} = \begin{cases} 1 & \text{if} i = o \\ - 1 & \text{if} i = d"
+        r" \\ 0 & \text{otherwise} \end{cases} \forall i \in I \tag{bal} \\"
+    )
+    assert r.ok, r.failures
+    assert _terms(r, "bal", "rhs") == [(1, 1, "case_bal_1", ("i",), ())]
+    param = {p.name: p for p in r.formulation.parameters}["case_bal_1"]
+    assert param.shape == ("I",) and param.description.startswith(
+        "derived: value by index condition"
+    )
+    # a branch that holds a variable is another constraint under another
+    # condition: not expressible, left to the parser
+    row = (
+        r"  & y_{i} = \begin{cases} 0 & \text{if} i = o \\ z & \text{otherwise} \end{cases}"
+        r" \forall i \in I \tag{bal} \\"
+    )
+    _text, prov = normalize_latex(_doc(row), source="t.tex")
+    assert not {rw.rule for rw in prov.rewrites} & {"row_exact", "row_widened"}
+    # a condition in words describes what a variable means: a definition, no constraint
+    row = (
+        r"  & y_{i} = \begin{cases} 0 & \text{if train i is cancelled} \\ 1 & \text{otherwise}"
+        r" \end{cases} \forall i \in I \tag{bal} \\"
+    )
+    _text, prov = normalize_latex(_doc(row), source="t.tex")
+    assert not {rw.rule for rw in prov.rewrites} & {"row_exact", "row_widened"}
+
+
+def test_two_restrictions_of_one_set_are_not_widened_into_one():
+    # in-arcs minus out-arcs: widened to the base family the two sums would
+    # cancel, so neither the set-widening rule nor the reader may merge them
+    row = (
+        r"  & \sum_{j \in J^{-}} x_{i j} - \sum_{j \in J^{+}} x_{i j} = 0"
+        r" \forall i \in I \tag{bal} \\"
+    )
+    text, prov = normalize_latex(_doc(row), source="t.tex")
+    assert "restricted_set_widen" not in {rw.rule for rw in prov.rewrites}
+    assert r"\sum_{j \in \mathcal{J}} x_{i,j} - \sum_{j \in \mathcal{J}} x_{i,j}" not in text
+    # the sum spelled with \underset, the restriction an intersection
+    row = (
+        r"  & \underset{j \in J_{i}^{\text{In}} \cap J_{c}}{\sum} \left(x_{i j} + d_{i j}\right) ="
+        r" \underset{j \in J_{i}^{\text{Out}} \cap J_{c}}{\sum} \left(x_{i j} + d_{i j}\right)"
+        r" \forall i \in I \tag{bal} \\"
+    )
+    text, _prov = normalize_latex(_doc(row), source="t.tex")
+    assert r"\sum_{j \in \mathcal{J}} x_{i,j}" not in text
+    # the same inside a bracket, where the second summand ends at \right)
+    row = (
+        r"  & \sum_{i \in I} \left(\sum_{j \in J_{i}^{-}} x_{i j} - \sum_{j \in J_{i}^{+}} x_{i j}\right)"
+        r" = 0 \tag{bal} \\"
+    )
+    _text, prov = normalize_latex(_doc(row), source="t.tex")
+    assert "restricted_set_widen" not in {rw.rule for rw in prov.rewrites}
+
+
+def test_a_family_and_a_symbol_may_share_a_name():
+    # the periods \mathcal{T} and the horizon T: both declared, each use read
+    # by where it stands
+    header = (
+        _HEADER
+        + "%@ param T shape=- kind=scalar domain=- :: horizon\n"
+        + "%@ letter t over=T :: index letter\n"
+    )
+    r = _ingest(
+        r"  & \sum_{t \in T} f_{i t} \leq T \cdot c_{i} , \forall i \in I \tag{r} \\", header=header
+    )
+    assert r.ok, r.failures
+    assert _terms(r, "r", "lhs") == [(1, 1, "f", ("i", "t"), ("T",))]
+    assert _terms(r, "r", "rhs") == [(1, "T", "c", ("i",), ())]
+    # between bars the name is the set: its size, not the number's modulus
+    r = _ingest(r"  & y_{i} \leq \left|T\right| , \forall i \in I \tag{r} \\", header=header)
+    assert r.ok, r.failures
+    assert _terms(r, "r", "rhs") == [(1, 1, "card_T", (), ())]
+
+
+def test_a_letter_that_names_a_subscripted_symbol_still_binds():
+    # the time index t next to the times t_{i}: bare, it is the letter
+    header = (
+        _HEADER
+        + "%@ var t shape=I domain=continuous role=primary drole=- lo=- hi=- :: time\n"
+        + "%@ letter t over=T :: index letter\n"
+    )
+    r = _ingest(
+        r"  & t_{i} \geq \sum_{t = 1}^{H} f_{i t} , \forall i \in I \tag{r} \\", header=header
+    )
+    assert r.ok, r.failures
+    assert _terms(r, "r", "lhs") == [(1, 1, "t", ("i",), ())]
+    assert _terms(r, "r", "rhs") == [(1, 1, "f", ("i", "t"), ("T",))]

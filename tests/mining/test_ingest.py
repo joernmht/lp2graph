@@ -1039,3 +1039,29 @@ def test_products_are_not_inserted_inside_quantifier_tails():
     row, fired = _norm(r"x_{i} \le u \forall i \in \mathcal{I} : B u \ne w")
     assert row.endswith(r"\forall i \in \mathcal{I} : B u \ne w")
     assert "declared_product" not in fired
+
+
+def test_a_sign_above_a_symbol_is_part_of_its_name():
+    # a left arrow is the other direction of the same letter, a dot a derivative
+    text, _ = normalize_latex(
+        r"\overset{\leftarrow}{S}_{k} + \overset{\rightarrow}{S}_{k} + \overset{˜}{d}",
+        source="d.tex",
+    )
+    assert text == "S_lvec_{k} + S_vec_{k} + d_tilde"
+    # a sign the table does not know stays: the row is refused, not read as x
+    text, prov = normalize_latex(r"\overset{⌢}{x} + \overset{0}{y}", source="d.tex")
+    assert text == r"\overset{⌢}{x} + \overset{0}{y}"
+    assert "overset_base" not in {r.rule for r in prov.rewrites}
+    # an annotation in words, and anything above a relation, is dropped
+    text, _ = normalize_latex(r"a \overset{(3)}{\leq} b \overset{def}{=} c", source="d.tex")
+    assert r"\overset" not in text
+
+
+def test_bound_letters_reads_every_binder_form():
+    from lp2graph.mining.ingest.latex_normalizer import bound_letters
+
+    body = (
+        r"\sum_{i \in I} x_{i} + \sum_{k = 1}^{n} y_{k} \le 1 \forall \left(a , b\right) \in E , "
+        r"T \in \mathcal{T} , z_{s + 1}"
+    )
+    assert bound_letters(body) >= {"i", "k", "a", "b", "T", "s"}

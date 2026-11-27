@@ -720,9 +720,9 @@ def _split_top(s: str, seps: str = ",") -> list[str]:
             cur.append(s[i : i + 2])
             i += 2
             continue
-        if ch in "{([":
+        if ch in "{([〈":
             depth += 1
-        elif ch in "})]":
+        elif ch in "})]〉":
             depth -= 1
         if ch in seps and depth == 0:
             out.append("".join(cur))
@@ -749,6 +749,18 @@ class _Reader:
         #: same name must not occur bare in the row (it would be the letter)
         self.shadowed: set[str] = set()
         self.widened = False
+        #: names the row for derived symbols (shared by the row's sub-readers)
+        self.row_id = "row"
+        self.counter: list[int] = [0]
+
+    def child(self, toks: list[_Tok]) -> _Reader:
+        """A reader over part of this row, sharing what the row accumulates."""
+        sub = _Reader(self.text, toks, self.ctx, widen=self.widen)
+        sub.usage = self.usage
+        sub.shadowed = self.shadowed
+        sub.row_id = self.row_id
+        sub.counter = self.counter
+        return sub
 
     # -- token helpers ------------------------------------------------------
 
@@ -821,6 +833,7 @@ class _Reader:
                 r"\underset",
                 r"\max",
                 r"\min",
+                r"\casesof",
             )
         return False
 
@@ -880,9 +893,7 @@ class _Reader:
         if t.kind in ("open", "lb"):
             self.i -= 1
             j = _group_end(self.toks, self.i)
-            inner = _Reader(self.text, self.toks[self.i + 1 : j], self.ctx, widen=self.widen)
-            inner.usage = self.usage
-            inner.shadowed = self.shadowed
+            inner = self.child(self.toks[self.i + 1 : j])
             # a group holding one bare name is that name: {c}_{a}, \left(c\right)_{a}
             only = self.toks[self.i + 1 : j]
             self.i = j + 1
@@ -912,15 +923,15 @@ class _Reader:
             if card is not None:
                 self.i = j + 1
                 return [_Mono(Fraction(1), (card,))]
-            inner = _Reader(self.text, self.toks[self.i : j], self.ctx, widen=self.widen)
-            inner.usage = self.usage
-            inner.shadowed = self.shadowed
+            inner = self.child(self.toks[self.i : j])
             monos = inner.expr()
             if inner.i != len(inner.toks):
                 raise _Refuse("unread tokens in absolute value")
             self.widened = self.widened or inner.widened
             self.i = j + 1
             return [_Mono(Fraction(1), pw=_Piecewise("abs", (tuple(monos),)))]
+        if t.kind == "cmd" and t.val == r"\casesof":
+            return [_Mono(Fraction(1), (self.cases_parameter(),))]
         if t.kind == "cmd" and t.val == r"\sum":
             return self.bigsum(None)
         if t.kind == "cmd" and t.val == r"\underset":
@@ -984,6 +995,101 @@ class _Reader:
             ctx.derived[name] = (tuple(shape), " ".join(define).lstrip("+ "))
         return [_Mono(Fraction(1), (_Sym(name, tuple(exprs)),))]
 
+    def cases_parameter(self) -> _Sym:
+        """``\\casesof{v_1}{c_1}{v_2}{c_2}..``: a value that depends on a
+        condition over the indices. When every branch value is free of
+        variables (``1``, ``-1``, ``0``; ``\\gamma``, ``-\\gamma``, ``0``)
+        the whole distinction is data: one derived parameter over the index
+        letters its conditions and values name. A branch that holds a variable
+        is a second constraint under another condition, which the model
+        cannot state, and is refused."""
+        ctx = self.ctx
+        branches: list[tuple[list[_Mono], str]] = []
+        while True:
+            t = self.peek()
+            if t is None or t.kind != "lb":
+                break
+            j = _group_end(self.toks, self.i)
+            value = self.child(self.toks[self.i + 1 : j])
+            monos = value.expr() if value.toks else []
+            if value.i != len(value.toks):
+                raise _Refuse("unread tokens in a case value")
+            self.i = j + 1
+            t = self.peek()
+            if t is None or t.kind != "lb":
+                raise _Refuse("case without a condition")
+            j = _group_end(self.toks, self.i)
+            cond = self.text[t.end : self.toks[j].start]
+            self.i = j + 1
+            branches.append((monos, cond))
+        if len(branches) < 2:
+            raise _Refuse("case distinction with fewer than two branches")
+        letters: list[str] = []
+
+        def note(atom: str) -> None:
+            if atom in ctx.bound and not ctx.is_symbol(atom) and atom not in letters:
+                letters.append(atom)
+
+        for monos, cond in branches:
+            for m in monos:
+                if (
+                    m.sums
+                    or m.pw is not None
+                    or any(ctx.is_var(x.name) for x in (*m.syms, *m.dens))
+                ):
+                    raise _Refuse("case value holds a variable or a sum")
+                for sym in (*m.syms, *m.dens):
+                    if not ctx.is_symbol(sym.name):
+                        raise _Refuse("case value holds an index letter")
+                    for piece in sym.subs:
+                        for atom in re.findall(_IDX_ATOM, piece):
+                            note(atom)
+            # The condition must be a test over the row's index letters and
+            # declared data. Prose ("if activity a is maintained") describes
+            # what a variable means; such a row is a definition in words, not
+            # a constraint, and is left alone.
+            cond = _SPACED_CASE_WORD_RE.sub(" ", cond)
+            # an undeclared plain name an index letter is compared with for
+            # equality is a fixed element of the letter's family (i = o)
+            elements: set[str] = set()
+            for em in _CASE_ELEMENT_RE.finditer(cond):
+                for letter, other in ((em.group(1), em.group(2)), (em.group(2), em.group(1))):
+                    if letter in ctx.bound and not ctx.is_symbol(letter):
+                        elements.add(other)
+            for tok in _lex(cond):
+                if tok.kind == "text":
+                    if set(re.findall(r"[A-Za-z]+", tok.val.lower())) - _CASE_WORDS:
+                        raise _Refuse("case condition in words")
+                elif tok.kind == "name":
+                    if tok.val.lower() in _CASE_WORDS:
+                        continue
+                    if ctx.is_var(tok.val):
+                        raise _Refuse("case condition tests a variable")
+                    if tok.val in ctx.bound and not ctx.is_symbol(tok.val):
+                        note(tok.val)
+                    elif not (
+                        ctx.is_symbol(tok.val) or tok.val in ctx.indices or tok.val in elements
+                    ):
+                        raise _Refuse(f"case condition names {tok.val!r}, which is not declared")
+        shape: list[str] = []
+        for letter in letters:
+            fams = self.usage.get(letter)
+            fam = next(iter(fams)) if fams and len(fams) == 1 else ctx.letter_family.get(letter)
+            if fam is None:
+                raise _Refuse(f"no family for the letter {letter!r} of a case distinction")
+            shape.append(fam)
+        self.counter[0] += 1
+        name = f"case_{self.row_id}_{self.counter[0]}"
+        if ctx.is_symbol(name) and name not in ctx.derived:
+            if not (name in ctx.params and ctx.shape(name) == tuple(shape)):
+                raise _Refuse(f"derived name {name!r} collides with a declared symbol")
+        else:
+            ctx.derived[name] = (
+                tuple(shape),
+                f"value by index condition, {len(branches)} cases, of the row {self.row_id}",
+            )
+        return _Sym(name, tuple(letters))
+
     def cardinality(self, toks: list[_Tok]) -> _Sym | None:
         """``|S|`` with ``S`` an index family (or a labelled or indexed subset
         of one, ``|E^{stop}_{f}|``) is a number the data fixes: the derived
@@ -1003,7 +1109,12 @@ class _Reader:
             return None
         name = toks[i].val
         base = re.sub(r"_.*$", "", name)
-        if ctx.is_symbol(name) or not (name in ctx.indices or base in ctx.indices):
+        # A family whose name is also a scalar parameter (the horizon T next
+        # to the periods \mathcal{T}): between bars it is the set.
+        homonym = name in ctx.indices and ctx.is_param(name) and not ctx.shape(name)
+        if (ctx.is_symbol(name) and not homonym) or not (
+            name in ctx.indices or base in ctx.indices
+        ):
             return None
         i += 1 + wrappers
         if any(t.kind != "rb" for t in toks[i - wrappers : i]):
@@ -1057,9 +1168,7 @@ class _Reader:
             if len(parts) >= 2:
                 branches = []
                 for part in parts:
-                    sub = _Reader(self.text, part, self.ctx, widen=self.widen)
-                    sub.usage = self.usage
-                    sub.shadowed = self.shadowed
+                    sub = self.child(part)
                     if not part:
                         raise _Refuse("empty argument of an extremum")
                     branches.append(sub.expr())
@@ -1085,9 +1194,7 @@ class _Reader:
         if t is None or t.kind != "lb":
             raise _Refuse("fraction without braces")
         j = _group_end(self.toks, self.i)
-        inner = _Reader(self.text, self.toks[self.i + 1 : j], self.ctx, widen=self.widen)
-        inner.usage = self.usage
-        inner.shadowed = self.shadowed
+        inner = self.child(self.toks[self.i + 1 : j])
         monos = inner.expr()
         if inner.i != len(inner.toks):
             raise _Refuse("unread tokens in fraction")
@@ -1251,6 +1358,10 @@ def _norm_piece(piece: str) -> str:
         if m is None:
             break
         p = m.group(1).strip()
+    # a prime the source wrote apart from its letter: "j '" and v^{^{' '}}
+    pm = re.fullmatch(r"([A-Za-z]\w*)\s*(?:\^\{\s*\^?\{?)?((?:\s*')+)\s*\}?\}?", p)
+    if pm is not None:
+        p = pm.group(1) + "p" * pm.group(2).count("'")
     # an index given by a labelled map, s_{r}^{d} or i_{a}^{+}: the label is
     # part of the map's name (s_d_{r}, i_plus_{a}), as for any symbol
     lm = re.fullmatch(r"([A-Za-z]\w*)(_\{[^{}]*\})\^\{?\s*([A-Za-z]\w*|[+*-])\s*\}?", p)
@@ -1263,8 +1374,16 @@ def _norm_piece(piece: str) -> str:
 _TUPLE_PIECE_RE = re.compile(
     r"^(?:\\left\s*)?[(〈\[]\s*(.*?)\s*(?:\\right\s*)?[)〉\]]$|^\\left\\langle\s*(.*?)\s*\\right\\rangle$"
 )
+_CASE_WORDS = frozenset({"if", "otherwise", "for", "and", "or", "else", "when"})
+_SPACED_CASE_WORD_RE = re.compile(
+    r"(?<![A-Za-z\\])(?:i\s+f|o\s+t\s+h\s+e\s+r\s+w\s+i\s+s\s+e)(?![A-Za-z])"
+)
+_CASE_ELEMENT_RE = re.compile(
+    r"(?<![\w\\{^])([A-Za-z]\w*)\s*(?:=|\\neq?(?![A-Za-z]))\s*([A-Za-z]\w*)(?!\s*[\w_^{(]|\s*\\left)"
+)
+_RUN_MEMBER = r"(?:[A-Za-z]\w*(?:_\{[^{}]*\})?|\d+)"
 _CALL_PIECE_RE = re.compile(
-    r"^([A-Za-z]\w*)\s*(?:\\left\s*)?\(\s*((?:[A-Za-z0-9_, +-]|\{[A-Za-z0-9_, +-]*\})*?)\s*(?:\\right\s*)?\)$"
+    r"^([A-Za-z]\w*(?:_\{[A-Za-z0-9_, +-]*\})?)\s*(?:\\left\s*)?\(\s*((?:[A-Za-z0-9_, +-]|\{[A-Za-z0-9_, +-]*\})*?)\s*(?:\\right\s*)?\)$"
 )
 
 
@@ -1288,11 +1407,15 @@ def _sub_pieces(inner: str) -> list[str]:
             continue
         cm = _CALL_PIECE_RE.fullmatch(p)
         if cm is not None and cm.group(2):
-            p = cm.group(1) + "_{" + ",".join(a.strip() for a in cm.group(2).split(",")) + "}"
+            head = re.fullmatch(r"([A-Za-z]\w*)(?:_\{([^{}]*)\})?", cm.group(1))
+            assert head is not None
+            args = [a.strip() for a in ((head.group(2) or "") + "," + cm.group(2)).split(",")]
+            p = head.group(1) + "_{" + ",".join(a for a in args if a) + "}"
         if "," in p and "{" not in p:
             out.extend(q.strip() for q in p.split(",") if q.strip())
-        elif re.fullmatch(r"[A-Za-z]\w*(?:_\{[^{}]*\})?(?:\s+[A-Za-z]\w*(?:_\{[^{}]*\})?)+", p):
-            out.extend(re.findall(r"[A-Za-z]\w*(?:_\{[^{}]*\})?", p))
+        elif re.search(r"[A-Za-z]", p) and re.fullmatch(rf"{_RUN_MEMBER}(?:\s+{_RUN_MEMBER})+", p):
+            # letters (and fixed elements) written apart: i j, 1 k f
+            out.extend(re.findall(_RUN_MEMBER, p))
         else:
             out.append(p)
     return out
@@ -1378,6 +1501,13 @@ def _family_name(toks: list[_Tok], text: str) -> tuple[str, int] | None:
                 return None
         return name, i
     return None
+
+
+def _homonym_letter(name: str, ctx: RowContext) -> bool:
+    """An index letter that shares its name with a subscripted symbol (the
+    time index ``t`` next to the times ``t_{e,a}``): written bare it is the
+    letter, since the symbol never appears without its subscripts."""
+    return bool(ctx.shape(name)) and name in ctx.letter_family
 
 
 def _letter_family(letter: str, rd: _Reader) -> str | None:
@@ -1571,7 +1701,7 @@ def _clauses(src: str, rd: _Reader, *, tail: bool) -> tuple[list[tuple[str, str]
             if range_open:
                 widened = True  # the upper end of a range: i = 1, ..., n
                 continue
-            if any(ctx.is_symbol(n) for n in names):
+            if any(ctx.is_symbol(n) and not _homonym_letter(n, ctx) for n in names):
                 raise _Refuse("stray symbol in binder")
             pending.extend(names)
             continue
@@ -1616,7 +1746,12 @@ def _clauses(src: str, rd: _Reader, *, tail: bool) -> tuple[list[tuple[str, str]
                 restrictions.append("WHERE " + wm.group(1) + " " + " ".join(src_cl.split()))
                 continue
         # a range or bound on a letter: i = 1, ..., n / i \ge 2 / i = 1
-        if cl[0].kind == "name" and rels and rels[0] == 1 and not ctx.is_symbol(cl[0].val):
+        if (
+            cl[0].kind == "name"
+            and rels
+            and rels[0] == 1
+            and (not ctx.is_symbol(cl[0].val) or _homonym_letter(cl[0].val, ctx))
+        ):
             if any(t.kind == "name" and t.val in ctx.variables for t in cl[2:]):
                 raise _Refuse("condition mentions a variable")
             bind(cl[0].val, None, exact=False)
@@ -1626,7 +1761,11 @@ def _clauses(src: str, rd: _Reader, *, tail: bool) -> tuple[list[tuple[str, str]
         # "1 \le i \le n": a range around a letter
         if len(rels) == 2:
             mid = cl[rels[0] + 1 : rels[1]]
-            if len(mid) == 1 and mid[0].kind == "name" and not ctx.is_symbol(mid[0].val):
+            if (
+                len(mid) == 1
+                and mid[0].kind == "name"
+                and (not ctx.is_symbol(mid[0].val) or _homonym_letter(mid[0].val, ctx))
+            ):
                 if any(t.kind == "name" and t.val in ctx.variables for t in cl):
                     raise _Refuse("condition mentions a variable")
                 bind(mid[0].val, None, exact=False)
@@ -1634,6 +1773,19 @@ def _clauses(src: str, rd: _Reader, *, tail: bool) -> tuple[list[tuple[str, str]
                 continue
         # dots or numbers continuing a range: "2, \ldots, n"
         if all(_is_dots(t) or t.kind in ("num",) for t in cl):
+            widened = True
+            continue
+        # "\ldots T": the dots and the upper end of a range in one clause. The
+        # end is a number whatever else carries its letter (a subscripted
+        # symbol T_{w} is never written bare).
+        ends = [t for t in cl if not (_is_dots(t) or t.kind == "num")]
+        if (
+            len(ends) == 1
+            and len(ends) < len(cl)
+            and any(_is_dots(t) for t in cl)
+            and ends[0].kind == "name"
+            and (ends[0].val not in ctx.variables or ctx.shape(ends[0].val))
+        ):
             widened = True
             continue
         # anything else is a condition the model has no field for. It may be
@@ -2305,12 +2457,11 @@ def _canonicalize(
         raise _Refuse("no algebra")
     rels = _relations(alg)
     rd = _Reader(text, alg, ctx, widen=widen)
+    rd.row_id = row_id
     widened = False
 
     def side(lo: int, hi: int) -> list[_Mono]:
-        sub = _Reader(text, alg[lo:hi], ctx, widen=widen)
-        sub.usage = rd.usage
-        sub.shadowed = rd.shadowed
+        sub = rd.child(alg[lo:hi])
         if lo == hi:
             raise _Refuse("empty side")
         monos = sub.expr()

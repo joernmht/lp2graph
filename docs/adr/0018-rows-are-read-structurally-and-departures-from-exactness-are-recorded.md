@@ -110,9 +110,46 @@ ratio parameter", "bind each index over its own family").
    #67): `- M (1 - x)` became `- M - M x`. The structural reader handles those
    rows exactly.
 
+11. **A case distinction of constants is data** (`rewrite-2026.11.1`). The
+   rule `cases_groups` regroups `\begin{cases}` and brace-matrix blocks as
+   `\casesof{value}{condition}...` before line breaks are dropped. The reader
+   turns the block into one derived parameter `case_<row>_<n>` over the index
+   letters its conditions name, when every branch value is free of variables
+   and every condition tests index letters and declared data only (the node
+   balance `= 1 if i = o, -1 if i = d, 0 otherwise`). A branch that holds a
+   variable is a second constraint under another condition, and a condition
+   in words (`0 if activity a is maintained`) defines what a variable means:
+   both are left to the parser, which refuses them.
+
+12. **A family and a symbol may share a name.** Papers write the periods
+   `\mathcal{T}` and the horizon `T`, the time index `t` and the times
+   `t_{e,a}`. The canonical model keeps families and symbols in separate
+   name spaces, so M1b now does too (`DocContext.families`): in a binder the
+   name is the set, between bars its size, as a term the symbol. A letter that
+   names a *subscripted* symbol still binds when written bare.
+
+13. **Two restrictions of one set are never widened into one.** The older
+   rule `restricted_set_widen` rewrote `\delta^{-}(v)` and `\delta^{+}(v)`
+   both to `\delta` before the reader saw them, so the reader's guard
+   (point 5) had nothing to compare and a flow balance came out as
+   `\sum x - \sum x = 0`. The rule now declines when the same summand is
+   summed over two restrictions of one base; the reader then keeps the sets
+   apart as their own families (`delta_minus`, `delta_plus`). Found by
+   scanning promoted models for cancelling sums (lab
+   `scripts/checks/cancelling_sums_check.py`): the hole dated from
+   `rewrite-2026.09`.
+
+14. **A sign above a symbol is part of its name.** `overset_base` dropped
+   whatever stood above a base, which read `\overset{\leftarrow}{S}` and a
+   tilde written as U+02DC as the plain letter. It now drops only annotations
+   (words, a brace, an equation reference, anything above a relation). Left
+   arrows, dots and breves are accents with their own suffix (`S_lvec`,
+   `v_dot`); a sign the table does not know stays in place, so the row is
+   refused instead of renamed.
+
 ## Consequences
 
-- Rule table `rewrite-2026.11.0` (50 rules). On the lab corpus the rows that
+- Rule table `rewrite-2026.11.1` (54 rules; `2026.11.0` had 52). On the lab corpus the rows that
   parse with their header rose from 9 % to 37 % with the lab's deterministic
   declarations (lab ADR-0026); the reader alone accounts for the first step,
   9 % to 18 %.
